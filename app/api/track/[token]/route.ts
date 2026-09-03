@@ -1,0 +1,3 @@
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+export async function GET(_:Request,{params}:{params:{token:string}}) { const job=await prisma.job.findFirst({where:{trackingToken:params.token,status:{notIn:['COMPLETED','CANCELLED']}},select:{jobNumber:true,awbNumber:true,blNumber:true,type:true,clientName:true,status:true,updatedAt:true,stages:{orderBy:{order:'asc'},select:{id:true,name:true,status:true,notes:true,completedAt:true,order:true}},documents:{where:{showToClient:true},select:{id:true,label:true,docType:true,fileUrl:true,fileName:true,createdAt:true}}}});return job?NextResponse.json(job):NextResponse.json({error:'Tracking tidak ditemukan'},{status:404}) }

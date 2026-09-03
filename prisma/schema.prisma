@@ -1,0 +1,387 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STAFF
+  SUPERVISOR
+}
+
+enum JobType {
+  IMPORT
+  EXPORT
+}
+
+enum JobStatus {
+  DRAFT
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+enum StageStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+enum ProjectRole {
+  CUSTOMER
+  AGENT
+  EXHIBITOR
+  ORGANIZER
+  VENUE
+  FORWARDER
+  VENDOR
+  DRIVER
+  FIELD_OPERATIONS
+  WAREHOUSE
+  CUSTOMER_SERVICE
+  DOCUMENT_CUSTOMS
+  FINANCE
+  SUPERVISOR
+}
+
+enum TaskKind {
+  MOVEMENT
+  HANDLING
+  CUSTOMS
+  ADMINISTRATIVE
+}
+
+enum TaskReadiness {
+  NEEDS_INFORMATION
+  READY
+}
+
+enum TaskExecution {
+  NOT_STARTED
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum AssignmentStatus {
+  PROPOSED
+  CONFIRMED
+  ACKNOWLEDGED
+  RELEASED
+  CANCELLED
+}
+
+enum EvidenceVerification {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum CustomsRecommendation {
+  PROVISIONAL
+  READY_FOR_OPERATIONAL_REVIEW
+  REQUIRES_AUTHORITY_CONFIRMATION
+}
+
+enum CustomsTreatmentStatus {
+  UNDECIDED
+  PROVISIONAL
+  CONFIRMED
+}
+
+enum CustomsCloseOutStatus {
+  NOT_YET_DUE
+  DUE
+  EXCEPTION_OPEN
+  COMPLETED
+}
+
+enum IntendedDisposal {
+  RETURN_ABROAD
+  RETURN_TO_INDONESIA
+  REMAIN_IN_INDONESIA
+  CONSUMED
+  DISTRIBUTED
+  SOLD_OR_TRANSFERRED
+  DESTROYED
+  UNDECIDED
+}
+
+model User {
+  id                 String              @id @default(uuid())
+  name               String
+  email              String              @unique
+  password           String
+  role               Role                @default(STAFF)
+  isActive           Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  jobsAssigned       Job[]               @relation("AssignedTo")
+  jobsCreated        Job[]               @relation("CreatedBy")
+  documents          Document[]
+  projectsCreated    Project[]
+  assignmentsCreated ProjectAssignment[]
+  evidenceSubmitted  ProjectEvidence[]
+}
+
+model Job {
+  id            String     @id @default(uuid())
+  jobNumber     String     @unique
+  awbNumber     String?
+  blNumber      String?
+  type          JobType
+  clientName    String
+  clientInfo    String?
+  status        JobStatus  @default(DRAFT)
+  notes         String?
+  trackingToken String     @unique
+  assignedToId  String?
+  createdById   String
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  assignedTo    User?      @relation("AssignedTo", fields: [assignedToId], references: [id])
+  createdBy     User       @relation("CreatedBy", fields: [createdById], references: [id])
+  stages        JobStage[]
+  documents     Document[]
+}
+
+model JobStage {
+  id          String      @id @default(uuid())
+  jobId       String
+  name        String
+  status      StageStatus @default(PENDING)
+  order       Int
+  notes       String?
+  completedAt DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  job         Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+model Document {
+  id           String   @id @default(uuid())
+  jobId        String
+  label        String
+  docType      String?
+  fileUrl      String
+  fileName     String
+  fileSize     Int
+  uploadedById String
+  showToClient Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  job          Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+}
+
+model Project {
+  id                    String                 @id @default(uuid())
+  code                  String                 @unique
+  name                  String
+  status                ProjectStatus          @default(ACTIVE)
+  startsAt              DateTime?
+  endsAt                DateTime?
+  customsRelevant       Boolean                @default(false)
+  customsRecommendation CustomsRecommendation?
+  closeOutOwnerLabel    String?
+  sourceReference       String
+  createdById           String
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  createdBy    User                  @relation(fields: [createdById], references: [id])
+  participants ProjectParticipant[]
+  cargoItems   ProjectCargoItem[]
+  tasks        ProjectTask[]
+  assignments  ProjectAssignment[]
+  milestones   ProjectMilestone[]
+  blockers     ProjectBlocker[]
+  evidence     ProjectEvidence[]
+  changes      ProjectChangeRecord[]
+}
+
+model ProjectParticipant {
+  id              String      @id @default(uuid())
+  projectId       String
+  partyName       String
+  role            ProjectRole
+  periodStartsAt  DateTime?
+  periodEndsAt    DateTime?
+  sourceReference String
+  createdAt       DateTime    @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, partyName, role])
+  @@index([projectId, role])
+}
+
+model ProjectCargoItem {
+  id               String           @id @default(uuid())
+  projectId        String
+  reference        String
+  description      String
+  ownerName        String?
+  identifiers      String[]
+  quantity         Decimal          @db.Decimal(14, 3)
+  quantityUnit     String
+  intendedUse      String?
+  intendedDisposal IntendedDisposal
+  sourceReference  String
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  project         Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  customsDecision ProjectCustomsDecision?
+
+  @@unique([projectId, reference])
+}
+
+model ProjectTask {
+  id                   String        @id @default(uuid())
+  projectId            String
+  code                 String
+  title                String
+  kind                 TaskKind
+  action               String
+  mandatory            Boolean       @default(true)
+  priority             String        @default("NORMAL")
+  readiness            TaskReadiness @default(NEEDS_INFORMATION)
+  execution            TaskExecution @default(NOT_STARTED)
+  requestedTimeText    String?
+  plannedStartsAt      DateTime?
+  plannedEndsAt        DateTime?
+  origin               String?
+  destination          String?
+  location             String?
+  informationGaps      Json
+  evidenceRequirements Json
+  completedAt          DateTime?
+  outcome              String?
+  sourceReference      String
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  project     Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignments ProjectAssignment[]
+  blockers    ProjectBlocker[]
+  evidence    ProjectEvidence[]
+
+  @@unique([projectId, code])
+  @@index([projectId, readiness, execution])
+}
+
+model ProjectAssignment {
+  id              String           @id @default(uuid())
+  projectId       String
+  taskId          String
+  resourceType    String
+  resourceLabel   String
+  startsAt        DateTime
+  endsAt          DateTime
+  status          AssignmentStatus @default(PROPOSED)
+  assignedById    String
+  sourceReference String
+  createdAt       DateTime         @default(now())
+
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task       ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  assignedBy User        @relation(fields: [assignedById], references: [id])
+
+  @@index([resourceLabel, startsAt, endsAt])
+}
+
+model ProjectBlocker {
+  id          String      @id @default(uuid())
+  projectId   String
+  taskId      String?
+  type        String
+  description String
+  ownerRole   ProjectRole
+  openedAt    DateTime
+  resolvedAt  DateTime?
+  resolution  String?
+
+  project Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task    ProjectTask? @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, resolvedAt])
+}
+
+model ProjectEvidence {
+  id            String               @id @default(uuid())
+  projectId     String
+  taskId        String?
+  evidenceType  String
+  fileReference String
+  verification  EvidenceVerification @default(PENDING)
+  capturedAt    DateTime
+  submittedById String
+  createdAt     DateTime             @default(now())
+
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task        ProjectTask? @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  submittedBy User         @relation(fields: [submittedById], references: [id])
+}
+
+model ProjectCustomsDecision {
+  id                        String                 @id @default(uuid())
+  cargoItemId               String                 @unique
+  technicalDescriptionReady Boolean                @default(false)
+  treatmentStatus           CustomsTreatmentStatus
+  routeLabel                String?
+  basis                     String?
+  confirmationNeeded        String?
+  closeOutStatus            CustomsCloseOutStatus
+  closeOutDueAt             DateTime?
+  openIssues                Json
+  reconciliation            Json?
+  updatedAt                 DateTime               @updatedAt
+
+  cargoItem ProjectCargoItem @relation(fields: [cargoItemId], references: [id], onDelete: Cascade)
+}
+
+model ProjectMilestone {
+  id           String      @id @default(uuid())
+  projectId    String
+  type         String
+  title        String
+  mandatory    Boolean     @default(true)
+  state        String      @default("PENDING")
+  plannedAt    DateTime?
+  completedAt  DateTime?
+  ownerRole    ProjectRole
+  exitEvidence Json
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model ProjectChangeRecord {
+  id                  String   @id @default(uuid())
+  projectId           String
+  subject             String
+  field               String
+  previousInformation Json
+  newInformation      Json
+  changeType          String
+  reason              String
+  actorLabel          String
+  occurredAt          DateTime
+  sourceReference     String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, occurredAt])
+}

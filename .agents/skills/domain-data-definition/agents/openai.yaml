@@ -1,0 +1,6 @@
+interface:
+  display_name: "Domain Data Definition"
+  short_description: "Petakan informasi bisnis ke struktur data ala HtDP"
+  default_prompt: "Gunakan $domain-data-definition untuk memetakan informasi domain ini menjadi data definitions, interpretation, examples, templates, dan invariants."
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,8 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { requireUser, unauthorized } from '@/lib/session'
+import { jobSchema } from '@/lib/validations'
+import { generateJobNumber } from '@/lib/job-number'
+import { generateTrackingToken } from '@/lib/tokens'
+export async function GET(request: NextRequest) { if (!await requireUser()) return unauthorized(); const p = request.nextUrl.searchParams; const search = p.get('search') || ''; const status = p.get('status') || undefined; const type = p.get('type') || undefined; const page = Math.max(1, Number(p.get('page') || 1)); const take = Math.min(50, Math.max(1, Number(p.get('take') || 20))); const where = { ...(status ? {status: status as never} : {}), ...(type ? {type: type as never} : {}), ...(search ? { OR: [{jobNumber:{contains:search,mode:'insensitive' as const}},{clientName:{contains:search,mode:'insensitive' as const}},{awbNumber:{contains:search,mode:'insensitive' as const}},{blNumber:{contains:search,mode:'insensitive' as const}}] } : {}) }; const [items, total] = await Promise.all([prisma.job.findMany({where,include:{assignedTo:true},orderBy:{updatedAt:'desc'},skip:(page-1)*take,take}), prisma.job.count({where})]); return NextResponse.json({items,total,page,take}) }
+export async function POST(request: NextRequest) { const user = await requireUser(); if (!user) return unauthorized(); const parsed = jobSchema.safeParse(await request.json()); if (!parsed.success) return NextResponse.json({error:parsed.error.flatten()}, {status:400}); const job = await prisma.job.create({data:{...parsed.data,jobNumber:await generateJobNumber(),trackingToken:generateTrackingToken(),createdById:user.id}}); return NextResponse.json(job,{status:201}) }

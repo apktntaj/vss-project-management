@@ -1,0 +1,4 @@
+import { z } from 'zod'
+export const jobSchema = z.object({ awbNumber: z.string().trim().optional().nullable(), blNumber: z.string().trim().optional().nullable(), type: z.enum(['IMPORT','EXPORT']), clientName: z.string().trim().min(2), clientInfo: z.string().trim().optional().nullable(), status: z.enum(['DRAFT','IN_PROGRESS','ON_HOLD','COMPLETED','CANCELLED']).optional(), notes: z.string().trim().optional().nullable(), assignedToId: z.string().uuid().optional().nullable() })
+export const stageSchema = z.object({ name: z.string().trim().min(2), status: z.enum(['PENDING','IN_PROGRESS','DONE']).optional(), notes: z.string().trim().optional().nullable(), order: z.number().int().nonnegative().optional() })
+export const userSchema = z.object({ name: z.string().trim().min(2), email: z.string().email(), password: z.string().min(8).optional(), role: z.enum(['STAFF','SUPERVISOR']), isActive: z.boolean().optional() })

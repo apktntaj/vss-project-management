@@ -1,0 +1,6 @@
+interface:
+  display_name: "Ahli Pabean MICE Indonesia"
+  short_description: "Analisis kepabeanan operasional untuk proyek MICE"
+  default_prompt: "Gunakan $customs-mice-indonesia untuk menganalisis jalur kepabeanan dan action plan shipment pameran ini."
+policy:
+  allow_implicit_invocation: true

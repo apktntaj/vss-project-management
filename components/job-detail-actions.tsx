@@ -1,0 +1,4 @@
+'use client'
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+export function JobDetailActions({id,token}:{id:string;token:string}){const router=useRouter();const [value,setValue]=useState(token);async function reset(){if(!confirm('Reset link tracking? Link lama akan tidak berlaku.'))return;const r=await fetch(`/api/jobs/${id}/token`,{method:'POST'});if(r.ok){setValue((await r.json()).trackingToken);router.refresh()}}return <div className="rounded-lg bg-sky-50 p-4"><p className="text-sm font-medium text-sky-900">Link tracking klien</p><div className="mt-2 flex gap-2"><input readOnly value={`${window.location.origin}/track/${value}`} className="input m-0 text-xs"/><button onClick={()=>navigator.clipboard.writeText(`${window.location.origin}/track/${value}`)} className="btn-secondary">Salin</button><button onClick={reset} className="btn-secondary">Reset</button></div></div>}
