@@ -18,14 +18,19 @@ const prisma = new PrismaClient()
 const demoProjectId = 'project-mice-2026-001'
 
 async function main() {
+  const supervisorEmail = (process.env.SEED_SUPERVISOR_EMAIL || 'admin@vss.local').trim().toLowerCase()
   const password = await bcrypt.hash(process.env.SEED_SUPERVISOR_PASSWORD || 'ChangeMe123!', 12)
   const admin = await prisma.user.upsert({
-    where: { email: process.env.SEED_SUPERVISOR_EMAIL || 'admin@vss.local' },
-    update: {},
-    create: {
-      id: demoProjectId,
+    where: { email: supervisorEmail },
+    update: {
       name: 'Administrator VSS',
-      email: process.env.SEED_SUPERVISOR_EMAIL || 'admin@vss.local',
+      password,
+      role: Role.SUPERVISOR,
+      isActive: true,
+    },
+    create: {
+      name: 'Administrator VSS',
+      email: supervisorEmail,
       password,
       role: Role.SUPERVISOR,
     },
@@ -35,6 +40,7 @@ async function main() {
     where: { code: 'PRJ-MICE-2026-001' },
     update: {},
     create: {
+      id: demoProjectId,
       code: 'PRJ-MICE-2026-001',
       name: 'Delivery & Customs MICE',
       status: 'ACTIVE',

@@ -6,7 +6,8 @@ export const authOptions: NextAuthOptions = {
   session: { strategy: 'jwt' }, pages: { signIn: '/login' },
   providers: [CredentialsProvider({ name: 'Email dan password', credentials: { email: { label: 'Email', type: 'email' }, password: { label: 'Password', type: 'password' } }, async authorize(credentials) {
     if (!credentials?.email || !credentials.password) return null
-    const user = await prisma.user.findUnique({ where: { email: credentials.email } })
+    const email = credentials.email.trim().toLowerCase()
+    const user = await prisma.user.findUnique({ where: { email } })
     if (!user?.isActive || !(await bcrypt.compare(credentials.password, user.password))) return null
     return { id: user.id, name: user.name, email: user.email, role: user.role }
   } })],
