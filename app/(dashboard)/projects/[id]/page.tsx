@@ -43,10 +43,10 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
 
   return (
     <div className="space-y-7">
-      <section className="overflow-hidden rounded-2xl bg-slate-950 text-white shadow-xl">
+      <section className="overflow-hidden rounded-2xl bg-black text-white shadow-xl">
         <div className="grid gap-8 p-6 md:grid-cols-[1fr_280px] md:p-8">
           <div>
-            <div className="flex flex-wrap items-center gap-3"><span className="rounded-full bg-indigo-500/20 px-3 py-1 text-xs font-bold uppercase tracking-wider text-indigo-200">{project.code}</span><StatusBadge status={project.status} /></div>
+            <div className="flex flex-wrap items-center gap-3"><span className="rounded-full bg-orange-500/20 px-3 py-1 text-xs font-bold uppercase tracking-wider text-orange-200">{project.code}</span><StatusBadge status={project.status} /></div>
             <h1 className="mt-4 text-3xl font-bold tracking-tight">{project.name}</h1>
             <p className="mt-2 text-sm text-slate-400">Sumber: {project.sourceReference}</p>
             <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-300">
@@ -57,7 +57,7 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
           </div>
           <div className="rounded-xl border border-white/10 bg-white/5 p-5">
             <div className="flex items-center justify-between"><span className="text-sm text-slate-300">Progress task</span><strong>{progress}%</strong></div>
-            <div className="mt-3 h-2 rounded-full bg-white/10"><div className="h-2 rounded-full bg-indigo-400" style={{ width: `${progress}%` }} /></div>
+            <div className="mt-3 h-2 rounded-full bg-white/10"><div className="h-2 rounded-full bg-orange-400" style={{ width: `${progress}%` }} /></div>
             <div className="mt-5 flex items-start gap-3 border-t border-white/10 pt-4">
               {canClose ? <CheckCircle2 className="mt-0.5 text-emerald-400" size={20} /> : <AlertCircle className="mt-0.5 text-amber-400" size={20} />}
               <div><p className="text-sm font-semibold">{canClose ? 'Siap ditutup' : 'Belum dapat ditutup'}</p><p className="mt-1 text-xs leading-relaxed text-slate-400">{canClose ? 'Semua kewajiban telah selesai.' : `${incompleteTasks.length} task, ${incompleteMilestones.length} milestone, ${openCustoms.length} customs close-out masih terbuka.`}</p></div>
@@ -83,7 +83,7 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
               <article key={task.id} className="p-5">
                 <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2"><span className="text-xs font-bold text-indigo-600">{task.code}</span><StatusBadge status={task.kind} /><StatusBadge status={task.readiness} /><StatusBadge status={task.execution} />{task.mandatory && <span className="text-xs font-semibold text-rose-600">Wajib</span>}</div>
+                    <div className="flex flex-wrap items-center gap-2"><span className="text-xs font-bold text-orange-600">{task.code}</span><StatusBadge status={task.kind} /><StatusBadge status={task.readiness} /><StatusBadge status={task.execution} />{task.mandatory && <span className="text-xs font-semibold text-rose-600">Wajib</span>}</div>
                     <h3 className="mt-2 font-semibold">{task.title}</h3>
                     <p className="mt-1 text-sm text-slate-500">{task.action} · {task.origin && task.destination ? `${task.origin} → ${task.destination}` : task.location ?? task.requestedTimeText ?? 'Detail belum lengkap'}</p>
                   </div>
@@ -127,7 +127,7 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
           })}
         </div>
         <details className="border-t bg-slate-50">
-          <summary className="cursor-pointer p-5 text-sm font-semibold text-indigo-700">+ Tambah task</summary>
+          <summary className="cursor-pointer p-5 text-sm font-semibold text-orange-700">+ Tambah task</summary>
           <form action={addTask} className="grid gap-4 border-t bg-white p-5 md:grid-cols-2">
             <input type="hidden" name="projectId" value={project.id} />
             <label className="label">Kode<input required name="code" className="input" placeholder="TSK-..." /></label>
@@ -149,8 +149,8 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
       <div className="grid gap-6 xl:grid-cols-2">
         <section className="card overflow-hidden">
           <SectionHeader title="Participant & role" subtitle="Role melekat pada project, bukan party selamanya" />
-          <div className="divide-y">{project.participants.map((item) => <div key={item.id} className="flex items-center justify-between p-4"><div><p className="font-medium">{item.partyName}</p><p className="mt-1 text-xs text-slate-400">{item.sourceReference}</p></div><span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">{roleLabels[item.role]}</span></div>)}</div>
-          <details className="border-t bg-slate-50"><summary className="cursor-pointer p-4 text-sm font-semibold text-indigo-700">+ Tambah participant</summary><form action={addParticipant} className="grid gap-3 border-t bg-white p-4 sm:grid-cols-2"><input type="hidden" name="projectId" value={project.id} /><input required name="partyName" className="input m-0" placeholder="Nama party" /><select name="role" className="input m-0">{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><input required name="sourceReference" className="input m-0 sm:col-span-2" placeholder="Referensi sumber" /><button className="btn-primary sm:col-span-2 sm:justify-self-end">Tambah participant</button></form></details>
+          <div className="divide-y">{project.participants.map((item) => <div key={item.id} className="flex items-center justify-between p-4"><div><p className="font-medium">{item.partyName}</p><p className="mt-1 text-xs text-slate-400">{item.sourceReference}</p></div><span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">{roleLabels[item.role]}</span></div>)}</div>
+          <details className="border-t bg-slate-50"><summary className="cursor-pointer p-4 text-sm font-semibold text-orange-700">+ Tambah participant</summary><form action={addParticipant} className="grid gap-3 border-t bg-white p-4 sm:grid-cols-2"><input type="hidden" name="projectId" value={project.id} /><input required name="partyName" className="input m-0" placeholder="Nama party" /><select name="role" className="input m-0">{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><input required name="sourceReference" className="input m-0 sm:col-span-2" placeholder="Referensi sumber" /><button className="btn-primary sm:col-span-2 sm:justify-self-end">Tambah participant</button></form></details>
         </section>
 
         <section className="card overflow-hidden">
@@ -162,12 +162,12 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
       <section className="card overflow-hidden">
         <SectionHeader title="Cargo & customs control" subtitle="Treatment dan intended disposal ditetapkan per item" />
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[850px] text-left text-sm"><thead className="border-b bg-slate-50 text-xs uppercase tracking-wider text-slate-400"><tr><th className="p-4">Cargo item</th><th className="p-4">Quantity</th><th className="p-4">Intended use / disposal</th><th className="p-4">Treatment</th><th className="p-4">Close-out</th></tr></thead><tbody className="divide-y">{project.cargoItems.map((item) => <tr key={item.id}><td className="p-4"><p className="font-semibold">{item.reference}</p><p className="mt-1 text-slate-500">{item.description}</p></td><td className="p-4">{String(item.quantity)} {item.quantityUnit}</td><td className="p-4"><p>{item.intendedUse ?? '—'}</p><p className="mt-1 text-xs font-semibold text-indigo-700">{item.intendedDisposal.replaceAll('_', ' ')}</p></td><td className="p-4"><StatusBadge status={item.customsDecision?.treatmentStatus ?? 'UNDECIDED'} /><p className="mt-2 max-w-xs text-xs text-slate-500">{item.customsDecision?.confirmationNeeded ?? item.customsDecision?.routeLabel ?? 'Belum dinilai'}</p></td><td className="p-4"><StatusBadge status={item.customsDecision?.closeOutStatus ?? 'NOT_YET_DUE'} /></td></tr>)}</tbody></table>
+          <table className="w-full min-w-[850px] text-left text-sm"><thead className="border-b bg-slate-50 text-xs uppercase tracking-wider text-slate-400"><tr><th className="p-4">Cargo item</th><th className="p-4">Quantity</th><th className="p-4">Intended use / disposal</th><th className="p-4">Treatment</th><th className="p-4">Close-out</th></tr></thead><tbody className="divide-y">{project.cargoItems.map((item) => <tr key={item.id}><td className="p-4"><p className="font-semibold">{item.reference}</p><p className="mt-1 text-slate-500">{item.description}</p></td><td className="p-4">{String(item.quantity)} {item.quantityUnit}</td><td className="p-4"><p>{item.intendedUse ?? '—'}</p><p className="mt-1 text-xs font-semibold text-orange-700">{item.intendedDisposal.replaceAll('_', ' ')}</p></td><td className="p-4"><StatusBadge status={item.customsDecision?.treatmentStatus ?? 'UNDECIDED'} /><p className="mt-2 max-w-xs text-xs text-slate-500">{item.customsDecision?.confirmationNeeded ?? item.customsDecision?.routeLabel ?? 'Belum dinilai'}</p></td><td className="p-4"><StatusBadge status={item.customsDecision?.closeOutStatus ?? 'NOT_YET_DUE'} /></td></tr>)}</tbody></table>
           {!project.cargoItems.length && <div className="p-10 text-center text-sm text-slate-500"><Package className="mx-auto mb-2 text-slate-300" />Belum ada cargo item.</div>}
         </div>
         {project.customsRelevant && <div className="border-t bg-amber-50 px-5 py-4 text-sm text-amber-900"><strong>Catatan:</strong> status ini adalah kontrol operasional. Aplikasi tidak menetapkan HS, LARTAS, tarif, atau keputusan hukum.</div>}
         <details className="border-t bg-slate-50">
-          <summary className="cursor-pointer p-5 text-sm font-semibold text-indigo-700">+ Tambah cargo item</summary>
+          <summary className="cursor-pointer p-5 text-sm font-semibold text-orange-700">+ Tambah cargo item</summary>
           <form action={addCargoItem} className="grid gap-4 border-t bg-white p-5 md:grid-cols-2 xl:grid-cols-3">
             <input type="hidden" name="projectId" value={project.id} />
             <label className="label">Referensi item<input required name="reference" className="input" placeholder="CARGO-001" /></label>
@@ -201,7 +201,7 @@ function SectionHeader({ title, subtitle }: { title: string; subtitle: string })
 }
 
 function Summary({ icon: Icon, label, value, note }: { icon: typeof FileCheck2; label: string; value: string | number; note: string }) {
-  return <article className="card flex items-center gap-4 p-4"><span className="rounded-xl bg-indigo-50 p-2.5 text-indigo-700"><Icon size={20} /></span><div><p className="text-xs font-medium text-slate-500">{label}</p><p className="text-xl font-bold">{value} <span className="text-xs font-normal text-slate-400">{note}</span></p></div></article>
+  return <article className="card flex items-center gap-4 p-4"><span className="rounded-xl bg-orange-50 p-2.5 text-orange-700"><Icon size={20} /></span><div><p className="text-xs font-medium text-slate-500">{label}</p><p className="text-xl font-bold">{value} <span className="text-xs font-normal text-slate-400">{note}</span></p></div></article>
 }
 
 function InfoBox({ title, items, empty, warn = false }: { title: string; items: string[]; empty: string; warn?: boolean }) {

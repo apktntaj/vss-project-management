@@ -37,8 +37,8 @@ export default async function ProjectsPage({ searchParams }: { searchParams: { q
           const done = project.tasks.filter((task) => task.execution === 'COMPLETED').length
           const needsInfo = project.tasks.filter((task) => task.readiness === 'NEEDS_INFORMATION').length
           return (
-            <Link href={`/projects/${project.id}`} key={project.id} className="card group p-5 hover:border-indigo-200 hover:shadow-md">
-              <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">{project.code}</p><h2 className="mt-1 text-lg font-semibold group-hover:text-indigo-700">{project.name}</h2></div><StatusBadge status={project.status} /></div>
+            <Link href={`/projects/${project.id}`} key={project.id} className="card group p-5 hover:border-orange-200 hover:shadow-md">
+              <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wider text-orange-600">{project.code}</p><h2 className="mt-1 text-lg font-semibold group-hover:text-orange-700">{project.name}</h2></div><StatusBadge status={project.status} /></div>
               <div className="mt-5 grid grid-cols-4 gap-2 border-t pt-4 text-center">
                 <Metric value={`${done}/${project._count.tasks}`} label="Task" />
                 <Metric value={needsInfo} label="Gap" warn={needsInfo > 0} />

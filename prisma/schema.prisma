@@ -10,6 +10,8 @@ datasource db {
 enum Role {
   STAFF
   SUPERVISOR
+  CUSTOMER_SERVICE
+  DOCUMENT_ASSISTANT
 }
 
 enum JobType {

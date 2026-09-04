@@ -11,5 +11,5 @@ export const authOptions: NextAuthOptions = {
     if (!user?.isActive || !(await bcrypt.compare(credentials.password, user.password))) return null
     return { id: user.id, name: user.name, email: user.email, role: user.role }
   } })],
-  callbacks: { jwt({ token, user }) { if (user) token.role = user.role; return token }, session({ session, token }) { if (session.user) { session.user.id = token.sub!; session.user.role = token.role as 'STAFF' | 'SUPERVISOR' }; return session } },
+  callbacks: { jwt({ token, user }) { if (user) token.role = user.role; return token }, session({ session, token }) { if (session.user) { session.user.id = token.sub!; session.user.role = token.role! }; return session } },
 }

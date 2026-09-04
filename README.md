@@ -41,6 +41,9 @@ Akun seed default adalah `admin@vss.local` dengan password `ChangeMe123!`.
 Override melalui `SEED_SUPERVISOR_EMAIL` dan `SEED_SUPERVISOR_PASSWORD`, lalu
 ganti password sebelum pemakaian nyata.
 
+Akun tim dari seed menggunakan domain `@vss.local` dan password dari
+`SEED_USER_PASSWORD`.
+
 ## Verifikasi
 
 ```bash

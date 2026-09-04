@@ -20,6 +20,7 @@ const demoProjectId = 'project-mice-2026-001'
 async function main() {
   const supervisorEmail = (process.env.SEED_SUPERVISOR_EMAIL || 'admin@vss.local').trim().toLowerCase()
   const password = await bcrypt.hash(process.env.SEED_SUPERVISOR_PASSWORD || 'ChangeMe123!', 12)
+  const teamPassword = await bcrypt.hash(process.env.SEED_USER_PASSWORD || 'ChangeMe123!', 12)
   const admin = await prisma.user.upsert({
     where: { email: supervisorEmail },
     update: {
@@ -35,6 +36,25 @@ async function main() {
       role: Role.SUPERVISOR,
     },
   })
+
+  const teamUsers = [
+    { name: 'Andy', email: 'andy@vss.local', role: Role.SUPERVISOR },
+    { name: 'Mae Jung', email: 'mae.jung@vss.local', role: Role.SUPERVISOR },
+    { name: 'Nurul', email: 'nurul@vss.local', role: Role.SUPERVISOR },
+    { name: 'Siti', email: 'siti@vss.local', role: Role.CUSTOMER_SERVICE },
+    { name: 'Dhea', email: 'dhea@vss.local', role: Role.CUSTOMER_SERVICE },
+    { name: 'Rian', email: 'rian@vss.local', role: Role.CUSTOMER_SERVICE },
+    { name: 'Nuri', email: 'nuri@vss.local', role: Role.CUSTOMER_SERVICE },
+    { name: 'Ari', email: 'ari@vss.local', role: Role.DOCUMENT_ASSISTANT },
+    { name: 'Lina', email: 'lina@vss.local', role: Role.DOCUMENT_ASSISTANT },
+    { name: 'Shindu', email: 'shindu@vss.local', role: Role.DOCUMENT_ASSISTANT },
+  ]
+
+  await Promise.all(teamUsers.map((user) => prisma.user.upsert({
+    where: { email: user.email },
+    update: { name: user.name, password: teamPassword, role: user.role, isActive: true },
+    create: { ...user, password: teamPassword },
+  })))
 
   await prisma.project.upsert({
     where: { code: 'PRJ-MICE-2026-001' },

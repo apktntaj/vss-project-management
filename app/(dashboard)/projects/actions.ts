@@ -16,6 +16,12 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
 const text = (form: FormData, key: string) => String(form.get(key) ?? '').trim()
+const projectRoleByUserRole = {
+  STAFF: ProjectRole.FIELD_OPERATIONS,
+  SUPERVISOR: ProjectRole.SUPERVISOR,
+  CUSTOMER_SERVICE: ProjectRole.CUSTOMER_SERVICE,
+  DOCUMENT_ASSISTANT: ProjectRole.DOCUMENT_CUSTOMS,
+} as const
 
 async function authenticatedUser() {
   const user = await requireUser()
@@ -42,7 +48,7 @@ export async function createProject(form: FormData) {
       participants: {
         create: {
           partyName: user.name ?? user.email ?? 'Pengguna VSS',
-          role: user.role === 'SUPERVISOR' ? ProjectRole.SUPERVISOR : ProjectRole.FIELD_OPERATIONS,
+          role: projectRoleByUserRole[user.role as keyof typeof projectRoleByUserRole],
           sourceReference,
         },
       },
