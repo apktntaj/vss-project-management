@@ -14,376 +14,481 @@ enum Role {
   DOCUMENT_ASSISTANT
 }
 
-enum JobType {
-  IMPORT
-  EXPORT
-}
-
-enum JobStatus {
-  DRAFT
-  IN_PROGRESS
-  ON_HOLD
-  COMPLETED
-  CANCELLED
-}
-
-enum StageStatus {
-  PENDING
-  IN_PROGRESS
-  DONE
-}
-
-enum ProjectStatus {
-  ACTIVE
-  ON_HOLD
-  COMPLETED
-  CANCELLED
-}
-
-enum ProjectRole {
-  CUSTOMER
-  AGENT
-  EXHIBITOR
-  ORGANIZER
-  VENUE
-  FORWARDER
-  VENDOR
-  DRIVER
-  FIELD_OPERATIONS
-  WAREHOUSE
-  CUSTOMER_SERVICE
-  DOCUMENT_CUSTOMS
-  FINANCE
-  SUPERVISOR
-}
-
-enum TaskKind {
-  MOVEMENT
-  HANDLING
-  CUSTOMS
-  ADMINISTRATIVE
-}
-
-enum TaskReadiness {
-  NEEDS_INFORMATION
-  READY
-}
-
-enum TaskExecution {
-  NOT_STARTED
-  PLANNED
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
-  FAILED
-}
-
-enum AssignmentStatus {
-  PROPOSED
-  CONFIRMED
-  ACKNOWLEDGED
-  RELEASED
-  CANCELLED
-}
-
-enum EvidenceVerification {
-  PENDING
-  ACCEPTED
-  REJECTED
-}
-
-enum CustomsRecommendation {
-  PROVISIONAL
-  READY_FOR_OPERATIONAL_REVIEW
-  REQUIRES_AUTHORITY_CONFIRMATION
-}
-
-enum CustomsTreatmentStatus {
-  UNDECIDED
-  PROVISIONAL
-  CONFIRMED
-}
-
-enum CustomsCloseOutStatus {
-  NOT_YET_DUE
-  DUE
-  EXCEPTION_OPEN
-  COMPLETED
-}
-
-enum IntendedDisposal {
-  RETURN_ABROAD
-  RETURN_TO_INDONESIA
-  REMAIN_IN_INDONESIA
-  CONSUMED
-  DISTRIBUTED
-  SOLD_OR_TRANSFERRED
-  DESTROYED
-  UNDECIDED
+enum WorkType {
+  EVENT
+  GENCO
+  PROJECT
 }
 
 model User {
-  id                 String              @id @default(uuid())
-  name               String
-  email              String              @unique
-  password           String
-  role               Role                @default(STAFF)
-  isActive           Boolean             @default(true)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  jobsAssigned       Job[]               @relation("AssignedTo")
-  jobsCreated        Job[]               @relation("CreatedBy")
-  documents          Document[]
-  projectsCreated    Project[]
-  assignmentsCreated ProjectAssignment[]
-  evidenceSubmitted  ProjectEvidence[]
+  id        String   @id @default(uuid())
+  username  String   @unique
+  legalName String
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  role     Role    @default(STAFF)
+  isActive Boolean @default(true)
+  // jobsAssigned       Job[]               @relation("AssignedTo")
+  // jobsCreated        Job[]               @relation("CreatedBy")
+  // documents          Document[]
+  // projectsCreated    Project[]
+  // assignmentsCreated ProjectAssignment[]
+  // evidenceSubmitted  ProjectEvidence[]
+}
+
+model Event {
+  id           String   @id @default(uuid())
+  officialName String   @unique
+  alias        String?
+  startsAt     DateTime
+  endsAt       DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  venue   Venue  @relation(fields: [venueId], references: [id])
+  venueId String
+
+  eventOrganizer Eo     @relation(fields: [eoId], references: [id])
+  eoId           String
+
+  exhibitors Exhibitor[]
+
+  // agents Agent[]
+}
+
+model Venue {
+  id           String   @id @default(uuid())
+  officialName String   @unique
+  aliasName    String?
+  address      String?
+  latitude     Float?
+  longitude    Float?
+  contactInfo  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  events       Event[]
+}
+
+model Eo {
+  id          String   @id @default(uuid())
+  legalName   String
+  aliasName   String?
+  contactInfo String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  events Event[]
+
+  exhibitors Exhibitor[]
+
+  @@unique([legalName])
+}
+
+enum ExhibitorType {
+  LOCAL
+  INTERNATIONAL
+}
+
+model Exhibitor {
+  id          String        @id @default(uuid())
+  legalName   String
+  aliasName   String?
+  type        ExhibitorType
+  email       String?
+  phone       String?
+  address     String?
+  countryCode String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events Event[]
+
+  agents Agent[]
+
+  @@unique([legalName, type])
+  @@index([type])
+}
+
+model Agent {
+  id            String  @id @default(uuid())
+  name          String?
+  email         String?
+  phone         String?
+  address       String?
+  country       String?
+  contactPerson String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Job {
   id            String     @id @default(uuid())
   jobNumber     String     @unique
-  awbNumber     String?
-  blNumber      String?
-  type          JobType
-  clientName    String
-  clientInfo    String?
-  status        JobStatus  @default(DRAFT)
-  notes         String?
-  trackingToken String     @unique
-  assignedToId  String?
-  createdById   String
+
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
-  assignedTo    User?      @relation("AssignedTo", fields: [assignedToId], references: [id])
-  createdBy     User       @relation("CreatedBy", fields: [createdById], references: [id])
-  stages        JobStage[]
-  documents     Document[]
+
 }
+// enum JobType {
+//   IMPORT
+//   EXPORT
+// }
 
-model JobStage {
-  id          String      @id @default(uuid())
-  jobId       String
-  name        String
-  status      StageStatus @default(PENDING)
-  order       Int
-  notes       String?
-  completedAt DateTime?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  job         Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
-}
+// enum JobStatus {
+//   DRAFT
+//   IN_PROGRESS
+//   ON_HOLD
+//   COMPLETED
+//   CANCELLED
+// }
 
-model Document {
-  id           String   @id @default(uuid())
-  jobId        String
-  label        String
-  docType      String?
-  fileUrl      String
-  fileName     String
-  fileSize     Int
-  uploadedById String
-  showToClient Boolean  @default(false)
-  createdAt    DateTime @default(now())
-  job          Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
-}
+// enum StageStatus {
+//   PENDING
+//   IN_PROGRESS
+//   DONE
+// }
 
-model Project {
-  id                    String                 @id @default(uuid())
-  code                  String                 @unique
-  name                  String
-  status                ProjectStatus          @default(ACTIVE)
-  startsAt              DateTime?
-  endsAt                DateTime?
-  customsRelevant       Boolean                @default(false)
-  customsRecommendation CustomsRecommendation?
-  closeOutOwnerLabel    String?
-  sourceReference       String
-  createdById           String
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
+// enum ProjectStatus {
+//   ACTIVE
+//   ON_HOLD
+//   COMPLETED
+//   CANCELLED
+// }
 
-  createdBy    User                  @relation(fields: [createdById], references: [id])
-  participants ProjectParticipant[]
-  cargoItems   ProjectCargoItem[]
-  tasks        ProjectTask[]
-  assignments  ProjectAssignment[]
-  milestones   ProjectMilestone[]
-  blockers     ProjectBlocker[]
-  evidence     ProjectEvidence[]
-  changes      ProjectChangeRecord[]
-}
+// enum ProjectRole {
+//   CUSTOMER
+//   AGENT
+//   EXHIBITOR
+//   ORGANIZER
+//   VENUE
+//   FORWARDER
+//   VENDOR
+//   DRIVER
+//   FIELD_OPERATIONS
+//   WAREHOUSE
+//   CUSTOMER_SERVICE
+//   DOCUMENT_CUSTOMS
+//   FINANCE
+//   SUPERVISOR
+// }
 
-model ProjectParticipant {
-  id              String      @id @default(uuid())
-  projectId       String
-  partyName       String
-  role            ProjectRole
-  periodStartsAt  DateTime?
-  periodEndsAt    DateTime?
-  sourceReference String
-  createdAt       DateTime    @default(now())
+// enum TaskKind {
+//   MOVEMENT
+//   HANDLING
+//   CUSTOMS
+//   ADMINISTRATIVE
+// }
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+// enum TaskReadiness {
+//   NEEDS_INFORMATION
+//   READY
+// }
 
-  @@unique([projectId, partyName, role])
-  @@index([projectId, role])
-}
+// enum TaskExecution {
+//   NOT_STARTED
+//   PLANNED
+//   IN_PROGRESS
+//   COMPLETED
+//   CANCELLED
+//   FAILED
+// }
 
-model ProjectCargoItem {
-  id               String           @id @default(uuid())
-  projectId        String
-  reference        String
-  description      String
-  ownerName        String?
-  identifiers      String[]
-  quantity         Decimal          @db.Decimal(14, 3)
-  quantityUnit     String
-  intendedUse      String?
-  intendedDisposal IntendedDisposal
-  sourceReference  String
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+// enum AssignmentStatus {
+//   PROPOSED
+//   CONFIRMED
+//   ACKNOWLEDGED
+//   RELEASED
+//   CANCELLED
+// }
 
-  project         Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  customsDecision ProjectCustomsDecision?
+// enum EvidenceVerification {
+//   PENDING
+//   ACCEPTED
+//   REJECTED
+// }
 
-  @@unique([projectId, reference])
-}
+// enum CustomsRecommendation {
+//   PROVISIONAL
+//   READY_FOR_OPERATIONAL_REVIEW
+//   REQUIRES_AUTHORITY_CONFIRMATION
+// }
 
-model ProjectTask {
-  id                   String        @id @default(uuid())
-  projectId            String
-  code                 String
-  title                String
-  kind                 TaskKind
-  action               String
-  mandatory            Boolean       @default(true)
-  priority             String        @default("NORMAL")
-  readiness            TaskReadiness @default(NEEDS_INFORMATION)
-  execution            TaskExecution @default(NOT_STARTED)
-  requestedTimeText    String?
-  plannedStartsAt      DateTime?
-  plannedEndsAt        DateTime?
-  origin               String?
-  destination          String?
-  location             String?
-  informationGaps      Json
-  evidenceRequirements Json
-  completedAt          DateTime?
-  outcome              String?
-  sourceReference      String
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
+// enum CustomsTreatmentStatus {
+//   UNDECIDED
+//   PROVISIONAL
+//   CONFIRMED
+// }
 
-  project     Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  assignments ProjectAssignment[]
-  blockers    ProjectBlocker[]
-  evidence    ProjectEvidence[]
+// enum CustomsCloseOutStatus {
+//   NOT_YET_DUE
+//   DUE
+//   EXCEPTION_OPEN
+//   COMPLETED
+// }
 
-  @@unique([projectId, code])
-  @@index([projectId, readiness, execution])
-}
+// enum IntendedDisposal {
+//   RETURN_ABROAD
+//   RETURN_TO_INDONESIA
+//   REMAIN_IN_INDONESIA
+//   CONSUMED
+//   DISTRIBUTED
+//   SOLD_OR_TRANSFERRED
+//   DESTROYED
+//   UNDECIDED
+// }
 
-model ProjectAssignment {
-  id              String           @id @default(uuid())
-  projectId       String
-  taskId          String
-  resourceType    String
-  resourceLabel   String
-  startsAt        DateTime
-  endsAt          DateTime
-  status          AssignmentStatus @default(PROPOSED)
-  assignedById    String
-  sourceReference String
-  createdAt       DateTime         @default(now())
+// model Job {
+//   id            String     @id @default(uuid())
+//   jobNumber     String     @unique
+//   awbNumber     String?
+//   blNumber      String?
+//   type          JobType
+//   clientName    String
+//   clientInfo    String?
+//   status        JobStatus  @default(DRAFT)
+//   notes         String?
+//   trackingToken String     @unique
+//   assignedToId  String?
+//   createdById   String
+//   createdAt     DateTime   @default(now())
+//   updatedAt     DateTime   @updatedAt
+//   assignedTo    User?      @relation("AssignedTo", fields: [assignedToId], references: [id])
+//   createdBy     User       @relation("CreatedBy", fields: [createdById], references: [id])
+//   stages        JobStage[]
+//   documents     Document[]
+// }
 
-  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  task       ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  assignedBy User        @relation(fields: [assignedById], references: [id])
+// model JobStage {
+//   id          String      @id @default(uuid())
+//   jobId       String
+//   name        String
+//   status      StageStatus @default(PENDING)
+//   order       Int
+//   notes       String?
+//   completedAt DateTime?
+//   createdAt   DateTime    @default(now())
+//   updatedAt   DateTime    @updatedAt
+//   job         Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+// }
 
-  @@index([resourceLabel, startsAt, endsAt])
-}
+// model Document {
+//   id           String   @id @default(uuid())
+//   jobId        String
+//   label        String
+//   docType      String?
+//   fileUrl      String
+//   fileName     String
+//   fileSize     Int
+//   uploadedById String
+//   showToClient Boolean  @default(false)
+//   createdAt    DateTime @default(now())
+//   job          Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+//   uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+// }
 
-model ProjectBlocker {
-  id          String      @id @default(uuid())
-  projectId   String
-  taskId      String?
-  type        String
-  description String
-  ownerRole   ProjectRole
-  openedAt    DateTime
-  resolvedAt  DateTime?
-  resolution  String?
+// model Project {
+//   id                    String                 @id @default(uuid())
+//   code                  String                 @unique
+//   name                  String
+//   status                ProjectStatus          @default(ACTIVE)
+//   startsAt              DateTime?
+//   endsAt                DateTime?
+//   customsRelevant       Boolean                @default(false)
+//   customsRecommendation CustomsRecommendation?
+//   closeOutOwnerLabel    String?
+//   sourceReference       String
+//   createdById           String
+//   createdAt             DateTime               @default(now())
+//   updatedAt             DateTime               @updatedAt
 
-  project Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  task    ProjectTask? @relation(fields: [taskId], references: [id], onDelete: Cascade)
+//   createdBy    User                  @relation(fields: [createdById], references: [id])
+//   participants ProjectParticipant[]
+//   cargoItems   ProjectCargoItem[]
+//   tasks        ProjectTask[]
+//   assignments  ProjectAssignment[]
+//   milestones   ProjectMilestone[]
+//   blockers     ProjectBlocker[]
+//   evidence     ProjectEvidence[]
+//   changes      ProjectChangeRecord[]
+// }
 
-  @@index([projectId, resolvedAt])
-}
+// model ProjectParticipant {
+//   id              String      @id @default(uuid())
+//   projectId       String
+//   partyName       String
+//   role            ProjectRole
+//   periodStartsAt  DateTime?
+//   periodEndsAt    DateTime?
+//   sourceReference String
+//   createdAt       DateTime    @default(now())
 
-model ProjectEvidence {
-  id            String               @id @default(uuid())
-  projectId     String
-  taskId        String?
-  evidenceType  String
-  fileReference String
-  verification  EvidenceVerification @default(PENDING)
-  capturedAt    DateTime
-  submittedById String
-  createdAt     DateTime             @default(now())
+//   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  task        ProjectTask? @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  submittedBy User         @relation(fields: [submittedById], references: [id])
-}
+//   @@unique([projectId, partyName, role])
+//   @@index([projectId, role])
+// }
 
-model ProjectCustomsDecision {
-  id                        String                 @id @default(uuid())
-  cargoItemId               String                 @unique
-  technicalDescriptionReady Boolean                @default(false)
-  treatmentStatus           CustomsTreatmentStatus
-  routeLabel                String?
-  basis                     String?
-  confirmationNeeded        String?
-  closeOutStatus            CustomsCloseOutStatus
-  closeOutDueAt             DateTime?
-  openIssues                Json
-  reconciliation            Json?
-  updatedAt                 DateTime               @updatedAt
+// model ProjectCargoItem {
+//   id               String           @id @default(uuid())
+//   projectId        String
+//   reference        String
+//   description      String
+//   ownerName        String?
+//   identifiers      String[]
+//   quantity         Decimal          @db.Decimal(14, 3)
+//   quantityUnit     String
+//   intendedUse      String?
+//   intendedDisposal IntendedDisposal
+//   sourceReference  String
+//   createdAt        DateTime         @default(now())
+//   updatedAt        DateTime         @updatedAt
 
-  cargoItem ProjectCargoItem @relation(fields: [cargoItemId], references: [id], onDelete: Cascade)
-}
+//   project         Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+//   customsDecision ProjectCustomsDecision?
 
-model ProjectMilestone {
-  id           String      @id @default(uuid())
-  projectId    String
-  type         String
-  title        String
-  mandatory    Boolean     @default(true)
-  state        String      @default("PENDING")
-  plannedAt    DateTime?
-  completedAt  DateTime?
-  ownerRole    ProjectRole
-  exitEvidence Json
+//   @@unique([projectId, reference])
+// }
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-}
+// model ProjectTask {
+//   id                   String        @id @default(uuid())
+//   projectId            String
+//   code                 String
+//   title                String
+//   kind                 TaskKind
+//   action               String
+//   mandatory            Boolean       @default(true)
+//   priority             String        @default("NORMAL")
+//   readiness            TaskReadiness @default(NEEDS_INFORMATION)
+//   execution            TaskExecution @default(NOT_STARTED)
+//   requestedTimeText    String?
+//   plannedStartsAt      DateTime?
+//   plannedEndsAt        DateTime?
+//   origin               String?
+//   destination          String?
+//   location             String?
+//   informationGaps      Json
+//   evidenceRequirements Json
+//   completedAt          DateTime?
+//   outcome              String?
+//   sourceReference      String
+//   createdAt            DateTime      @default(now())
+//   updatedAt            DateTime      @updatedAt
 
-model ProjectChangeRecord {
-  id                  String   @id @default(uuid())
-  projectId           String
-  subject             String
-  field               String
-  previousInformation Json
-  newInformation      Json
-  changeType          String
-  reason              String
-  actorLabel          String
-  occurredAt          DateTime
-  sourceReference     String
+//   project     Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+//   assignments ProjectAssignment[]
+//   blockers    ProjectBlocker[]
+//   evidence    ProjectEvidence[]
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+//   @@unique([projectId, code])
+//   @@index([projectId, readiness, execution])
+// }
 
-  @@index([projectId, occurredAt])
-}
+// model ProjectAssignment {
+//   id              String           @id @default(uuid())
+//   projectId       String
+//   taskId          String
+//   resourceType    String
+//   resourceLabel   String
+//   startsAt        DateTime
+//   endsAt          DateTime
+//   status          AssignmentStatus @default(PROPOSED)
+//   assignedById    String
+//   sourceReference String
+//   createdAt       DateTime         @default(now())
+
+//   project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+//   task       ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+//   assignedBy User        @relation(fields: [assignedById], references: [id])
+
+//   @@index([resourceLabel, startsAt, endsAt])
+// }
+
+// model ProjectBlocker {
+//   id          String      @id @default(uuid())
+//   projectId   String
+//   taskId      String?
+//   type        String
+//   description String
+//   ownerRole   ProjectRole
+//   openedAt    DateTime
+//   resolvedAt  DateTime?
+//   resolution  String?
+
+//   project Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+//   task    ProjectTask? @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+//   @@index([projectId, resolvedAt])
+// }
+
+// model ProjectEvidence {
+//   id            String               @id @default(uuid())
+//   projectId     String
+//   taskId        String?
+//   evidenceType  String
+//   fileReference String
+//   verification  EvidenceVerification @default(PENDING)
+//   capturedAt    DateTime
+//   submittedById String
+//   createdAt     DateTime             @default(now())
+
+//   project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+//   task        ProjectTask? @relation(fields: [taskId], references: [id], onDelete: Cascade)
+//   submittedBy User         @relation(fields: [submittedById], references: [id])
+// }
+
+// model ProjectCustomsDecision {
+//   id                        String                 @id @default(uuid())
+//   cargoItemId               String                 @unique
+//   technicalDescriptionReady Boolean                @default(false)
+//   treatmentStatus           CustomsTreatmentStatus
+//   routeLabel                String?
+//   basis                     String?
+//   confirmationNeeded        String?
+//   closeOutStatus            CustomsCloseOutStatus
+//   closeOutDueAt             DateTime?
+//   openIssues                Json
+//   reconciliation            Json?
+//   updatedAt                 DateTime               @updatedAt
+
+//   cargoItem ProjectCargoItem @relation(fields: [cargoItemId], references: [id], onDelete: Cascade)
+// }
+
+// model ProjectMilestone {
+//   id           String      @id @default(uuid())
+//   projectId    String
+//   type         String
+//   title        String
+//   mandatory    Boolean     @default(true)
+//   state        String      @default("PENDING")
+//   plannedAt    DateTime?
+//   completedAt  DateTime?
+//   ownerRole    ProjectRole
+//   exitEvidence Json
+
+//   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+// }
+
+// model ProjectChangeRecord {
+//   id                  String   @id @default(uuid())
+//   projectId           String
+//   subject             String
+//   field               String
+//   previousInformation Json
+//   newInformation      Json
+//   changeType          String
+//   reason              String
+//   actorLabel          String
+//   occurredAt          DateTime
+//   sourceReference     String
+
+//   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+//   @@index([projectId, occurredAt])
+// }
