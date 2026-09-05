@@ -44,20 +44,18 @@ export default function EditEventPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <Link
-            href="/events"
-            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-orange-700"
-          >
-            <ArrowLeft size={16} /> Kembali ke events
-          </Link>
-          <p className="eyebrow mt-6">Event management</p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight">Edit event</h1>
-          <p className="mt-2 text-sm text-slate-500">
-            Lengkapi informasi event dan daftar exhibitor yang berpartisipasi.
-          </p>
-        </div>
+      <div>
+        <Link
+          href="/events"
+          className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-orange-700"
+        >
+          <ArrowLeft size={16} /> Kembali ke events
+        </Link>
+        <p className="eyebrow mt-6">Event management</p>
+        <h1 className="mt-2 text-3xl font-bold tracking-tight">Edit event</h1>
+        <p className="mt-2 text-sm text-slate-500">
+          Lengkapi informasi event dan daftar exhibitor yang berpartisipasi.
+        </p>
       </div>
       <div className="card min-h-0 overflow-hidden">
         <EventForm

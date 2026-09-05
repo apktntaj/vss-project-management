@@ -1,9 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Building2, CalendarDays, MapPin, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { Building2, CalendarDays, MapPin, PackagePlus, Pencil, Plus, Search, X } from 'lucide-react'
 import { EventForm } from '@/components/event-form'
-import { deleteEvent, listEvents, type LocalEvent } from '@/lib/indexeddb'
+import { listEvents, type LocalEvent } from '@/lib/indexeddb'
+import { EventJobModal } from '@/components/event-job-modal'
 
 function getEventTiming(startsAt: string, endsAt: string) {
   const today = new Date()
@@ -64,9 +67,10 @@ function formatEventDateRange(startsAt: string, endsAt: string) {
 }
 
 export default function EventsPage() {
+  const router = useRouter()
   const [events, setEvents] = useState<LocalEvent[]>([])
   const [showNewEvent, setShowNewEvent] = useState(false)
-  const [editingEvent, setEditingEvent] = useState<LocalEvent | null>(null)
+  const [addingJobToEvent, setAddingJobToEvent] = useState<LocalEvent | null>(null)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<EventStatus | ''>('')
   const reloadEvents = () => {
@@ -98,12 +102,6 @@ export default function EventsPage() {
   const clearFilters = () => {
     setSearch('')
     setStatus('')
-  }
-
-  const handleDelete = async (event: LocalEvent) => {
-    if (!window.confirm(`Hapus event "${event.officialName}"?`)) return
-    await deleteEvent(event.id)
-    reloadEvents()
   }
 
   return (
@@ -185,7 +183,16 @@ export default function EventsPage() {
               {filteredEvents.map((event) => (
                 <article
                   key={event.id}
-                  className="card group flex h-full flex-col p-5 hover:border-orange-200 hover:shadow-lg"
+                  role="link"
+                  tabIndex={0}
+                  onClick={() => router.push(`/events/${event.id}`)}
+                  onKeyDown={(keyboardEvent) => {
+                    if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
+                      keyboardEvent.preventDefault()
+                      router.push(`/events/${event.id}`)
+                    }
+                  }}
+                  className="card group flex h-full cursor-pointer flex-col p-5 hover:border-orange-200 hover:shadow-lg"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
@@ -194,23 +201,26 @@ export default function EventsPage() {
                       </h3>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setEditingEvent(event)}
+                      <Link
+                        href={`/events/${event.id}/edit`}
+                        onClick={(clickEvent) => clickEvent.stopPropagation()}
                         aria-label={`Edit event ${event.officialName}`}
                         title="Edit event"
                         className="rounded-lg p-2 text-slate-500 hover:bg-orange-50 hover:text-orange-700"
                       >
                         <Pencil size={16} />
-                      </button>
+                      </Link>
                       <button
                         type="button"
-                        onClick={() => handleDelete(event)}
-                        aria-label={`Hapus event ${event.officialName}`}
-                        title="Hapus event"
-                        className="rounded-lg p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-700"
+                        onClick={(clickEvent) => {
+                          clickEvent.stopPropagation()
+                          setAddingJobToEvent(event)
+                        }}
+                        aria-label={`Tambah job untuk ${event.officialName}`}
+                        title="Tambah job"
+                        className="rounded-lg p-2 text-slate-500 hover:bg-emerald-50 hover:text-emerald-700"
                       >
-                        <Trash2 size={16} />
+                        <PackagePlus size={16} />
                       </button>
                     </div>
                   </div>
@@ -286,43 +296,12 @@ export default function EventsPage() {
           </div>
         </div>
       )}
-      {editingEvent && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4 sm:p-8"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setEditingEvent(null)
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="edit-event-title"
-            className="card flex max-h-[calc(100vh-2rem)] min-h-0 w-full max-w-4xl flex-col overflow-hidden"
-          >
-            <div className="flex shrink-0 items-center justify-between border-b px-6 py-5 sm:px-8">
-              <h2 id="edit-event-title" className="text-xl font-bold">
-                Edit event
-              </h2>
-              <button
-                type="button"
-                onClick={() => setEditingEvent(null)}
-                aria-label="Tutup edit event"
-                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-black"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <EventForm
-              event={editingEvent}
-              onSaved={() => {
-                setEditingEvent(null)
-                reloadEvents()
-              }}
-              onCancel={() => setEditingEvent(null)}
-            />
-          </div>
-        </div>
+      {addingJobToEvent && (
+        <EventJobModal
+          event={addingJobToEvent}
+          onSaved={() => setAddingJobToEvent(null)}
+          onCancel={() => setAddingJobToEvent(null)}
+        />
       )}
     </>
   )

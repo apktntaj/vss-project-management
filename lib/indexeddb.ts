@@ -31,11 +31,24 @@ export type LocalJob = {
   notes: string | null
   trackingToken: string
   assignedToId: string | null
+  eventId?: string | null
+  exhibitorId?: string | null
+  sourceDocumentName?: string | null
   createdAt: string
   updatedAt: string
   assignedTo?: LocalUser | null
   stages: LocalStage[]
-  documents: never[]
+  documents: LocalJobDocument[]
+}
+
+export type LocalJobDocument = {
+  id: string
+  jobId: string
+  fileName: string
+  mimeType: 'application/pdf'
+  fileSize: number
+  file: Blob
+  createdAt: string
 }
 
 export type LocalVenue = {
@@ -87,10 +100,11 @@ export type LocalExhibitor = {
   updatedAt: string
 }
 
-type StoreName = 'jobs' | 'stages' | 'users' | 'events' | 'venues' | 'eos' | 'exhibitors'
+type StoreName =
+  'jobs' | 'stages' | 'users' | 'events' | 'venues' | 'eos' | 'exhibitors' | 'jobDocuments'
 
 const databaseName = 'vss-project-management'
-const databaseVersion = 3
+const databaseVersion = 4
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -105,6 +119,7 @@ function openDatabase(): Promise<IDBDatabase> {
         'venues',
         'eos',
         'exhibitors',
+        'jobDocuments',
       ] as StoreName[]) {
         if (!database.objectStoreNames.contains(store))
           database.createObjectStore(store, { keyPath: 'id' })
@@ -162,10 +177,11 @@ export async function listUsers() {
 }
 
 export async function listJobs(filters: { search?: string; status?: string } = {}) {
-  const [jobs, stages, users] = await Promise.all([
+  const [jobs, stages, users, documents] = await Promise.all([
     readAll<LocalJob>('jobs'),
     readAll<LocalStage>('stages'),
     ensureSeeded(),
+    readAll<LocalJobDocument>('jobDocuments'),
   ])
   const search = filters.search?.toLowerCase() ?? ''
   return jobs
@@ -181,13 +197,18 @@ export async function listJobs(filters: { search?: string; status?: string } = {
       ...job,
       assignedTo: users.find((user) => user.id === job.assignedToId) ?? null,
       stages: stages.filter((stage) => stage.jobId === job.id).sort((a, b) => a.order - b.order),
-      documents: [],
+      documents: documents.filter((document) => document.jobId === job.id),
     }))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
 
 export async function getJob(jobId: string) {
   return (await listJobs()).find((job) => job.id === jobId) ?? null
+}
+
+export async function listEventJobs(eventId: string) {
+  const jobs = await listJobs()
+  return jobs.filter((job) => job.eventId === eventId)
 }
 
 export async function listEvents() {
@@ -311,7 +332,24 @@ export type JobInput = Pick<
   | 'status'
   | 'notes'
   | 'assignedToId'
->
+> & {
+  eventId?: string | null
+  exhibitorId?: string | null
+  sourceDocumentName?: string | null
+}
+
+export async function saveJobDocument(jobId: string, file: File): Promise<LocalJobDocument> {
+  const document: LocalJobDocument = {
+    id: id(),
+    jobId,
+    fileName: file.name,
+    mimeType: 'application/pdf',
+    fileSize: file.size,
+    file,
+    createdAt: now(),
+  }
+  return put('jobDocuments', document)
+}
 
 export async function saveJob(input: JobInput, existingId?: string) {
   const previous = existingId ? await getJob(existingId) : null
