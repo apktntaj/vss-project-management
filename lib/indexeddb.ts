@@ -24,6 +24,15 @@ export type LocalJob = {
   jobNumber: string
   awbNumber: string | null
   blNumber: string | null
+  shipper: string | null
+  consignee: string | null
+  notifyParty: string | null
+  agent: string | null
+  shippingLine: string | null
+  cargoDescription: string | null
+  shipmentMode: 'FCL' | 'LCL' | null
+  cargoDetails: string | null
+  journeyDetails: string | null
   type: 'IMPORT' | 'EXPORT'
   clientName: string
   clientInfo: string | null
@@ -326,6 +335,15 @@ export type JobInput = Pick<
   LocalJob,
   | 'awbNumber'
   | 'blNumber'
+  | 'shipper'
+  | 'consignee'
+  | 'notifyParty'
+  | 'agent'
+  | 'shippingLine'
+  | 'cargoDescription'
+  | 'shipmentMode'
+  | 'cargoDetails'
+  | 'journeyDetails'
   | 'type'
   | 'clientName'
   | 'clientInfo'
