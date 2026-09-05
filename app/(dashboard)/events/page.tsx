@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Building2, CalendarDays, MapPin, Plus, Search, X } from 'lucide-react'
+import { Building2, CalendarDays, MapPin, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
 import { EventForm } from '@/components/event-form'
-import { listEvents, type LocalEvent } from '@/lib/indexeddb'
+import { deleteEvent, listEvents, type LocalEvent } from '@/lib/indexeddb'
 
 function getEventTiming(startsAt: string, endsAt: string) {
   const today = new Date()
@@ -66,6 +66,7 @@ function formatEventDateRange(startsAt: string, endsAt: string) {
 export default function EventsPage() {
   const [events, setEvents] = useState<LocalEvent[]>([])
   const [showNewEvent, setShowNewEvent] = useState(false)
+  const [editingEvent, setEditingEvent] = useState<LocalEvent | null>(null)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<EventStatus | ''>('')
   const reloadEvents = () => {
@@ -97,6 +98,12 @@ export default function EventsPage() {
   const clearFilters = () => {
     setSearch('')
     setStatus('')
+  }
+
+  const handleDelete = async (event: LocalEvent) => {
+    if (!window.confirm(`Hapus event "${event.officialName}"?`)) return
+    await deleteEvent(event.id)
+    reloadEvents()
   }
 
   return (
@@ -186,7 +193,26 @@ export default function EventsPage() {
                         {event.officialName}
                       </h3>
                     </div>
-                    <CalendarDays className="shrink-0 text-orange-500" size={20} />
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setEditingEvent(event)}
+                        aria-label={`Edit event ${event.officialName}`}
+                        title="Edit event"
+                        className="rounded-lg p-2 text-slate-500 hover:bg-orange-50 hover:text-orange-700"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(event)}
+                        aria-label={`Hapus event ${event.officialName}`}
+                        title="Hapus event"
+                        className="rounded-lg p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-700"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                   <p className="mt-2 text-sm text-slate-500">{event.alias || ''}</p>
                   <div className="mt-5 space-y-3 border-t pt-4">
@@ -256,6 +282,44 @@ export default function EventsPage() {
                 reloadEvents()
               }}
               onCancel={() => setShowNewEvent(false)}
+            />
+          </div>
+        </div>
+      )}
+      {editingEvent && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4 sm:p-8"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setEditingEvent(null)
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-event-title"
+            className="card flex max-h-[calc(100vh-2rem)] min-h-0 w-full max-w-4xl flex-col overflow-hidden"
+          >
+            <div className="flex shrink-0 items-center justify-between border-b px-6 py-5 sm:px-8">
+              <h2 id="edit-event-title" className="text-xl font-bold">
+                Edit event
+              </h2>
+              <button
+                type="button"
+                onClick={() => setEditingEvent(null)}
+                aria-label="Tutup edit event"
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-black"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <EventForm
+              event={editingEvent}
+              onSaved={() => {
+                setEditingEvent(null)
+                reloadEvents()
+              }}
+              onCancel={() => setEditingEvent(null)}
             />
           </div>
         </div>

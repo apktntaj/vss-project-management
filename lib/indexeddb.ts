@@ -73,18 +73,41 @@ export type LocalEvent = {
   eventOrganizer?: LocalEo
 }
 
-type StoreName = 'jobs' | 'stages' | 'users' | 'events' | 'venues' | 'eos'
+export type LocalExhibitor = {
+  id: string
+  eventId: string
+  legalName: string
+  aliasName: string | null
+  type: 'LOCAL' | 'INTERNATIONAL'
+  email: string | null
+  phone: string | null
+  address: string | null
+  countryCode: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+type StoreName = 'jobs' | 'stages' | 'users' | 'events' | 'venues' | 'eos' | 'exhibitors'
 
 const databaseName = 'vss-project-management'
-const databaseVersion = 2
+const databaseVersion = 3
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(databaseName, databaseVersion)
     request.onupgradeneeded = () => {
       const database = request.result
-      for (const store of ['jobs', 'stages', 'users', 'events', 'venues', 'eos'] as StoreName[]) {
-        if (!database.objectStoreNames.contains(store)) database.createObjectStore(store, { keyPath: 'id' })
+      for (const store of [
+        'jobs',
+        'stages',
+        'users',
+        'events',
+        'venues',
+        'eos',
+        'exhibitors',
+      ] as StoreName[]) {
+        if (!database.objectStoreNames.contains(store))
+          database.createObjectStore(store, { keyPath: 'id' })
       }
     }
     request.onsuccess = () => resolve(request.result)
@@ -121,7 +144,15 @@ function id() {
 async function ensureSeeded() {
   const users = await readAll<LocalUser>('users')
   if (users.length) return users
-  const seeded: LocalUser[] = [{ id: 'local-user', name: 'Operator Lokal', email: 'operator@vss.local', role: 'SUPERVISOR', isActive: true }]
+  const seeded: LocalUser[] = [
+    {
+      id: 'local-user',
+      name: 'Operator Lokal',
+      email: 'operator@vss.local',
+      role: 'SUPERVISOR',
+      isActive: true,
+    },
+  ]
   await Promise.all(seeded.map((user) => put('users', user)))
   return seeded
 }
@@ -131,11 +162,27 @@ export async function listUsers() {
 }
 
 export async function listJobs(filters: { search?: string; status?: string } = {}) {
-  const [jobs, stages, users] = await Promise.all([readAll<LocalJob>('jobs'), readAll<LocalStage>('stages'), ensureSeeded()])
+  const [jobs, stages, users] = await Promise.all([
+    readAll<LocalJob>('jobs'),
+    readAll<LocalStage>('stages'),
+    ensureSeeded(),
+  ])
   const search = filters.search?.toLowerCase() ?? ''
   return jobs
-    .filter((job) => (!filters.status || job.status === filters.status) && (!search || [job.jobNumber, job.clientName, job.awbNumber, job.blNumber].some((value) => value?.toLowerCase().includes(search))))
-    .map((job) => ({ ...job, assignedTo: users.find((user) => user.id === job.assignedToId) ?? null, stages: stages.filter((stage) => stage.jobId === job.id).sort((a, b) => a.order - b.order), documents: [] }))
+    .filter(
+      (job) =>
+        (!filters.status || job.status === filters.status) &&
+        (!search ||
+          [job.jobNumber, job.clientName, job.awbNumber, job.blNumber].some((value) =>
+            value?.toLowerCase().includes(search),
+          )),
+    )
+    .map((job) => ({
+      ...job,
+      assignedTo: users.find((user) => user.id === job.assignedToId) ?? null,
+      stages: stages.filter((stage) => stage.jobId === job.id).sort((a, b) => a.order - b.order),
+      documents: [],
+    }))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
 
@@ -166,6 +213,35 @@ export async function listEos() {
   return readAll<LocalEo>('eos')
 }
 
+export async function listEventExhibitors(eventId: string) {
+  const exhibitors = await readAll<LocalExhibitor>('exhibitors')
+  return exhibitors.filter((exhibitor) => exhibitor.eventId === eventId)
+}
+
+export type EventExhibitorInput = Omit<LocalExhibitor, 'id' | 'eventId' | 'createdAt' | 'updatedAt'>
+
+export async function saveEventExhibitors(eventId: string, inputs: EventExhibitorInput[]) {
+  const database = await openDatabase()
+  const existing = await listEventExhibitors(eventId)
+  const timestamp = now()
+
+  return new Promise<LocalExhibitor[]>((resolve, reject) => {
+    const transaction = database.transaction('exhibitors', 'readwrite')
+    const store = transaction.objectStore('exhibitors')
+    existing.forEach((exhibitor) => store.delete(exhibitor.id))
+    const exhibitors = inputs.map((input) => ({
+      ...input,
+      id: id(),
+      eventId,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }))
+    exhibitors.forEach((exhibitor) => store.put(exhibitor))
+    transaction.oncomplete = () => resolve(exhibitors)
+    transaction.onerror = () => reject(transaction.error)
+  })
+}
+
 export type EventInput = Pick<LocalEvent, 'officialName' | 'alias' | 'startsAt' | 'endsAt'> & {
   venue: Omit<LocalVenue, 'id' | 'createdAt' | 'updatedAt'>
   venueId?: string
@@ -175,15 +251,29 @@ export type EventInput = Pick<LocalEvent, 'officialName' | 'alias' | 'startsAt' 
 
 export async function saveEvent(input: EventInput, existingId?: string) {
   const [previous, venues, eos] = await Promise.all([
-    existingId ? readAll<LocalEvent>('events').then((events) => events.find((event) => event.id === existingId)) : Promise.resolve(null),
+    existingId
+      ? readAll<LocalEvent>('events').then((events) =>
+          events.find((event) => event.id === existingId),
+        )
+      : Promise.resolve(null),
     readAll<LocalVenue>('venues'),
     readAll<LocalEo>('eos'),
   ])
   const timestamp = now()
   const selectedVenue = input.venueId ? venues.find((venue) => venue.id === input.venueId) : null
   const selectedEo = input.eoId ? eos.find((eo) => eo.id === input.eoId) : null
-  const venue: LocalVenue = selectedVenue ?? { ...input.venue, id: id(), createdAt: timestamp, updatedAt: timestamp }
-  const eventOrganizer: LocalEo = selectedEo ?? { ...input.eventOrganizer, id: id(), createdAt: timestamp, updatedAt: timestamp }
+  const venue: LocalVenue = selectedVenue ?? {
+    ...input.venue,
+    id: id(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+  const eventOrganizer: LocalEo = selectedEo ?? {
+    ...input.eventOrganizer,
+    id: id(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
   const event: LocalEvent = {
     id: existingId ?? id(),
     officialName: input.officialName,
@@ -199,14 +289,38 @@ export async function saveEvent(input: EventInput, existingId?: string) {
   return event
 }
 
-export type JobInput = Pick<LocalJob, 'awbNumber' | 'blNumber' | 'type' | 'clientName' | 'clientInfo' | 'status' | 'notes' | 'assignedToId'>
+export async function deleteEvent(eventId: string) {
+  const database = await openDatabase()
+  return new Promise<void>((resolve, reject) => {
+    const request = database
+      .transaction('events', 'readwrite')
+      .objectStore('events')
+      .delete(eventId)
+    request.onsuccess = () => resolve()
+    request.onerror = () => reject(request.error)
+  })
+}
+
+export type JobInput = Pick<
+  LocalJob,
+  | 'awbNumber'
+  | 'blNumber'
+  | 'type'
+  | 'clientName'
+  | 'clientInfo'
+  | 'status'
+  | 'notes'
+  | 'assignedToId'
+>
 
 export async function saveJob(input: JobInput, existingId?: string) {
   const previous = existingId ? await getJob(existingId) : null
   const timestamp = now()
   const job: LocalJob = {
     id: existingId ?? id(),
-    jobNumber: previous?.jobNumber ?? `VSS-${String((await readAll<LocalJob>('jobs')).length + 1).padStart(4, '0')}`,
+    jobNumber:
+      previous?.jobNumber ??
+      `VSS-${String((await readAll<LocalJob>('jobs')).length + 1).padStart(4, '0')}`,
     trackingToken: previous?.trackingToken ?? id(),
     createdAt: previous?.createdAt ?? timestamp,
     updatedAt: timestamp,
@@ -219,9 +333,22 @@ export async function saveJob(input: JobInput, existingId?: string) {
 
 export async function addStage(jobId: string, name: string): Promise<LocalStage> {
   const stages = (await readAll<LocalStage>('stages')).filter((stage) => stage.jobId === jobId)
-  return put('stages', { id: id(), jobId, name: name.trim(), status: 'PENDING', order: stages.length, notes: null, createdAt: now(), updatedAt: now() })
+  return put('stages', {
+    id: id(),
+    jobId,
+    name: name.trim(),
+    status: 'PENDING',
+    order: stages.length,
+    notes: null,
+    createdAt: now(),
+    updatedAt: now(),
+  })
 }
 
 export async function toggleStage(stage: LocalStage): Promise<LocalStage> {
-  return put('stages', { ...stage, status: stage.status === 'DONE' ? 'IN_PROGRESS' : 'DONE', updatedAt: now() })
+  return put('stages', {
+    ...stage,
+    status: stage.status === 'DONE' ? 'IN_PROGRESS' : 'DONE',
+    updatedAt: now(),
+  })
 }
