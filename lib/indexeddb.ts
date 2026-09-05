@@ -38,17 +38,52 @@ export type LocalJob = {
   documents: never[]
 }
 
-type StoreName = 'jobs' | 'stages' | 'users'
+export type LocalVenue = {
+  id: string
+  officialName: string
+  aliasName: string | null
+  address: string | null
+  latitude: number | null
+  longitude: number | null
+  contactInfo: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type LocalEo = {
+  id: string
+  legalName: string
+  aliasName: string | null
+  contactInfo: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type LocalEvent = {
+  id: string
+  officialName: string
+  alias: string | null
+  startsAt: string
+  endsAt: string
+  createdAt: string
+  updatedAt: string
+  venueId: string
+  eoId: string
+  venue?: LocalVenue
+  eventOrganizer?: LocalEo
+}
+
+type StoreName = 'jobs' | 'stages' | 'users' | 'events' | 'venues' | 'eos'
 
 const databaseName = 'vss-project-management'
-const databaseVersion = 1
+const databaseVersion = 2
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(databaseName, databaseVersion)
     request.onupgradeneeded = () => {
       const database = request.result
-      for (const store of ['jobs', 'stages', 'users'] as StoreName[]) {
+      for (const store of ['jobs', 'stages', 'users', 'events', 'venues', 'eos'] as StoreName[]) {
         if (!database.objectStoreNames.contains(store)) database.createObjectStore(store, { keyPath: 'id' })
       }
     }
@@ -106,6 +141,62 @@ export async function listJobs(filters: { search?: string; status?: string } = {
 
 export async function getJob(jobId: string) {
   return (await listJobs()).find((job) => job.id === jobId) ?? null
+}
+
+export async function listEvents() {
+  const [events, venues, eos] = await Promise.all([
+    readAll<LocalEvent>('events'),
+    readAll<LocalVenue>('venues'),
+    readAll<LocalEo>('eos'),
+  ])
+  return events
+    .map((event) => ({
+      ...event,
+      venue: venues.find((venue) => venue.id === event.venueId),
+      eventOrganizer: eos.find((eo) => eo.id === event.eoId),
+    }))
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
+}
+
+export async function listVenues() {
+  return readAll<LocalVenue>('venues')
+}
+
+export async function listEos() {
+  return readAll<LocalEo>('eos')
+}
+
+export type EventInput = Pick<LocalEvent, 'officialName' | 'alias' | 'startsAt' | 'endsAt'> & {
+  venue: Omit<LocalVenue, 'id' | 'createdAt' | 'updatedAt'>
+  venueId?: string
+  eventOrganizer: Omit<LocalEo, 'id' | 'createdAt' | 'updatedAt'>
+  eoId?: string
+}
+
+export async function saveEvent(input: EventInput, existingId?: string) {
+  const [previous, venues, eos] = await Promise.all([
+    existingId ? readAll<LocalEvent>('events').then((events) => events.find((event) => event.id === existingId)) : Promise.resolve(null),
+    readAll<LocalVenue>('venues'),
+    readAll<LocalEo>('eos'),
+  ])
+  const timestamp = now()
+  const selectedVenue = input.venueId ? venues.find((venue) => venue.id === input.venueId) : null
+  const selectedEo = input.eoId ? eos.find((eo) => eo.id === input.eoId) : null
+  const venue: LocalVenue = selectedVenue ?? { ...input.venue, id: id(), createdAt: timestamp, updatedAt: timestamp }
+  const eventOrganizer: LocalEo = selectedEo ?? { ...input.eventOrganizer, id: id(), createdAt: timestamp, updatedAt: timestamp }
+  const event: LocalEvent = {
+    id: existingId ?? id(),
+    officialName: input.officialName,
+    alias: input.alias,
+    startsAt: input.startsAt,
+    endsAt: input.endsAt,
+    venueId: venue.id,
+    eoId: eventOrganizer.id,
+    createdAt: previous?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+  }
+  await Promise.all([put('venues', venue), put('eos', eventOrganizer), put('events', event)])
+  return event
 }
 
 export type JobInput = Pick<LocalJob, 'awbNumber' | 'blNumber' | 'type' | 'clientName' | 'clientInfo' | 'status' | 'notes' | 'assignedToId'>
