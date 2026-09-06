@@ -5,8 +5,15 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Building2, CalendarDays, MapPin, PackagePlus, Pencil, Plus, Search, X } from 'lucide-react'
 import { EventForm } from '@/components/event-form'
-import { listEvents, type LocalEvent } from '@/lib/indexeddb'
+import { listEvents, listJobs, type LocalEvent, type LocalJob } from '@/lib/indexeddb'
 import { EventJobModal } from '@/components/event-job-modal'
+import { EventTimeline } from '@/components/event-timeline'
+
+const DAY = 24 * 60 * 60 * 1000
+
+function calendarDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+}
 
 function getEventTiming(startsAt: string, endsAt: string) {
   const today = new Date()
@@ -66,15 +73,46 @@ function formatEventDateRange(startsAt: string, endsAt: string) {
   return `${fullDate(start)} - ${fullDate(end)}`
 }
 
+function getTimelineDays(startsAt: string, endsAt: string) {
+  return Math.max(
+    1,
+    Math.floor((calendarDay(new Date(endsAt)) - calendarDay(new Date(startsAt))) / DAY) + 1,
+  )
+}
+
+function getLeadTimeDays(event: LocalEvent) {
+  const leadTime = Math.floor(
+    (calendarDay(new Date(event.startsAt)) - calendarDay(new Date(event.createdAt))) / DAY,
+  )
+  return leadTime >= 0 ? leadTime : null
+}
+
+function getEventPosition(startsAt: string, endsAt: string, today = new Date()) {
+  const start = calendarDay(new Date(startsAt))
+  const end = calendarDay(new Date(endsAt))
+  const current = calendarDay(today)
+  const progress = Math.round(
+    Math.min(1, Math.max(0, (current - start) / Math.max(1, end - start))) * 100,
+  )
+
+  if (current < start) return { label: 'Belum dimulai', progress: 0 }
+  if (current > end) return { label: 'Selesai', progress: 100 }
+  return { label: 'Berlangsung', progress }
+}
+
 export default function EventsPage() {
   const router = useRouter()
   const [events, setEvents] = useState<LocalEvent[]>([])
+  const [jobs, setJobs] = useState<LocalJob[]>([])
   const [showNewEvent, setShowNewEvent] = useState(false)
   const [addingJobToEvent, setAddingJobToEvent] = useState<LocalEvent | null>(null)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<EventStatus | ''>('')
   const reloadEvents = () => {
-    listEvents().then(setEvents)
+    Promise.all([listEvents(), listJobs()]).then(([loadedEvents, loadedJobs]) => {
+      setEvents(loadedEvents)
+      setJobs(loadedJobs)
+    })
   }
   useEffect(() => {
     reloadEvents()

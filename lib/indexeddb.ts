@@ -181,11 +181,184 @@ async function ensureSeeded() {
   return seeded
 }
 
+async function ensureDemoEvents() {
+  const events = await readAll<LocalEvent>('events')
+  if (events.length) return
+
+  const timestamp = now()
+  const venueJakarta: LocalVenue = {
+    id: 'demo-venue-jakarta',
+    officialName: 'JAKARTA INTERNATIONAL EXPO',
+    aliasName: 'JIEXPO',
+    address: 'Kemayoran, Jakarta',
+    latitude: null,
+    longitude: null,
+    contactInfo: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+  const venueBali: LocalVenue = {
+    id: 'demo-venue-bali',
+    officialName: 'BALI INTERNATIONAL CONVENTION CENTRE',
+    aliasName: 'BICC',
+    address: 'Nusa Dua, Bali',
+    latitude: null,
+    longitude: null,
+    contactInfo: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+  const eoJakarta: LocalEo = {
+    id: 'demo-eo-jakarta',
+    legalName: 'NUSANTARA EVENT ORGANIZER',
+    aliasName: 'NEO',
+    contactInfo: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+  const eoBali: LocalEo = {
+    id: 'demo-eo-bali',
+    legalName: 'ARCHIPELAGO EXHIBITION',
+    aliasName: 'AE',
+    contactInfo: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+  const eventsToSeed: LocalEvent[] = [
+    {
+      id: 'demo-event-tech-expo',
+      officialName: 'INDONESIA TECH EXPO 2026',
+      alias: 'ITE 2026',
+      startsAt: '2026-09-08T00:00:00.000Z',
+      endsAt: '2026-09-12T23:59:59.000Z',
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: timestamp,
+      venueId: venueJakarta.id,
+      eoId: eoJakarta.id,
+    },
+    {
+      id: 'demo-event-retail-summit',
+      officialName: 'INDONESIA RETAIL SUMMIT 2026',
+      alias: 'IRS 2026',
+      startsAt: '2026-09-10T00:00:00.000Z',
+      endsAt: '2026-09-14T23:59:59.000Z',
+      createdAt: '2026-08-15T00:00:00.000Z',
+      updatedAt: timestamp,
+      venueId: venueJakarta.id,
+      eoId: eoJakarta.id,
+    },
+    {
+      id: 'demo-event-mice-forum',
+      officialName: 'BALI MICE FORUM 2026',
+      alias: 'BMF 2026',
+      startsAt: '2026-08-20T00:00:00.000Z',
+      endsAt: '2026-08-22T23:59:59.000Z',
+      createdAt: '2026-07-01T00:00:00.000Z',
+      updatedAt: timestamp,
+      venueId: venueBali.id,
+      eoId: eoBali.id,
+    },
+  ]
+  const jobDefaults = {
+    awbNumber: null,
+    blNumber: null,
+    shipper: null,
+    consignee: null,
+    notifyParty: null,
+    agent: null,
+    shippingLine: null,
+    cargoDescription: 'Exhibition equipment',
+    shipmentMode: 'LCL' as const,
+    cargoDetails: null,
+    journeyDetails: null,
+    type: 'IMPORT' as const,
+    clientInfo: null,
+    status: 'DRAFT' as const,
+    notes: null,
+    assignedToId: null,
+    exhibitorId: null,
+    sourceDocumentName: null,
+    stages: [],
+    documents: [],
+  }
+  const jobsToSeed: LocalJob[] = [
+    {
+      ...jobDefaults,
+      id: 'demo-job-tech-1',
+      jobNumber: 'DEMO-0001',
+      trackingToken: 'demo-token-tech-1',
+      clientName: 'PT DIGITAL NUSANTARA',
+      eventId: 'demo-event-tech-expo',
+      createdAt: '2026-08-10T00:00:00.000Z',
+      updatedAt: timestamp,
+    },
+    {
+      ...jobDefaults,
+      id: 'demo-job-tech-2',
+      jobNumber: 'DEMO-0002',
+      trackingToken: 'demo-token-tech-2',
+      clientName: 'GLOBAL ROBOTICS LTD',
+      eventId: 'demo-event-tech-expo',
+      createdAt: '2026-08-12T00:00:00.000Z',
+      updatedAt: timestamp,
+    },
+    {
+      ...jobDefaults,
+      id: 'demo-job-retail-1',
+      jobNumber: 'DEMO-0003',
+      trackingToken: 'demo-token-retail-1',
+      clientName: 'PT RETAIL MAJU',
+      eventId: 'demo-event-retail-summit',
+      createdAt: '2026-08-20T00:00:00.000Z',
+      updatedAt: timestamp,
+    },
+    {
+      ...jobDefaults,
+      id: 'demo-job-bali-1',
+      jobNumber: 'DEMO-0004',
+      trackingToken: 'demo-token-bali-1',
+      clientName: 'PACIFIC MICE GROUP',
+      eventId: 'demo-event-mice-forum',
+      createdAt: '2026-07-15T00:00:00.000Z',
+      updatedAt: timestamp,
+    },
+    {
+      ...jobDefaults,
+      id: 'demo-job-bali-2',
+      jobNumber: 'DEMO-0005',
+      trackingToken: 'demo-token-bali-2',
+      clientName: 'PT EVENT INTERNASIONAL',
+      eventId: 'demo-event-mice-forum',
+      createdAt: '2026-07-20T00:00:00.000Z',
+      updatedAt: timestamp,
+    },
+    {
+      ...jobDefaults,
+      id: 'demo-job-bali-3',
+      jobNumber: 'DEMO-0006',
+      trackingToken: 'demo-token-bali-3',
+      clientName: 'ASIA CONGRESS NETWORK',
+      eventId: 'demo-event-mice-forum',
+      createdAt: '2026-07-25T00:00:00.000Z',
+      updatedAt: timestamp,
+    },
+  ]
+  await Promise.all([
+    put('venues', venueJakarta),
+    put('venues', venueBali),
+    put('eos', eoJakarta),
+    put('eos', eoBali),
+    ...eventsToSeed.map((event) => put('events', event)),
+    ...jobsToSeed.map((job) => put('jobs', job)),
+  ])
+}
+
 export async function listUsers() {
   return ensureSeeded()
 }
 
 export async function listJobs(filters: { search?: string; status?: string } = {}) {
+  await ensureDemoEvents()
   const [jobs, stages, users, documents] = await Promise.all([
     readAll<LocalJob>('jobs'),
     readAll<LocalStage>('stages'),
@@ -221,6 +394,7 @@ export async function listEventJobs(eventId: string) {
 }
 
 export async function listEvents() {
+  await ensureDemoEvents()
   const [events, venues, eos] = await Promise.all([
     readAll<LocalEvent>('events'),
     readAll<LocalVenue>('venues'),
