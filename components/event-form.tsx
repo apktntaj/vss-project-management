@@ -12,6 +12,7 @@ import {
   type LocalEvent,
   type LocalVenue,
 } from '@/lib/indexeddb'
+import { Plus } from 'lucide-react'
 
 function text(value: FormDataEntryValue | null) {
   return String(value || '')
@@ -27,6 +28,37 @@ function normalizeInput(event: FormEvent<HTMLInputElement | HTMLTextAreaElement>
   event.currentTarget.value = event.currentTarget.value.replace(/\s{2,}/g, ' ').toUpperCase()
 }
 
+function formatDateInput(isoDate: string) {
+  const date = new Date(isoDate)
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  return `${day}/${month}/${date.getFullYear()}`
+}
+
+function parseDateInput(value: string) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value)
+  if (!match) return null
+
+  const [, day, month, year] = match
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
+  if (
+    date.getUTCFullYear() !== Number(year) ||
+    date.getUTCMonth() !== Number(month) - 1 ||
+    date.getUTCDate() !== Number(day)
+  ) {
+    return null
+  }
+
+  return date
+}
+
+function formatDateValue(value: string) {
+  return value
+    .replace(/\D/g, '')
+    .slice(0, 8)
+    .replace(/(\d{2})(\d{2})(\d{1,4})/, '$1/$2/$3')
+}
+
 function RelationPicker({
   label,
   placeholder,
@@ -34,6 +66,7 @@ function RelationPicker({
   query,
   onQueryChange,
   onSelect,
+  onAdd,
   selected,
 }: {
   label: string
@@ -42,6 +75,7 @@ function RelationPicker({
   query: string
   onQueryChange: (value: string) => void
   onSelect: (item: LocalVenue | LocalEo) => void
+  onAdd: () => void
   selected: LocalVenue | LocalEo | null
 }) {
   const matches = items
@@ -56,13 +90,23 @@ function RelationPicker({
     <div className="sm:col-span-2">
       <label className="label">
         {label}
-        <input
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value.toUpperCase())}
-          placeholder={placeholder}
-          className="input uppercase"
-          autoComplete="off"
-        />
+        <span className="relative block">
+          <input
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value.toUpperCase())}
+            placeholder={placeholder}
+            className="input w-full pe-11 uppercase"
+            autoComplete="off"
+          />
+          <button
+            type="button"
+            onClick={onAdd}
+            aria-label={`Tambah ${label}`}
+            className="absolute inset-y-1 right-1 flex w-9 items-center justify-center rounded-md text-orange-600 transition hover:bg-orange-50 hover:text-orange-700"
+          >
+            <Plus size={18} />
+          </button>
+        </span>
       </label>
       {selected && (
         <p className="mt-2 text-xs text-emerald-700">
@@ -138,8 +182,8 @@ export function EventForm({
         setSelectedVenue(venue)
         setEoQuery(eo?.legalName ?? '')
         setSelectedEo(eo)
-        setStartsAt(event.startsAt.slice(0, 10))
-        setEndsAt(event.endsAt.slice(0, 10))
+        setStartsAt(formatDateInput(event.startsAt))
+        setEndsAt(formatDateInput(event.endsAt))
       }
     })
   }, [enableExhibitors, event])
@@ -153,7 +197,9 @@ export function EventForm({
   }
 
   async function submit(form: FormData) {
-    if (!startsAt || !endsAt || new Date(endsAt) <= new Date(startsAt)) {
+    const startDate = parseDateInput(startsAt)
+    const endDate = parseDateInput(endsAt)
+    if (!startDate || !endDate || endDate <= startDate) {
       setError('Waktu selesai harus setelah waktu mulai.')
       return
     }
@@ -191,8 +237,8 @@ export function EventForm({
         {
           officialName: text(form.get('officialName')),
           alias: optional(form.get('alias')),
-          startsAt: new Date(startsAt).toISOString(),
-          endsAt: new Date(endsAt).toISOString(),
+          startsAt: startDate.toISOString(),
+          endsAt: endDate.toISOString(),
           venue: {
             officialName: selectedVenue?.officialName || text(form.get('venueOfficialName')),
             aliasName: selectedVenue?.aliasName || optional(form.get('venueAliasName')),
@@ -224,7 +270,6 @@ export function EventForm({
     <form action={submit} className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 space-y-8 overflow-y-auto p-6 sm:p-8">
         <section>
-          <h2 className="text-lg font-semibold">Informasi event</h2>
           <div className="mt-4 grid gap-5 sm:grid-cols-2">
             <label className="label">
               Nama Official
@@ -249,52 +294,47 @@ export function EventForm({
               Tanggal mulai
               <input
                 required
-                type="date"
+                type="text"
+                inputMode="numeric"
                 name="startsAt"
                 value={startsAt}
+                placeholder="dd/mm/yyyy"
                 onChange={(event) => {
-                  setStartsAt(event.target.value)
-                  if (!endsAt) setEndsAt(event.target.value)
+                  const value = formatDateValue(event.target.value)
+                  setStartsAt(value)
+                  if (!endsAt) setEndsAt(value)
                 }}
-                className="input"
+                className="input placeholder:text-slate-400"
               />
             </label>
             <label className="label">
               Tanggal selesai
               <input
                 required
-                type="date"
+                type="text"
+                inputMode="numeric"
                 name="endsAt"
                 value={endsAt}
-                onChange={(event) => setEndsAt(event.target.value)}
-                min={startsAt || undefined}
-                className="input"
+                placeholder="dd/mm/yyyy"
+                onChange={(event) => setEndsAt(formatDateValue(event.target.value))}
+                className="input placeholder:text-slate-400"
               />
             </label>
           </div>
         </section>
 
         <section className="pt-2">
-          <div className="flex items-center justify-between gap-4">
-            <h2 className="text-lg font-semibold"></h2>
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedVenue(null)
-                setVenueQuery('')
-                setNewVenue(true)
-              }}
-              className="text-sm font-semibold text-orange-700 hover:text-orange-800"
-            >
-              + New Venue
-            </button>
-          </div>
           <div className="mt-4 grid gap-5 sm:grid-cols-2">
             <RelationPicker
               label="Venue"
               placeholder="Klik tambah untuk venue baru"
               items={venues}
               query={venueQuery}
+              onAdd={() => {
+                setSelectedVenue(null)
+                setVenueQuery('')
+                setNewVenue(true)
+              }}
               onQueryChange={(value) => {
                 setVenueQuery(value)
                 setSelectedVenue(null)
@@ -310,7 +350,7 @@ export function EventForm({
             {newVenue && (
               <>
                 <label className="label">
-                  Nama resmi venue
+                  Nama resmi
                   <input
                     required
                     name="venueOfficialName"
@@ -319,7 +359,7 @@ export function EventForm({
                   />
                 </label>
                 <label className="label">
-                  Nama alias venue
+                  Alias
                   <input
                     name="venueAliasName"
                     onInput={normalizeInput}
@@ -355,27 +395,18 @@ export function EventForm({
           </div>
         </section>
 
-        <section className="pt-2">
-          <div className="flex items-center justify-between gap-4">
-            <h2 className="text-lg font-semibold">Event organizer (EO)</h2>
-            <button
-              type="button"
-              onClick={() => {
+        <section className="">
+          <div className="mt-4 grid gap-5 sm:grid-cols-2">
+            <RelationPicker
+              label="Event Organizer"
+              placeholder="Ketik untuk mencari"
+              items={eos}
+              query={eoQuery}
+              onAdd={() => {
                 setSelectedEo(null)
                 setEoQuery('')
                 setNewEo(true)
               }}
-              className="text-sm font-semibold text-orange-700 hover:text-orange-800"
-            >
-              + New EO
-            </button>
-          </div>
-          <div className="mt-4 grid gap-5 sm:grid-cols-2">
-            <RelationPicker
-              label="EO"
-              placeholder="Cari EO yang sudah ada"
-              items={eos}
-              query={eoQuery}
               onQueryChange={(value) => {
                 setEoQuery(value)
                 setSelectedEo(null)

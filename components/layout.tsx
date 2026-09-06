@@ -5,11 +5,15 @@ import {
   LayoutDashboard,
   BriefcaseBusiness,
   CalendarDays,
+  FolderKanban,
+  Package,
 } from 'lucide-react'
 const links = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/events', label: 'Events', icon: CalendarDays },
   { href: '/jobs', label: 'Jobs', icon: BriefcaseBusiness },
+  { href: '/general-cargo', label: 'General Cargo', icon: Package },
+  { href: '/projects', label: 'Projects', icon: FolderKanban },
 ]
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()

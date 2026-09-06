@@ -3,10 +3,21 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Building2, CalendarDays, MapPin, PackagePlus, Pencil, Plus, Search, X } from 'lucide-react'
+import {
+  Building2,
+  CalendarDays,
+  MapPin,
+  PackagePlus,
+  Pencil,
+  Plus,
+  Search,
+  Users,
+  X,
+} from 'lucide-react'
 import { EventForm } from '@/components/event-form'
 import { listEvents, listJobs, type LocalEvent, type LocalJob } from '@/lib/indexeddb'
 import { EventJobModal } from '@/components/event-job-modal'
+import { EventExhibitorModal } from '@/components/event-exhibitor-modal'
 import { EventTimeline } from '@/components/event-timeline'
 
 const DAY = 24 * 60 * 60 * 1000
@@ -32,6 +43,7 @@ function getEventTiming(startsAt: string, endsAt: string) {
 }
 
 type EventStatus = 'soon' | 'ongoing' | 'done'
+type EventFilter = EventStatus | 'active' | 'all'
 
 function getEventStatus(startsAt: string, endsAt: string): EventStatus {
   const today = new Date()
@@ -106,8 +118,9 @@ export default function EventsPage() {
   const [jobs, setJobs] = useState<LocalJob[]>([])
   const [showNewEvent, setShowNewEvent] = useState(false)
   const [addingJobToEvent, setAddingJobToEvent] = useState<LocalEvent | null>(null)
+  const [addingExhibitorsToEvent, setAddingExhibitorsToEvent] = useState<LocalEvent | null>(null)
   const [search, setSearch] = useState('')
-  const [status, setStatus] = useState<EventStatus | ''>('')
+  const [status, setStatus] = useState<EventFilter>('active')
   const reloadEvents = () => {
     Promise.all([listEvents(), listJobs()]).then(([loadedEvents, loadedJobs]) => {
       setEvents(loadedEvents)
@@ -131,15 +144,18 @@ export default function EventsPage() {
       .join(' ')
       .toLowerCase()
     const matchesSearch = !normalizedSearch || searchableText.includes(normalizedSearch)
-    const matchesStatus = !status || getEventStatus(event.startsAt, event.endsAt) === status
+    const matchesStatus =
+      status === 'all' ||
+      (status === 'active' && getEventStatus(event.startsAt, event.endsAt) !== 'done') ||
+      getEventStatus(event.startsAt, event.endsAt) === status
 
     return matchesSearch && matchesStatus
   })
 
-  const hasFilters = Boolean(search || status)
+  const hasFilters = Boolean(search || status !== 'active')
   const clearFilters = () => {
     setSearch('')
-    setStatus('')
+    setStatus('active')
   }
 
   return (
@@ -180,7 +196,7 @@ export default function EventsPage() {
               </label>
               <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-2 px-0 py-2">
                 {[
-                  ['', 'All'],
+                  ['all', 'All'],
                   ['soon', 'Soon'],
                   ['ongoing', 'On going'],
                   ['done', 'Done'],
@@ -191,7 +207,7 @@ export default function EventsPage() {
                       name="event-status"
                       value={value}
                       checked={status === value}
-                      onChange={() => setStatus(value as EventStatus | '')}
+                      onChange={() => setStatus(value as EventFilter)}
                       className="h-4 w-4 accent-orange-600"
                     />
                     {label}
@@ -218,70 +234,78 @@ export default function EventsPage() {
           </div>
           {filteredEvents.length ? (
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {filteredEvents.map((event) => (
-                <article
-                  key={event.id}
-                  role="link"
-                  tabIndex={0}
-                  onClick={() => router.push(`/events/${event.id}`)}
-                  onKeyDown={(keyboardEvent) => {
-                    if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
-                      keyboardEvent.preventDefault()
-                      router.push(`/events/${event.id}`)
-                    }
-                  }}
-                  className="card group flex h-full cursor-pointer flex-col p-5 hover:border-orange-200 hover:shadow-lg"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <h3 className="mt-2 text-lg font-semibold leading-snug group-hover:text-orange-700">
-                        {event.officialName}
-                      </h3>
+              {filteredEvents.map((event) => {
+                const isPastEvent = getEventStatus(event.startsAt, event.endsAt) === 'done'
+                return (
+                  <article
+                    key={event.id}
+                    role="link"
+                    tabIndex={0}
+                    onClick={() => router.push(`/events/${event.id}`)}
+                    onKeyDown={(keyboardEvent) => {
+                      if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
+                        keyboardEvent.preventDefault()
+                        router.push(`/events/${event.id}`)
+                      }
+                    }}
+                    className={`card group flex h-full cursor-pointer flex-col p-5 ${
+                      isPastEvent
+                        ? 'grayscale opacity-75 transition duration-200 hover:brightness-75'
+                        : 'hover:border-orange-200 hover:shadow-lg'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <h3
+                          className={`mt-2 text-lg font-semibold leading-snug ${
+                            isPastEvent ? 'text-slate-600' : 'group-hover:text-orange-700'
+                          }`}
+                        >
+                          {event.officialName}
+                        </h3>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={(clickEvent) => {
+                            clickEvent.stopPropagation()
+                            if (isPastEvent) return
+                            setAddingExhibitorsToEvent(event)
+                          }}
+                          disabled={isPastEvent}
+                          aria-label={`Tambah exhibitor untuk ${event.officialName}`}
+                          title="Tambah exhibitor"
+                          className={`rounded-lg p-2 text-slate-500 ${
+                            isPastEvent
+                              ? 'cursor-not-allowed opacity-40'
+                              : 'hover:bg-orange-50 hover:text-orange-700'
+                          }`}
+                        >
+                          <Users size={16} />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <Link
-                        href={`/events/${event.id}/edit`}
-                        onClick={(clickEvent) => clickEvent.stopPropagation()}
-                        aria-label={`Edit event ${event.officialName}`}
-                        title="Edit event"
-                        className="rounded-lg p-2 text-slate-500 hover:bg-orange-50 hover:text-orange-700"
-                      >
-                        <Pencil size={16} />
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={(clickEvent) => {
-                          clickEvent.stopPropagation()
-                          setAddingJobToEvent(event)
-                        }}
-                        aria-label={`Tambah job untuk ${event.officialName}`}
-                        title="Tambah job"
-                        className="rounded-lg p-2 text-slate-500 hover:bg-emerald-50 hover:text-emerald-700"
-                      >
-                        <PackagePlus size={16} />
-                      </button>
+                    <p className="mt-2 text-sm text-slate-500">{event.alias || ''}</p>
+                    <div className="mt-5 space-y-3 border-t pt-4">
+                      <p className="flex items-start gap-2 text-sm text-slate-600">
+                        <CalendarDays className="shrink-0 text-slate-400" size={16} />
+                        <span>{formatEventDateRange(event.startsAt, event.endsAt)}</span>
+                        <span className="shrink-0 rounded-full bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-700">
+                          {getEventTiming(event.startsAt, event.endsAt)}
+                        </span>
+                      </p>
+                      <p className="flex items-start gap-2 text-sm text-slate-600">
+                        <MapPin className="shrink-0 text-slate-400" size={16} />
+                        <span>{event.venue?.officialName || 'Venue belum diinput'}</span>
+                      </p>
+                      <p className="flex items-start gap-2 text-xs text-slate-500">
+                        <Building2 className="shrink-0 text-slate-400" size={15} />
+                        <span>{event.eventOrganizer?.legalName || 'Belum diinput'}</span>
+                      </p>
                     </div>
-                  </div>
-                  <p className="mt-2 text-sm text-slate-500">{event.alias || ''}</p>
-                  <div className="mt-5 space-y-3 border-t pt-4">
-                    <p className="flex items-start gap-2 text-sm text-slate-600">
-                      <CalendarDays className="shrink-0 text-slate-400" size={16} />
-                      <span>{formatEventDateRange(event.startsAt, event.endsAt)}</span>
-                      <span className="shrink-0 rounded-full bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-700">
-                        {getEventTiming(event.startsAt, event.endsAt)}
-                      </span>
-                    </p>
-                    <p className="flex items-start gap-2 text-sm text-slate-600">
-                      <MapPin className="shrink-0 text-slate-400" size={16} />
-                      <span>{event.venue?.officialName || 'Venue belum diinput'}</span>
-                    </p>
-                    <p className="flex items-start gap-2 text-xs text-slate-500">
-                      <Building2 className="shrink-0 text-slate-400" size={15} />
-                      <span>{event.eventOrganizer?.legalName || 'Belum diinput'}</span>
-                    </p>
-                  </div>
-                </article>
-              ))}
+                  </article>
+                )
+              })}
             </div>
           ) : (
             <div className="card p-12 text-center">
@@ -307,7 +331,7 @@ export default function EventsPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="new-event-title"
-            className="card flex max-h-[calc(100vh-2rem)] min-h-0 w-full max-w-4xl flex-col overflow-hidden"
+            className="card flex max-h-[calc(100vh-2rem)] min-h-0 w-full max-w-4xl flex-col overflow-hidden lg:max-w-[50vw]"
           >
             <div className="flex shrink-0 items-center justify-between border-b px-6 py-5 sm:px-8">
               <div>
@@ -339,6 +363,13 @@ export default function EventsPage() {
           event={addingJobToEvent}
           onSaved={() => setAddingJobToEvent(null)}
           onCancel={() => setAddingJobToEvent(null)}
+        />
+      )}
+      {addingExhibitorsToEvent && (
+        <EventExhibitorModal
+          event={addingExhibitorsToEvent}
+          onSaved={() => setAddingExhibitorsToEvent(null)}
+          onCancel={() => setAddingExhibitorsToEvent(null)}
         />
       )}
     </>
