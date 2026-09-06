@@ -1,7 +1,0 @@
-import { redirect } from 'next/navigation'
-import { prisma } from '@/lib/prisma'
-import { currentUser } from '@/lib/session'
-import Link from 'next/link'
-export const dynamic='force-dynamic'
-const roleLabels = { STAFF: 'Staff', SUPERVISOR: 'SPV', CUSTOMER_SERVICE: 'CS', DOCUMENT_ASSISTANT: 'Doc Assist' } as const
-export default async function Users(){const session=await currentUser();if(session?.user.role!=='SUPERVISOR')redirect('/');const users=await prisma.user.findMany({select:{id:true,name:true,email:true,role:true,isActive:true,createdAt:true},orderBy:{createdAt:'desc'}});return <><div className="mb-7 flex justify-between"><div><h1 className="text-2xl font-bold">Pengguna</h1><p className="mt-1 text-sm text-slate-500">Kelola akun dan peran tim operasional.</p></div><Link className="btn-primary" href="/users/new">Tambah pengguna</Link></div><div className="card overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-4">Nama</th><th className="p-4">Email</th><th className="p-4">Role</th><th className="p-4">Status</th></tr></thead><tbody>{users.map(user=><tr className="border-b last:border-0" key={user.id}><td className="p-4 font-medium">{user.name}</td><td className="p-4">{user.email}</td><td className="p-4">{roleLabels[user.role]}</td><td className="p-4"><span className={user.isActive?'text-emerald-700':'text-rose-700'}>{user.isActive?'Aktif':'Nonaktif'}</span></td></tr>)}</tbody></table></div></>}

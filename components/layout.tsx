@@ -1,12 +1,8 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { signOut, useSession } from 'next-auth/react'
 import {
-  FolderKanban,
   LayoutDashboard,
-  Users,
-  LogOut,
   BriefcaseBusiness,
   CalendarDays,
 } from 'lucide-react'
@@ -14,15 +10,9 @@ const links = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/events', label: 'Events', icon: CalendarDays },
   { href: '/jobs', label: 'Jobs', icon: BriefcaseBusiness },
-  { href: '/projects', label: 'Projects', icon: FolderKanban },
 ]
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const { data } = useSession()
-  const menu =
-    data?.user?.role === 'SUPERVISOR'
-      ? [...links, { href: '/users', label: 'Pengguna', icon: Users }]
-      : links
   return (
     <div className="min-h-screen md:flex">
       <aside className="flex w-full flex-col bg-black text-white/70 md:fixed md:inset-y-0 md:z-20 md:w-64">
@@ -33,7 +23,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <p className="mt-1 text-xs text-white/40">Operational control center</p>
         </div>
         <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:block md:space-y-1">
-          {menu.map(({ href, label, icon: Icon }) => {
+          {links.map(({ href, label, icon: Icon }) => {
             const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
             return (
               <Link
@@ -47,16 +37,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )
           })}
         </nav>
-        <div className="mt-auto hidden border-t border-white/10 p-4 md:block">
-          <p className="truncate text-sm font-medium text-white">{data?.user?.name}</p>
-          <p className="mt-0.5 text-xs text-white/40">{data?.user?.role}</p>
-          <button
-            onClick={() => signOut()}
-            className="mt-3 flex items-center gap-2 text-xs hover:text-white"
-          >
-            <LogOut size={14} /> Keluar
-          </button>
-        </div>
       </aside>
       <main className="min-w-0 flex-1 md:ml-64">
         <div className="mx-auto max-w-[1440px] p-5 md:p-8">{children}</div>

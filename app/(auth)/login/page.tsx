@@ -1,5 +1,19 @@
 'use client'
-import { signIn } from 'next-auth/react'
-import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-export default function LoginPage() { const router = useRouter(); const [error, setError] = useState(''); const [loading, setLoading] = useState(false); async function submit(form: FormData) { setLoading(true); setError(''); const result = await signIn('credentials', { email: form.get('email'), password: form.get('password'), redirect: false }); setLoading(false); if (result?.error) setError('Email/password salah atau akun tidak aktif.'); else router.push('/') }; return <main className="grid min-h-screen place-items-center bg-black p-5"><form action={submit} className="w-full max-w-md rounded-2xl bg-white p-8 shadow-2xl"><p className="text-sm font-bold uppercase tracking-widest text-blue-700">VSS Project Management</p><h1 className="mt-3 text-2xl font-bold">Masuk ke operasional</h1><p className="mt-2 text-sm text-black/50">Kelola progress shipment dalam satu tempat.</p>{error && <p className="mt-5 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}<label className="label mt-6 block">Email<input required name="email" type="email" className="input" placeholder="nama@perusahaan.com" /></label><label className="label mt-4 block">Password<input required name="password" type="password" className="input" /></label><button disabled={loading} className="btn-primary mt-6 w-full">{loading ? 'Memproses…' : 'Masuk'}</button></form></main> }
+export default function LoginPage() {
+  const router = useRouter()
+  return (
+    <main className="grid min-h-screen place-items-center bg-black p-5">
+      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-2xl">
+        <p className="text-sm font-bold uppercase tracking-widest text-blue-700">VSS Project Management</p>
+        <h1 className="mt-3 text-2xl font-bold">Mode browser</h1>
+        <p className="mt-2 text-sm text-black/50">
+          Data disimpan di IndexedDB perangkat ini tanpa akun server atau database eksternal.
+        </p>
+        <button onClick={() => router.push('/')} className="btn-primary mt-6 w-full">
+          Buka aplikasi
+        </button>
+      </div>
+    </main>
+  )
+}

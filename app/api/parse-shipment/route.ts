@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireUser, unauthorized } from '@/lib/session'
 
 export const runtime = 'nodejs'
 
@@ -39,9 +38,6 @@ function normalizeShipment(value: unknown): ParsedShipment {
 }
 
 export async function POST(request: NextRequest) {
-  const user = await requireUser()
-  if (!user) return unauthorized()
-
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
     return NextResponse.json({ error: 'GEMINI_API_KEY belum dikonfigurasi.' }, { status: 503 })
