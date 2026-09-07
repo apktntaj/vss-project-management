@@ -2,10 +2,15 @@
 
 import type {
   Cipl,
+  CiplItem,
+  CiplStatus,
+  CiplVersion,
   CustomsJob,
   MigrationReviewItem,
   Shipment,
+  ShipmentAllocation,
 } from '@/domain/exhibition/types'
+import { validateCiplVersionReady, validateShipmentAllocation } from '@/domain/exhibition/validation'
 
 export type LocalUser = {
   id: string
@@ -763,4 +768,103 @@ export async function toggleStage(stage: LocalStage): Promise<LocalStage> {
     status: stage.status === 'DONE' ? 'IN_PROGRESS' : 'DONE',
     updatedAt: now(),
   })
+}
+
+export type CiplVersionInput = {
+  receivedAt: string
+  receivedBy: string
+  sourceDocumentName?: string | null
+  sourceDocument?: CiplVersion['sourceDocument']
+  items: CiplItem[]
+  revisionNote?: string | null
+}
+
+export async function listCipls(eventExhibitorId: string) {
+  return (await readAll<Cipl>('cipls'))
+    .filter((cipl) => cipl.eventExhibitorId === eventExhibitorId)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+}
+
+export async function getCipl(ciplId: string) {
+  return (await readAll<Cipl>('cipls')).find((cipl) => cipl.id === ciplId) ?? null
+}
+
+export async function listCiplVersions(ciplId: string) {
+  return (await readAll<CiplVersion>('ciplVersions'))
+    .filter((version) => version.ciplId === ciplId)
+    .sort((left, right) => right.versionNumber - left.versionNumber)
+}
+
+export async function createCipl(eventExhibitorId: string, initialVersion?: CiplVersionInput) {
+  const exhibitor = (await readAll<LocalExhibitor>('exhibitors')).find((item) => item.id === eventExhibitorId)
+  if (!exhibitor) throw new Error('Exhibitor tidak ditemukan.')
+  const timestamp = now()
+  const cipl: Cipl = {
+    id: id(), eventExhibitorId, referenceNumber: null,
+    status: initialVersion ? 'RECEIVED' : 'AWAITING_DOCUMENT', activeVersionId: null,
+    sourceDocumentUnavailable: !initialVersion, createdAt: timestamp, updatedAt: timestamp,
+  }
+  const database = await openDatabase()
+  return new Promise<Cipl>((resolve, reject) => {
+    const transaction = database.transaction(['cipls', 'ciplVersions'], 'readwrite')
+    transaction.objectStore('cipls').put(cipl)
+    if (initialVersion) {
+      const version: CiplVersion = {
+        id: id(), ciplId: cipl.id, versionNumber: 1, receivedAt: initialVersion.receivedAt, receivedBy: initialVersion.receivedBy,
+        sourceDocumentName: initialVersion.sourceDocumentName ?? null, sourceDocument: initialVersion.sourceDocument ?? null,
+        items: initialVersion.items, revisionNote: initialVersion.revisionNote ?? null, createdAt: timestamp,
+      }
+      cipl.activeVersionId = version.id
+      transaction.objectStore('cipls').put(cipl)
+      transaction.objectStore('ciplVersions').put(version)
+    }
+    transaction.oncomplete = () => resolve(cipl)
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+  })
+}
+
+export async function addCiplVersion(ciplId: string, input: CiplVersionInput) {
+  const [cipl, versions, shipments] = await Promise.all([getCipl(ciplId), listCiplVersions(ciplId), listShipments(ciplId)])
+  if (!cipl) throw new Error('CIPL tidak ditemukan.')
+  if (cipl.activeVersionId && shipments.some((shipment) => shipment.sourceCiplVersionId === cipl.activeVersionId)) {
+    // Version lama tetap immutable setelah dipakai Shipment; versi baru selalu aman dibuat.
+  }
+  const timestamp = now()
+  const version: CiplVersion = {
+    id: id(), ciplId, versionNumber: (versions[0]?.versionNumber ?? 0) + 1,
+    receivedAt: input.receivedAt, receivedBy: input.receivedBy, sourceDocumentName: input.sourceDocumentName ?? null,
+    sourceDocument: input.sourceDocument ?? null, items: input.items, revisionNote: input.revisionNote ?? null, createdAt: timestamp,
+  }
+  const validation = validateCiplVersionReady(version)
+  if (!validation.ok && cipl.status === 'READY') throw new Error(validation.issues.map((issue) => issue.message).join(' '))
+  await put('ciplVersions', version)
+  return version
+}
+
+export async function activateCiplVersion(ciplId: string, versionId: string, status: CiplStatus = 'UNDER_REVIEW') {
+  const version = (await listCiplVersions(ciplId)).find((item) => item.id === versionId)
+  const cipl = await getCipl(ciplId)
+  if (!cipl || !version) throw new Error('Versi CIPL bukan milik CIPL yang dipilih.')
+  return put('cipls', { ...cipl, activeVersionId: versionId, status, sourceDocumentUnavailable: false, updatedAt: now() })
+}
+
+export async function listShipments(ciplId: string) {
+  return (await readAll<Shipment>('shipmentsV2'))
+    .filter((shipment) => shipment.ciplId === ciplId)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+}
+
+export type ShipmentInput = Omit<Shipment, 'id' | 'ciplId' | 'sourceCiplVersionId' | 'allocations' | 'createdAt' | 'updatedAt' | 'legacyReference'> & { legacyReference?: string | null }
+
+export async function createShipment(ciplId: string, sourceVersionId: string, input: ShipmentInput, allocations: ShipmentAllocation[]) {
+  const [cipl, versions, existing] = await Promise.all([getCipl(ciplId), listCiplVersions(ciplId), listShipments(ciplId)])
+  const version = versions.find((item) => item.id === sourceVersionId)
+  if (!cipl || !version) throw new Error('CIPL atau versi sumber tidak ditemukan.')
+  if (input.documentType !== 'BL' && input.documentType !== 'AWB') throw new Error('Shipment harus memiliki tepat satu B/L atau AWB.')
+  const allocationValidation = validateShipmentAllocation(version, existing, allocations)
+  if (!allocationValidation.ok) throw new Error(allocationValidation.issues.map((issue) => issue.message).join(' '))
+  const timestamp = now()
+  const shipment: Shipment = { ...input, id: id(), ciplId, sourceCiplVersionId: sourceVersionId, allocations, legacyReference: input.legacyReference ?? null, createdAt: timestamp, updatedAt: timestamp }
+  return put('shipmentsV2', shipment)
 }
