@@ -172,7 +172,7 @@ export function EventForm({
       setEos(loadedEos)
       if (enableExhibitors) {
         setExhibitors(
-          loadedExhibitors.map(({ id, eventId, createdAt, updatedAt, ...exhibitor }) => exhibitor),
+          loadedExhibitors.map(({ eventId, createdAt, updatedAt, ...exhibitor }) => exhibitor),
         )
       }
       if (event) {

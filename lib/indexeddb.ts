@@ -2,6 +2,7 @@
 
 import type {
   Cipl,
+  CustomsJob,
   MigrationReviewItem,
   Shipment,
 } from '@/domain/exhibition/types'
@@ -552,7 +553,7 @@ export async function listEventExhibitors(eventId: string) {
   return exhibitors.filter((exhibitor) => exhibitor.eventId === eventId)
 }
 
-export type EventExhibitorInput = Omit<LocalExhibitor, 'id' | 'eventId' | 'createdAt' | 'updatedAt'>
+export type EventExhibitorInput = Omit<LocalExhibitor, 'id' | 'eventId' | 'createdAt' | 'updatedAt'> & { id?: string }
 
 export async function saveEventExhibitors(eventId: string, inputs: EventExhibitorInput[]) {
   const database = await openDatabase()
@@ -560,19 +561,33 @@ export async function saveEventExhibitors(eventId: string, inputs: EventExhibito
   const timestamp = now()
 
   return new Promise<LocalExhibitor[]>((resolve, reject) => {
-    const transaction = database.transaction('exhibitors', 'readwrite')
+    const transaction = database.transaction(['exhibitors', 'cipls'], 'readwrite')
     const store = transaction.objectStore('exhibitors')
-    existing.forEach((exhibitor) => store.delete(exhibitor.id))
-    const exhibitors = inputs.map((input) => ({
-      ...input,
-      id: id(),
-      eventId,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    }))
+    const existingById = new Map(existing.map((exhibitor) => [exhibitor.id, exhibitor]))
+    const submittedIds = new Set(inputs.flatMap((input) => input.id ? [input.id] : []))
+    const exhibitors = inputs.map((input) => {
+      const previous = input.id ? existingById.get(input.id) : undefined
+      if (input.id && !previous) throw new Error('Exhibitor tidak ditemukan dalam event ini.')
+      return {
+        ...input,
+        id: previous?.id ?? id(),
+        eventId,
+        createdAt: previous?.createdAt ?? timestamp,
+        updatedAt: timestamp,
+      }
+    })
+    const ciplStore = transaction.objectStore('cipls')
+    existing.filter((exhibitor) => !submittedIds.has(exhibitor.id)).forEach((exhibitor) => {
+      const request = ciplStore.index('eventExhibitorId').count(exhibitor.id)
+      request.onsuccess = () => {
+        if (request.result > 0) transaction.abort()
+        else store.delete(exhibitor.id)
+      }
+    })
     exhibitors.forEach((exhibitor) => store.put(exhibitor))
     transaction.oncomplete = () => resolve(exhibitors)
-    transaction.onerror = () => reject(transaction.error)
+    transaction.onerror = () => reject(transaction.error ?? new Error('Gagal menyimpan exhibitor.'))
+    transaction.onabort = () => reject(new Error('Exhibitor yang masih dirujuk CIPL tidak dapat dihapus.'))
   })
 }
 
@@ -624,6 +639,19 @@ export async function saveEvent(input: EventInput, existingId?: string) {
 }
 
 export async function deleteEvent(eventId: string) {
+  const [exhibitors, cipls, shipments, customsJobs, legacyJobs] = await Promise.all([
+    listEventExhibitors(eventId),
+    readAll<Cipl>('cipls'),
+    readAll<Shipment>('shipmentsV2'),
+    readAll<CustomsJob>('customsJobs'),
+    readAll<LocalJob>('jobs'),
+  ])
+  const eventExhibitorIds = new Set(exhibitors.map((exhibitor) => exhibitor.id))
+  const ciplIds = new Set(cipls.filter((cipl) => eventExhibitorIds.has(cipl.eventExhibitorId)).map((cipl) => cipl.id))
+  const shipmentIds = new Set(shipments.filter((shipment) => ciplIds.has(shipment.ciplId)).map((shipment) => shipment.id))
+  if (exhibitors.length || ciplIds.size || shipmentIds.size || customsJobs.some((job) => shipmentIds.has(job.shipmentId)) || legacyJobs.some((job) => job.eventId === eventId)) {
+    throw new Error('Event tidak dapat dihapus karena masih mempunyai data turunan.')
+  }
   const database = await openDatabase()
   return new Promise<void>((resolve, reject) => {
     const request = database
@@ -677,6 +705,7 @@ export async function saveJob(input: JobInput, existingId?: string) {
   const previous = existingId ? await getJob(existingId) : null
   const timestamp = now()
   const job: LocalJob = {
+    ...previous,
     id: existingId ?? id(),
     jobNumber:
       previous?.jobNumber ??
@@ -684,11 +713,34 @@ export async function saveJob(input: JobInput, existingId?: string) {
     trackingToken: previous?.trackingToken ?? id(),
     createdAt: previous?.createdAt ?? timestamp,
     updatedAt: timestamp,
-    stages: [],
-    documents: [],
+    stages: previous?.stages ?? [],
+    documents: previous?.documents ?? [],
     ...input,
   }
   return put('jobs', job)
+}
+
+/** Metadata Job dan PDF sumber adalah satu aksi pengguna; kegagalan Blob membatalkan keduanya. */
+export async function saveJobWithDocument(input: JobInput, file: File, existingId?: string) {
+  const previous = existingId ? await getJob(existingId) : null
+  const database = await openDatabase()
+  const timestamp = now()
+  const job: LocalJob = {
+    ...previous,
+    id: existingId ?? id(),
+    jobNumber: previous?.jobNumber ?? `VSS-${String((await readAll<LocalJob>('jobs')).length + 1).padStart(4, '0')}`,
+    trackingToken: previous?.trackingToken ?? id(), createdAt: previous?.createdAt ?? timestamp, updatedAt: timestamp,
+    stages: previous?.stages ?? [], documents: previous?.documents ?? [], ...input,
+  }
+  const document: LocalJobDocument = { id: id(), jobId: job.id, fileName: file.name, mimeType: 'application/pdf', fileSize: file.size, file, createdAt: timestamp }
+  return new Promise<LocalJob>((resolve, reject) => {
+    const transaction = database.transaction(['jobs', 'jobDocuments'], 'readwrite')
+    transaction.objectStore('jobs').put(job)
+    transaction.objectStore('jobDocuments').put(document)
+    transaction.oncomplete = () => resolve(job)
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+  })
 }
 
 export async function addStage(jobId: string, name: string): Promise<LocalStage> {

@@ -2,7 +2,7 @@
 
 import { type FormEvent, useEffect, useState } from 'react'
 import { AlertCircle, FileUp, PackagePlus, X } from 'lucide-react'
-import { saveJob, saveJobDocument, type LocalEvent, type LocalJob } from '@/lib/indexeddb'
+import { saveJobWithDocument, type LocalEvent, type LocalJob } from '@/lib/indexeddb'
 
 const MAX_PDF_SIZE = 10 * 1024 * 1024
 const MAX_PDF_PAGES = 10
@@ -130,7 +130,7 @@ export function EventJobModal({
     setSaving(true)
     setError('')
     try {
-      const job = await saveJob({
+      const job = await saveJobWithDocument({
         awbNumber: formValues.awbNumber.trim() || null,
         blNumber: formValues.blNumber.trim() || null,
         shipper: formValues.shipper.trim() || null,
@@ -151,8 +151,7 @@ export function EventJobModal({
         eventId: event.id,
         exhibitorId: null,
         sourceDocumentName: selectedFile.name,
-      })
-      await saveJobDocument(job.id, selectedFile)
+      }, selectedFile)
       onSaved(job)
     } catch {
       setError('Tidak dapat menyimpan dokumen PDF di IndexedDB.')

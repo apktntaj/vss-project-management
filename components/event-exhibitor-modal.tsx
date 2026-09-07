@@ -35,7 +35,7 @@ export function EventExhibitorModal({
   useEffect(() => {
     listEventExhibitors(event.id).then((items) => {
       setExhibitors(
-        items.map(({ id, eventId, createdAt, updatedAt, ...exhibitor }) => exhibitor),
+        items.map(({ eventId, createdAt, updatedAt, ...exhibitor }) => exhibitor),
       )
     })
   }, [event.id])
