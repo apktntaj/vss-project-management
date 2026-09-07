@@ -881,6 +881,10 @@ export async function listCustomsJobs(shipmentId: string) {
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
 }
 
+export async function getCustomsJob(jobId: string) {
+  return (await readAll<CustomsJob>('customsJobs')).find((job) => job.id === jobId) ?? null
+}
+
 export type CustomsJobInput = Omit<CustomsJob, 'id' | 'jobNumber' | 'shipmentId' | 'allocations' | 'statusHistory' | 'createdAt' | 'updatedAt'>
 
 /** The counter and CustomsJob live in one transaction, so issued numbers are never reused. */

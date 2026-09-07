@@ -1,0 +1,17 @@
+'use client'
+
+import { useEffect, useState, type FormEvent } from 'react'
+import { useParams } from 'next/navigation'
+import { getCustomsJob, updateCustomsJob } from '@/lib/indexeddb'
+import type { CustomsJob, CustomsJobStatus } from '@/domain/exhibition/types'
+import { StatusBadge } from '@/components/status-badge'
+
+const statuses: CustomsJobStatus[] = ['DRAFT', 'PREPARING', 'SUBMITTED', 'REGISTERED', 'RELEASED', 'COMPLETED', 'ON_HOLD', 'CANCELLED']
+
+export default function CustomsJobDetailPage() {
+  const params = useParams<{ jobId: string }>(); const [job, setJob] = useState<CustomsJob | null>(null); const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
+  useEffect(() => { getCustomsJob(params.jobId).then(setJob) }, [params.jobId])
+  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!job) return; const form = new FormData(event.currentTarget); setSaving(true); setError(''); try { const next = await updateCustomsJob(job.id, { status: String(form.get('status')) as CustomsJobStatus, ajuNumber: String(form.get('ajuNumber') || '').trim() || null, registrationNumber: String(form.get('registrationNumber') || '').trim() || null, registrationDate: String(form.get('registrationDate') || '').trim() || null, warehouseName: String(form.get('warehouseName') || '').trim() || null, notes: String(form.get('notes') || '').trim() || null }, String(form.get('reason') || '')); setJob(next) } catch (caught) { setError(caught instanceof Error ? caught.message : 'Job tidak dapat diperbarui.') } finally { setSaving(false) } }
+  if (!job) return <p className="card p-6 text-sm text-slate-500">Memuat Customs Job...</p>
+  return <div className="mx-auto max-w-2xl"><form onSubmit={submit} className="card p-6 sm:p-8"><div className="flex items-start justify-between gap-4"><div><p className="text-sm text-slate-500">{job.documentType.replace('_', ' ')}</p><h1 className="mt-1 text-3xl font-bold">{job.jobNumber}</h1></div><StatusBadge status={job.status}/></div><div className="mt-6 grid gap-5 sm:grid-cols-2"><label className="label">Status<select name="status" defaultValue={job.status} className="input mt-1">{statuses.map((status) => <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>)}</select></label><label className="label">Nomor aju<input name="ajuNumber" defaultValue={job.ajuNumber ?? ''} className="input mt-1" /></label><label className="label">Nomor Nopen<input name="registrationNumber" defaultValue={job.registrationNumber ?? ''} className="input mt-1" /></label><label className="label">Tanggal Nopen<input name="registrationDate" defaultValue={job.registrationDate ?? ''} type="date" className="input mt-1" /></label><label className="label sm:col-span-2">Gudang<input name="warehouseName" defaultValue={job.warehouseName ?? ''} className="input mt-1" /></label><label className="label sm:col-span-2">Alasan perubahan tidak berurutan / reopen<textarea name="reason" className="input mt-1 min-h-20" /></label><label className="label sm:col-span-2">Catatan<textarea name="notes" defaultValue={job.notes ?? ''} className="input mt-1 min-h-24" /></label></div>{error && <p className="mt-5 text-sm text-rose-700">{error}</p>}<button disabled={saving} className="btn-primary mt-6">{saving ? 'Menyimpan...' : 'Simpan perubahan'}</button></form></div>
+}
