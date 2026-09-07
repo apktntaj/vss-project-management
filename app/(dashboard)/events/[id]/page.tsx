@@ -11,6 +11,7 @@ import {
   LoaderCircle,
   MapPin,
   PackagePlus,
+  FileStack,
   Pencil,
   Trash2,
   Users,
@@ -20,6 +21,8 @@ import { useParams, useRouter } from 'next/navigation'
 import { EventJobModal } from '@/components/event-job-modal'
 import {
   deleteEvent,
+  createCipl,
+  listCipls,
   listEventExhibitors,
   listEventJobs,
   listEvents,
@@ -43,6 +46,7 @@ export default function EventDetailPage() {
   const [event, setEvent] = useState<LocalEvent | null>(null)
   const [exhibitors, setExhibitors] = useState<LocalExhibitor[]>([])
   const [jobs, setJobs] = useState<LocalJob[]>([])
+  const [ciplCounts, setCiplCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [addingJob, setAddingJob] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -54,6 +58,8 @@ export default function EventDetailPage() {
         setEvent(events.find((item) => item.id === params.id) ?? null)
         setExhibitors(eventExhibitors)
         setJobs(eventJobs)
+        Promise.all(eventExhibitors.map(async (exhibitor) => [exhibitor.id, (await listCipls(exhibitor.id)).length] as const))
+          .then((counts) => setCiplCounts(Object.fromEntries(counts)))
         setLoading(false)
       },
     )
@@ -71,6 +77,11 @@ export default function EventDetailPage() {
     setShowDeleteDialog(false)
     setDeleteToast(true)
     window.setTimeout(() => router.push('/events'), 800)
+  }
+
+  async function handleCreateCipl(exhibitorId: string) {
+    const cipl = await createCipl(exhibitorId)
+    router.push(`/cipls/${cipl.id}`)
   }
 
   if (loading) {
@@ -200,9 +211,15 @@ export default function EventDetailPage() {
                     </div>
                   )}
                 </div>
-                <span className="inline-flex w-fit items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                  <Globe2 size={13} /> {exhibitor.type === 'LOCAL' ? 'Local' : 'International'}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex w-fit items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                    <Globe2 size={13} /> {exhibitor.type === 'LOCAL' ? 'Local' : 'International'}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-xs text-slate-500"><FileStack size={13} /> {ciplCounts[exhibitor.id] ?? 0} CIPL</span>
+                  <button type="button" onClick={() => handleCreateCipl(exhibitor.id)} className="btn-secondary px-3 py-1.5 text-xs">
+                    Tambah CIPL
+                  </button>
+                </div>
               </div>
             ))}
           </div>
