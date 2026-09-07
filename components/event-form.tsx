@@ -29,10 +29,8 @@ function normalizeInput(event: FormEvent<HTMLInputElement | HTMLTextAreaElement>
 }
 
 function formatDateInput(isoDate: string) {
-  const date = new Date(isoDate)
-  const day = String(date.getDate()).padStart(2, '0')
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  return `${day}/${month}/${date.getFullYear()}`
+  const [year, month, day] = isoDate.slice(0, 10).split('-')
+  return `${day}/${month}/${year}`
 }
 
 function parseDateInput(value: string) {
@@ -182,8 +180,8 @@ export function EventForm({
         setSelectedVenue(venue)
         setEoQuery(eo?.legalName ?? '')
         setSelectedEo(eo)
-        setStartsAt(formatDateInput(event.startsAt))
-        setEndsAt(formatDateInput(event.endsAt))
+        setStartsAt(formatDateInput(event.startsOn))
+        setEndsAt(formatDateInput(event.endsOn))
       }
     })
   }, [enableExhibitors, event])
@@ -199,8 +197,8 @@ export function EventForm({
   async function submit(form: FormData) {
     const startDate = parseDateInput(startsAt)
     const endDate = parseDateInput(endsAt)
-    if (!startDate || !endDate || endDate <= startDate) {
-      setError('Waktu selesai harus setelah waktu mulai.')
+    if (!startDate || !endDate || endDate < startDate) {
+      setError('Tanggal selesai harus sama dengan atau setelah tanggal mulai.')
       return
     }
     if (!selectedVenue && !newVenue) {
@@ -237,8 +235,8 @@ export function EventForm({
         {
           officialName: text(form.get('officialName')),
           alias: optional(form.get('alias')),
-          startsAt: startDate.toISOString(),
-          endsAt: endDate.toISOString(),
+          startsOn: startDate.toISOString().slice(0, 10),
+          endsOn: endDate.toISOString().slice(0, 10),
           venue: {
             officialName: selectedVenue?.officialName || text(form.get('venueOfficialName')),
             aliasName: selectedVenue?.aliasName || optional(form.get('venueAliasName')),

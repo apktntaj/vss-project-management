@@ -101,6 +101,9 @@ export type LocalEvent = {
   alias: string | null
   startsAt: string
   endsAt: string
+  /** Canonical show-period; date-only so calendar dates do not shift by timezone. */
+  startsOn: string
+  endsOn: string
   createdAt: string
   updatedAt: string
   venueId: string
@@ -211,6 +214,16 @@ async function put<T extends { id: string }>(storeName: StoreName, value: T): Pr
 
 function now() {
   return new Date().toISOString()
+}
+
+function toDateOnly(value: string) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+  const date = new Date(value)
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
+}
+
+function localMidnight(dateOnly: string) {
+  return `${dateOnly}T00:00:00`
 }
 
 function id() {
@@ -369,6 +382,8 @@ async function ensureDemoEvents() {
       alias: 'ITE 2026',
       startsAt: '2026-09-08T00:00:00.000Z',
       endsAt: '2026-09-12T23:59:59.000Z',
+      startsOn: '2026-09-08',
+      endsOn: '2026-09-12',
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: timestamp,
       venueId: venueJakarta.id,
@@ -380,6 +395,8 @@ async function ensureDemoEvents() {
       alias: 'IRS 2026',
       startsAt: '2026-09-10T00:00:00.000Z',
       endsAt: '2026-09-14T23:59:59.000Z',
+      startsOn: '2026-09-10',
+      endsOn: '2026-09-14',
       createdAt: '2026-08-15T00:00:00.000Z',
       updatedAt: timestamp,
       venueId: venueJakarta.id,
@@ -391,6 +408,8 @@ async function ensureDemoEvents() {
       alias: 'BMF 2026',
       startsAt: '2026-08-20T00:00:00.000Z',
       endsAt: '2026-08-22T23:59:59.000Z',
+      startsOn: '2026-08-20',
+      endsOn: '2026-08-22',
       createdAt: '2026-07-01T00:00:00.000Z',
       updatedAt: timestamp,
       venueId: venueBali.id,
@@ -539,11 +558,15 @@ export async function listEvents() {
     readAll<LocalEo>('eos'),
   ])
   return events
-    .map((event) => ({
+    .map((storedEvent) => {
+      const startsOn = storedEvent.startsOn ?? toDateOnly(storedEvent.startsAt)
+      const endsOn = storedEvent.endsOn ?? toDateOnly(storedEvent.endsAt)
+      const event = { ...storedEvent, startsOn, endsOn, startsAt: localMidnight(startsOn), endsAt: localMidnight(endsOn) }
+      return {
       ...event,
       venue: venues.find((venue) => venue.id === event.venueId),
       eventOrganizer: eos.find((eo) => eo.id === event.eoId),
-    }))
+    }})
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
 }
 
@@ -598,7 +621,7 @@ export async function saveEventExhibitors(eventId: string, inputs: EventExhibito
   })
 }
 
-export type EventInput = Pick<LocalEvent, 'officialName' | 'alias' | 'startsAt' | 'endsAt'> & {
+export type EventInput = Pick<LocalEvent, 'officialName' | 'alias' | 'startsOn' | 'endsOn'> & {
   venue: Omit<LocalVenue, 'id' | 'createdAt' | 'updatedAt'>
   venueId?: string
   eventOrganizer: Omit<LocalEo, 'id' | 'createdAt' | 'updatedAt'>
@@ -634,8 +657,10 @@ export async function saveEvent(input: EventInput, existingId?: string) {
     id: existingId ?? id(),
     officialName: input.officialName,
     alias: input.alias,
-    startsAt: input.startsAt,
-    endsAt: input.endsAt,
+    startsOn: input.startsOn,
+    endsOn: input.endsOn,
+    startsAt: localMidnight(input.startsOn),
+    endsAt: localMidnight(input.endsOn),
     venueId: venue.id,
     eoId: eventOrganizer.id,
     createdAt: previous?.createdAt ?? timestamp,
