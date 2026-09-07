@@ -11,7 +11,7 @@ import {
   type LocalExhibitor,
   listEventExhibitors,
 } from '@/lib/indexeddb'
-import type { Cipl, CiplVersion, Shipment } from '@/domain/exhibition/types'
+import type { Attachment, Cipl, CiplVersion, Shipment } from '@/domain/exhibition/types'
 import { StatusBadge } from '@/components/status-badge'
 
 export default function CiplDetailPage() {
@@ -50,7 +50,7 @@ export default function CiplDetailPage() {
 
       <section className="card p-6 sm:p-8">
         <div className="flex items-center justify-between gap-4"><div><h2 className="text-lg font-semibold">Versi CIPL</h2><p className="mt-1 text-sm text-slate-500">Revisi lama dipertahankan dan tidak ditimpa.</p></div><FileText className="text-orange-600" size={22} /></div>
-        {versions.length ? <div className="mt-5 space-y-3">{versions.map((version) => <div key={version.id} className="rounded-xl border p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold">Versi {version.versionNumber} {version.id === cipl.activeVersionId && <span className="ml-2 text-xs text-emerald-700">AKTIF</span>}</p><span className="text-xs text-slate-500">{version.items.length} item</span></div><p className="mt-1 text-sm text-slate-500">{version.sourceDocumentName || 'File belum diunggah'} · diterima {version.receivedAt || 'belum dicatat'}</p></div>)}</div> : <p className="mt-5 rounded-xl border border-dashed border-black/15 px-4 py-8 text-center text-sm text-slate-500">Belum ada versi CIPL. Tambahkan dokumen atau input item secara manual.</p>}
+        {versions.length ? <div className="mt-5 space-y-3">{versions.map((version) => <div key={version.id} className="rounded-xl border p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold">Versi {version.versionNumber} {version.id === cipl.activeVersionId && <span className="ml-2 text-xs text-emerald-700">AKTIF</span>}</p><span className="text-xs text-slate-500">{version.items.length} item</span></div><p className="mt-1 text-sm text-slate-500">{version.sourceDocumentName || 'File belum diunggah'} · diterima {version.receivedAt || 'belum dicatat'}</p>{version.sourceDocument && <OpenAttachment attachment={version.sourceDocument}/>}</div>)}</div> : <p className="mt-5 rounded-xl border border-dashed border-black/15 px-4 py-8 text-center text-sm text-slate-500">Belum ada versi CIPL. Tambahkan dokumen atau input item secara manual.</p>}
       </section>
 
       <section className="card p-6 sm:p-8">
@@ -60,6 +60,10 @@ export default function CiplDetailPage() {
       </section>
     </div>
   )
+}
+
+function OpenAttachment({ attachment }: { attachment: Attachment }) {
+  return <button type="button" onClick={() => window.open(URL.createObjectURL(attachment.file), '_blank', 'noopener,noreferrer')} className="mt-3 text-sm font-medium text-orange-700 hover:underline">Buka {attachment.fileName}</button>
 }
 
 async function listEventExhibitorsForCipl(exhibitorId: string) {
