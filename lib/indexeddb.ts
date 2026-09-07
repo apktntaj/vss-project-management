@@ -6,11 +6,13 @@ import type {
   CiplStatus,
   CiplVersion,
   CustomsJob,
+  CustomsJobStatus,
+  JobAllocation,
   MigrationReviewItem,
   Shipment,
   ShipmentAllocation,
 } from '@/domain/exhibition/types'
-import { validateCiplVersionReady, validateShipmentAllocation } from '@/domain/exhibition/validation'
+import { validateCiplVersionReady, validateJobAllocation, validateJobTransition, validateShipmentAllocation } from '@/domain/exhibition/validation'
 
 export type LocalUser = {
   id: string
@@ -867,4 +869,54 @@ export async function createShipment(ciplId: string, sourceVersionId: string, in
   const timestamp = now()
   const shipment: Shipment = { ...input, id: id(), ciplId, sourceCiplVersionId: sourceVersionId, allocations, legacyReference: input.legacyReference ?? null, createdAt: timestamp, updatedAt: timestamp }
   return put('shipmentsV2', shipment)
+}
+
+export async function listCustomsJobs(shipmentId: string) {
+  return (await readAll<CustomsJob>('customsJobs'))
+    .filter((job) => job.shipmentId === shipmentId)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+}
+
+export type CustomsJobInput = Omit<CustomsJob, 'id' | 'jobNumber' | 'shipmentId' | 'allocations' | 'statusHistory' | 'createdAt' | 'updatedAt'>
+
+/** The counter and CustomsJob live in one transaction, so issued numbers are never reused. */
+export async function createCustomsJob(shipmentId: string, input: CustomsJobInput, allocations: JobAllocation[]) {
+  const shipment = (await readAll<Shipment>('shipmentsV2')).find((item) => item.id === shipmentId)
+  if (!shipment) throw new Error('Shipment tidak ditemukan.')
+  const existing = await listCustomsJobs(shipmentId)
+  const allocationValidation = validateJobAllocation(shipment, existing, allocations)
+  if (!allocationValidation.ok) throw new Error(allocationValidation.issues.map((issue) => issue.message).join(' '))
+  const database = await openDatabase()
+  const timestamp = now()
+  return new Promise<CustomsJob>((resolve, reject) => {
+    const transaction = database.transaction(['customsJobs', 'counters'], 'readwrite')
+    const counterStore = transaction.objectStore('counters')
+    const counterRequest = counterStore.get('customsJobNumber')
+    counterRequest.onsuccess = () => {
+      const counter = (counterRequest.result as { id: string; value: number } | undefined) ?? { id: 'customsJobNumber', value: 0 }
+      const next = counter.value + 1
+      const job: CustomsJob = {
+        ...input, id: id(), jobNumber: `VSS-${String(next).padStart(5, '0')}`, shipmentId, allocations,
+        statusHistory: [], createdAt: timestamp, updatedAt: timestamp,
+      }
+      counterStore.put({ ...counter, value: next })
+      transaction.objectStore('customsJobs').put(job)
+      transaction.oncomplete = () => resolve(job)
+    }
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+  })
+}
+
+export async function updateCustomsJob(jobId: string, patch: Partial<Omit<CustomsJob, 'id' | 'jobNumber' | 'shipmentId' | 'createdAt' | 'allocations' | 'statusHistory'>>, changeReason?: string) {
+  const previous = (await readAll<CustomsJob>('customsJobs')).find((job) => job.id === jobId)
+  if (!previous) throw new Error('Customs Job tidak ditemukan.')
+  const nextStatus = patch.status ?? previous.status
+  const transition = validateJobTransition(previous.status, nextStatus, patch.attachments ?? previous.attachments, changeReason)
+  if (!transition.ok) throw new Error(transition.issues.map((issue) => issue.message).join(' '))
+  const statusHistory = nextStatus === previous.status ? previous.statusHistory : [
+    ...previous.statusHistory,
+    { from: previous.status, to: nextStatus, reason: changeReason?.trim() ?? '', changedAt: now() },
+  ]
+  return put('customsJobs', { ...previous, ...patch, id: previous.id, jobNumber: previous.jobNumber, shipmentId: previous.shipmentId, allocations: previous.allocations, statusHistory, createdAt: previous.createdAt, updatedAt: now() })
 }
