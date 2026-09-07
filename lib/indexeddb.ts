@@ -1,5 +1,11 @@
 'use client'
 
+import type {
+  Cipl,
+  MigrationReviewItem,
+  Shipment,
+} from '@/domain/exhibition/types'
+
 export type LocalUser = {
   id: string
   name: string
@@ -110,16 +116,18 @@ export type LocalExhibitor = {
 }
 
 type StoreName =
-  'jobs' | 'stages' | 'users' | 'events' | 'venues' | 'eos' | 'exhibitors' | 'jobDocuments'
+  | 'jobs' | 'stages' | 'users' | 'events' | 'venues' | 'eos' | 'exhibitors' | 'jobDocuments'
+  | 'coordinationAgents' | 'cipls' | 'ciplVersions' | 'shipmentsV2' | 'customsJobs' | 'counters' | 'migrationReviewItems'
 
 const databaseName = 'vss-project-management'
-const databaseVersion = 4
+const databaseVersion = 5
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(databaseName, databaseVersion)
     request.onupgradeneeded = () => {
       const database = request.result
+      const upgradeTransaction = request.transaction!
       for (const store of [
         'jobs',
         'stages',
@@ -129,14 +137,50 @@ function openDatabase(): Promise<IDBDatabase> {
         'eos',
         'exhibitors',
         'jobDocuments',
+        'coordinationAgents',
+        'cipls',
+        'ciplVersions',
+        'shipmentsV2',
+        'customsJobs',
+        'counters',
+        'migrationReviewItems',
       ] as StoreName[]) {
         if (!database.objectStoreNames.contains(store))
           database.createObjectStore(store, { keyPath: 'id' })
       }
+      createIndex(upgradeTransaction, 'coordinationAgents', 'eventExhibitorId')
+      createIndex(upgradeTransaction, 'coordinationAgents', 'status')
+      createIndex(upgradeTransaction, 'cipls', 'eventExhibitorId')
+      createIndex(upgradeTransaction, 'cipls', 'status')
+      createIndex(upgradeTransaction, 'cipls', 'activeVersionId')
+      createIndex(upgradeTransaction, 'ciplVersions', 'ciplId')
+      createIndex(upgradeTransaction, 'shipmentsV2', 'ciplId')
+      createIndex(upgradeTransaction, 'shipmentsV2', 'sourceCiplVersionId')
+      createIndex(upgradeTransaction, 'shipmentsV2', 'documentNumber')
+      createIndex(upgradeTransaction, 'shipmentsV2', 'status')
+      createIndex(upgradeTransaction, 'customsJobs', 'shipmentId')
+      createIndex(upgradeTransaction, 'customsJobs', 'jobNumber')
+      createIndex(upgradeTransaction, 'customsJobs', 'documentType')
+      createIndex(upgradeTransaction, 'customsJobs', 'status')
+      createIndex(upgradeTransaction, 'migrationReviewItems', 'legacyStore')
+      createIndex(upgradeTransaction, 'migrationReviewItems', 'legacyId')
+      createIndex(upgradeTransaction, 'migrationReviewItems', 'status')
     }
-    request.onsuccess = () => resolve(request.result)
+    request.onsuccess = async () => {
+      try {
+        await migrateLegacyRecords(request.result)
+        resolve(request.result)
+      } catch (error) {
+        reject(error)
+      }
+    }
     request.onerror = () => reject(request.error)
   })
+}
+
+function createIndex(transaction: IDBTransaction, storeName: StoreName, indexName: string) {
+  const store = transaction.objectStore(storeName)
+  if (!store.indexNames.contains(indexName)) store.createIndex(indexName, indexName)
 }
 
 async function readAll<T>(storeName: StoreName): Promise<T[]> {
@@ -163,6 +207,92 @@ function now() {
 
 function id() {
   return crypto.randomUUID()
+}
+
+function requestValue<T>(request: IDBRequest<T>) {
+  return new Promise<T>((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+}
+
+/**
+ * Legacy jobs deliberately never become CustomsJob: their BC document type is unknown.
+ * A marker uses the legacy id, making migration safe to retry after an interrupted upgrade.
+ */
+async function migrateLegacyRecords(database: IDBDatabase) {
+  if (!database.objectStoreNames.contains('jobs')) return
+  const readTransaction = database.transaction('jobs', 'readonly')
+  const jobs = await requestValue(readTransaction.objectStore('jobs').getAll()) as LocalJob[]
+  await Promise.all(jobs.map((legacyJob) => migrateLegacyJob(database, legacyJob)))
+}
+
+async function migrateLegacyJob(database: IDBDatabase, legacyJob: LocalJob) {
+  const markerId = `jobs:${legacyJob.id}`
+  const transaction = database.transaction(
+    ['events', 'exhibitors', 'cipls', 'shipmentsV2', 'migrationReviewItems'],
+    'readwrite',
+  )
+  const markers = transaction.objectStore('migrationReviewItems')
+  if (await requestValue(markers.get(markerId))) return
+
+  const timestamp = now()
+  const review = (reason: string, relatedIds: string[] = []) => {
+    const item: MigrationReviewItem = { id: markerId, legacyStore: 'jobs', legacyId: legacyJob.id, status: 'REVIEW_REQUIRED', reason, relatedIds, createdAt: timestamp, updatedAt: timestamp }
+    markers.put(item)
+  }
+  if (!legacyJob.eventId || !legacyJob.exhibitorId) {
+    review('Parent event atau exhibitor tidak tersedia; pilih relasi yang benar sebelum migrasi.', [])
+    return transactionDone(transaction)
+  }
+  const [event, exhibitor] = await Promise.all([
+    requestValue(transaction.objectStore('events').get(legacyJob.eventId)),
+    requestValue(transaction.objectStore('exhibitors').get(legacyJob.exhibitorId)),
+  ])
+  if (!event || !exhibitor || exhibitor.eventId !== legacyJob.eventId) {
+    review('Relasi parent legacy tidak lagi valid; tidak dibuat event atau exhibitor fiktif.', [])
+    return transactionDone(transaction)
+  }
+  if (!legacyJob.blNumber && !legacyJob.awbNumber) {
+    review('Nomor B/L atau AWB tidak tersedia; shipment operasional tidak dapat dibentuk.', [])
+    return transactionDone(transaction)
+  }
+  const ciplId = `legacy-cipl:${legacyJob.id}`
+  const cipl: Cipl = {
+    id: ciplId, eventExhibitorId: legacyJob.exhibitorId, referenceNumber: null, status: 'AWAITING_DOCUMENT', activeVersionId: null,
+    sourceDocumentUnavailable: true, createdAt: legacyJob.createdAt, updatedAt: timestamp,
+  }
+  transaction.objectStore('cipls').put(cipl)
+  const createShipment = (documentType: Shipment['documentType'], documentNumber: string) => {
+    const shipment: Shipment = {
+      id: `legacy-shipment:${legacyJob.id}:${documentType}`, ciplId, sourceCiplVersionId: '', documentType, documentNumber,
+      shipmentMode: documentType === 'BL' ? legacyJob.shipmentMode : null, direction: legacyJob.type, shipper: legacyJob.shipper,
+      consignee: legacyJob.consignee, notifyParty: legacyJob.notifyParty, carrier: legacyJob.shippingLine, etaOrEtd: null,
+      origin: null, destination: null, allocations: [], attachment: null,
+      status: 'DOCUMENT_RECEIVED', legacyReference: legacyJob.jobNumber, createdAt: legacyJob.createdAt, updatedAt: timestamp,
+    }
+    transaction.objectStore('shipmentsV2').put(shipment)
+    return shipment.id
+  }
+  const shipmentIds = [
+    ...(legacyJob.blNumber ? [createShipment('BL', legacyJob.blNumber)] : []),
+    ...(legacyJob.awbNumber ? [createShipment('AWB', legacyJob.awbNumber)] : []),
+  ]
+  const item: MigrationReviewItem = {
+    id: markerId, legacyStore: 'jobs', legacyId: legacyJob.id, status: legacyJob.blNumber && legacyJob.awbNumber ? 'REVIEW_REQUIRED' : 'MIGRATED',
+    reason: legacyJob.blNumber && legacyJob.awbNumber ? 'B/L dan AWB dipisahkan menjadi dua shipment; alokasi dan attachment perlu direkonsiliasi.' : 'Legacy shipment berhasil dipetakan; jenis BC belum ditentukan sehingga CustomsJob tidak dibuat.',
+    relatedIds: [ciplId, ...shipmentIds], createdAt: timestamp, updatedAt: timestamp,
+  }
+  markers.put(item)
+  return transactionDone(transaction)
+}
+
+function transactionDone(transaction: IDBTransaction) {
+  return new Promise<void>((resolve, reject) => {
+    transaction.oncomplete = () => resolve()
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+  })
 }
 
 async function ensureSeeded() {
