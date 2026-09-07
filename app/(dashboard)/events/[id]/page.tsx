@@ -10,7 +10,7 @@ import {
   Globe2,
   LoaderCircle,
   MapPin,
-  PackagePlus,
+  UserPlus,
   FileStack,
   Pencil,
   Trash2,
@@ -18,10 +18,9 @@ import {
   X,
 } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
-import { EventJobModal } from '@/components/event-job-modal'
+import { EventExhibitorModal } from '@/components/event-exhibitor-modal'
 import {
   deleteEvent,
-  createCipl,
   listCipls,
   listEventExhibitors,
   listEventJobs,
@@ -48,7 +47,7 @@ export default function EventDetailPage() {
   const [jobs, setJobs] = useState<LocalJob[]>([])
   const [ciplCounts, setCiplCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
-  const [addingJob, setAddingJob] = useState(false)
+  const [addingExhibitor, setAddingExhibitor] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleteToast, setDeleteToast] = useState(false)
 
@@ -77,11 +76,6 @@ export default function EventDetailPage() {
     setShowDeleteDialog(false)
     setDeleteToast(true)
     window.setTimeout(() => router.push('/events'), 800)
-  }
-
-  async function handleCreateCipl(exhibitorId: string) {
-    const cipl = await createCipl(exhibitorId)
-    router.push(`/cipls/${cipl.id}`)
   }
 
   if (loading) {
@@ -126,12 +120,12 @@ export default function EventDetailPage() {
           </button>
           <button
             type="button"
-            onClick={() => setAddingJob(true)}
-            aria-label="Tambah job"
-            title="Tambah job penerimaan barang"
+            onClick={() => setAddingExhibitor(true)}
+            aria-label="Tambah exhibitor dan inisiasi Job"
+            title="Tambah exhibitor dan inisiasi Job"
             className="rounded-lg p-2.5 text-emerald-700 hover:bg-emerald-50"
           >
-            <PackagePlus size={19} />
+            <UserPlus size={19} />
           </button>
         </div>
       </div>
@@ -202,11 +196,11 @@ export default function EventDetailPage() {
                       {jobs
                         .filter((job) => job.exhibitorId === exhibitor.id)
                         .map((job) => (
-                          <p key={job.id} className="text-xs text-slate-600">
+                          <Link key={job.id} href={`/jobs/${job.id}`} className="block text-xs text-slate-600 hover:text-orange-700">
                             <span className="font-semibold text-slate-800">{job.jobNumber}</span>
                             {' · '}
                             {job.awbNumber || job.blNumber || 'Dokumen belum diberi nomor'}
-                          </p>
+                          </Link>
                         ))}
                     </div>
                   )}
@@ -216,9 +210,9 @@ export default function EventDetailPage() {
                     <Globe2 size={13} /> {exhibitor.type === 'LOCAL' ? 'Local' : 'International'}
                   </span>
                   <span className="inline-flex items-center gap-1 text-xs text-slate-500"><FileStack size={13} /> {ciplCounts[exhibitor.id] ?? 0} CIPL</span>
-                  <button type="button" onClick={() => handleCreateCipl(exhibitor.id)} className="btn-secondary px-3 py-1.5 text-xs">
-                    Tambah CIPL
-                  </button>
+                  {jobs.find((job) => job.exhibitorId === exhibitor.id) && (
+                    <Link href={`/jobs/${jobs.find((job) => job.exhibitorId === exhibitor.id)!.id}`} className="btn-secondary px-3 py-1.5 text-xs">Buka Job</Link>
+                  )}
                 </div>
               </div>
             ))}
@@ -229,14 +223,17 @@ export default function EventDetailPage() {
           </p>
         )}
       </section>
-      {addingJob && (
-        <EventJobModal
+      {addingExhibitor && (
+        <EventExhibitorModal
           event={event}
-          onSaved={(job) => {
-            setJobs((current) => [...current, job])
-            setAddingJob(false)
+          onSaved={() => {
+            Promise.all([listEventExhibitors(event.id), listEventJobs(event.id)]).then(([nextExhibitors, nextJobs]) => {
+              setExhibitors(nextExhibitors)
+              setJobs(nextJobs)
+            })
+            setAddingExhibitor(false)
           }}
-          onCancel={() => setAddingJob(false)}
+          onCancel={() => setAddingExhibitor(false)}
         />
       )}
       {showDeleteDialog && (

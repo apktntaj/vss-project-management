@@ -7,7 +7,6 @@ import {
   Building2,
   CalendarDays,
   MapPin,
-  PackagePlus,
   Pencil,
   Plus,
   Search,
@@ -15,8 +14,12 @@ import {
   X,
 } from 'lucide-react'
 import { EventForm } from '@/components/event-form'
-import { listEvents, listJobs, type LocalEvent, type LocalJob } from '@/lib/indexeddb'
-import { EventJobModal } from '@/components/event-job-modal'
+import {
+  listEventExhibitors,
+  listEvents,
+  type LocalEvent,
+  type LocalExhibitor,
+} from '@/lib/indexeddb'
 import { EventExhibitorModal } from '@/components/event-exhibitor-modal'
 import { EventTimeline } from '@/components/event-timeline'
 
@@ -115,16 +118,18 @@ function getEventPosition(startsAt: string, endsAt: string, today = new Date()) 
 export default function EventsPage() {
   const router = useRouter()
   const [events, setEvents] = useState<LocalEvent[]>([])
-  const [jobs, setJobs] = useState<LocalJob[]>([])
+  const [exhibitorsByEvent, setExhibitorsByEvent] = useState<Record<string, LocalExhibitor[]>>({})
   const [showNewEvent, setShowNewEvent] = useState(false)
-  const [addingJobToEvent, setAddingJobToEvent] = useState<LocalEvent | null>(null)
   const [addingExhibitorsToEvent, setAddingExhibitorsToEvent] = useState<LocalEvent | null>(null)
+  const [expandedExhibitorEventId, setExpandedExhibitorEventId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<EventFilter>('active')
   const reloadEvents = () => {
-    Promise.all([listEvents(), listJobs()]).then(([loadedEvents, loadedJobs]) => {
+    listEvents().then((loadedEvents) => {
       setEvents(loadedEvents)
-      setJobs(loadedJobs)
+      Promise.all(
+        loadedEvents.map(async (event) => [event.id, await listEventExhibitors(event.id)] as const),
+      ).then((eventExhibitors) => setExhibitorsByEvent(Object.fromEntries(eventExhibitors)))
     })
   }
   useEffect(() => {
@@ -139,6 +144,10 @@ export default function EventsPage() {
       event.venue?.officialName,
       event.venue?.aliasName,
       event.eventOrganizer?.legalName,
+      ...(exhibitorsByEvent[event.id] ?? []).flatMap((exhibitor) => [
+        exhibitor.legalName,
+        exhibitor.aliasName,
+      ]),
     ]
       .filter(Boolean)
       .join(' ')
@@ -161,27 +170,6 @@ export default function EventsPage() {
   return (
     <>
       <div className="space-y-8">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <article className="card p-5">
-            <CalendarDays className="text-orange-600" size={20} />
-            <p className="mt-4 text-sm text-slate-500">Total event</p>
-            <p className="mt-1 text-3xl font-bold">{events.length}</p>
-          </article>
-          <article className="card p-5">
-            <MapPin className="text-blue-600" size={20} />
-            <p className="mt-4 text-sm text-slate-500">Venue terdaftar</p>
-            <p className="mt-1 text-3xl font-bold">
-              {new Set(events.map((event) => event.venueId)).size}
-            </p>
-          </article>
-          <article className="card p-5">
-            <CalendarDays className="text-emerald-600" size={20} />
-            <p className="mt-4 text-sm text-slate-500">Event mendatang</p>
-            <p className="mt-1 text-3xl font-bold">
-              {events.filter((event) => new Date(event.endsAt) >= new Date()).length}
-            </p>
-          </article>
-        </div>
         <section>
           <div className="mb-5 p-0">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -236,6 +224,7 @@ export default function EventsPage() {
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
               {filteredEvents.map((event) => {
                 const isPastEvent = getEventStatus(event.startsAt, event.endsAt) === 'done'
+                const exhibitors = exhibitorsByEvent[event.id] ?? []
                 return (
                   <article
                     key={event.id}
@@ -257,11 +246,21 @@ export default function EventsPage() {
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
                         <h3
-                          className={`mt-2 text-lg font-semibold leading-snug ${
+                          className={`mt-2 min-w-0 overflow-hidden whitespace-nowrap text-lg font-semibold leading-snug ${
                             isPastEvent ? 'text-slate-600' : 'group-hover:text-orange-700'
                           }`}
                         >
-                          {event.officialName}
+                          <span
+                            className={
+                              event.officialName.length > 28
+                                ? 'event-title-marquee inline-block'
+                                : 'inline-block'
+                            }
+                          >
+                            {event.officialName.length > 28
+                              ? `${event.officialName}   •   ${event.officialName}`
+                              : event.officialName}
+                          </span>
                         </h3>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
@@ -287,21 +286,81 @@ export default function EventsPage() {
                     </div>
                     <p className="mt-2 text-sm text-slate-500">{event.alias || ''}</p>
                     <div className="mt-5 space-y-3 border-t pt-4">
-                      <p className="flex items-start gap-2 text-sm text-slate-600">
-                        <CalendarDays className="shrink-0 text-slate-400" size={16} />
-                        <span>{formatEventDateRange(event.startsAt, event.endsAt)}</span>
-                        <span className="shrink-0 rounded-full bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-700">
-                          {getEventTiming(event.startsAt, event.endsAt)}
-                        </span>
-                      </p>
-                      <p className="flex items-start gap-2 text-sm text-slate-600">
-                        <MapPin className="shrink-0 text-slate-400" size={16} />
+                      <div className="grid grid-cols-[16px_minmax(0,1fr)] items-start gap-2 text-sm text-slate-600">
+                        <CalendarDays className="text-slate-400" size={16} />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>{formatEventDateRange(event.startsAt, event.endsAt)}</span>
+                          <span className="shrink-0 rounded-full bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-700">
+                            {getEventTiming(event.startsAt, event.endsAt)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-[16px_minmax(0,1fr)] items-start gap-2 text-sm text-slate-600">
+                        <MapPin className="text-slate-400" size={16} />
                         <span>{event.venue?.officialName || 'Venue belum diinput'}</span>
-                      </p>
-                      <p className="flex items-start gap-2 text-xs text-slate-500">
-                        <Building2 className="shrink-0 text-slate-400" size={15} />
+                      </div>
+                      <div className="grid grid-cols-[16px_minmax(0,1fr)] items-start gap-2 text-xs text-slate-500">
+                        <Building2 className="text-slate-400" size={15} />
                         <span>{event.eventOrganizer?.legalName || 'Belum diinput'}</span>
-                      </p>
+                      </div>
+                      <div className="grid grid-cols-[16px_minmax(0,1fr)] items-start gap-2 text-xs text-slate-500">
+                        <Users className="mt-0.5 text-slate-400" size={15} />
+                        <div>
+                          <button
+                            type="button"
+                            onClick={(clickEvent) => {
+                              clickEvent.stopPropagation()
+                              setExpandedExhibitorEventId((current) =>
+                                current === event.id ? null : event.id,
+                              )
+                            }}
+                            aria-expanded={expandedExhibitorEventId === event.id}
+                            className="font-medium text-slate-600 hover:text-orange-700"
+                          >
+                            {exhibitors.length} exhibitor
+                          </button>
+                          {expandedExhibitorEventId === event.id && exhibitors.length > 0 && (
+                            <div className="relative mt-3 h-36 w-full min-w-[240px] overflow-hidden">
+                              <svg
+                                viewBox="0 0 100 100"
+                                preserveAspectRatio="none"
+                                className="pointer-events-none absolute inset-0 h-full w-full"
+                                aria-hidden="true"
+                              >
+                                {exhibitors.map((exhibitor, index) => {
+                                  const y = ((index + 1) / (exhibitors.length + 1)) * 100
+                                  return (
+                                    <path
+                                      key={exhibitor.id}
+                                      d={`M 25 50 C 38 50, 36 ${y}, 57 ${y}`}
+                                      fill="none"
+                                      stroke="#1f2937"
+                                      strokeWidth="1.2"
+                                    />
+                                  )
+                                })}
+                              </svg>
+                              <span className="absolute left-0 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-700">
+                                Exhibitors
+                              </span>
+                              {exhibitors.map((exhibitor, index) => {
+                                const y = ((index + 1) / (exhibitors.length + 1)) * 100
+                                return (
+                                  <span
+                                    key={exhibitor.id}
+                                    className="absolute left-[57%] w-[42%] -translate-y-1/2 truncate text-xs text-slate-800"
+                                    style={{ top: `${y}%` }}
+                                    title={exhibitor.legalName}
+                                  >
+                                    {exhibitor.legalName}
+                                    {exhibitor.type === 'LOCAL' && ' · Lokal'}
+                                  </span>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </article>
                 )
@@ -358,17 +417,13 @@ export default function EventsPage() {
           </div>
         </div>
       )}
-      {addingJobToEvent && (
-        <EventJobModal
-          event={addingJobToEvent}
-          onSaved={() => setAddingJobToEvent(null)}
-          onCancel={() => setAddingJobToEvent(null)}
-        />
-      )}
       {addingExhibitorsToEvent && (
         <EventExhibitorModal
           event={addingExhibitorsToEvent}
-          onSaved={() => setAddingExhibitorsToEvent(null)}
+          onSaved={() => {
+            setAddingExhibitorsToEvent(null)
+            reloadEvents()
+          }}
           onCancel={() => setAddingExhibitorsToEvent(null)}
         />
       )}

@@ -28,16 +28,16 @@ function normalizeInput(event: FormEvent<HTMLInputElement | HTMLTextAreaElement>
   event.currentTarget.value = event.currentTarget.value.replace(/\s{2,}/g, ' ').toUpperCase()
 }
 
-function formatDateInput(isoDate: string) {
-  const [year, month, day] = isoDate.slice(0, 10).split('-')
-  return `${day}/${month}/${year}`
-}
-
 function parseDateInput(value: string) {
-  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value)
-  if (!match) return null
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  const displayMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value)
+  if (!isoMatch && !displayMatch) return null
 
-  const [, day, month, year] = match
+  const [, isoYear, isoMonth, isoDay] = isoMatch ?? []
+  const [, displayDay, displayMonth, displayYear] = displayMatch ?? []
+  const year = isoYear || displayYear
+  const month = isoMonth || displayMonth
+  const day = isoDay || displayDay
   const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
   if (
     date.getUTCFullYear() !== Number(year) ||
@@ -48,13 +48,6 @@ function parseDateInput(value: string) {
   }
 
   return date
-}
-
-function formatDateValue(value: string) {
-  return value
-    .replace(/\D/g, '')
-    .slice(0, 8)
-    .replace(/(\d{2})(\d{2})(\d{1,4})/, '$1/$2/$3')
 }
 
 function RelationPicker({
@@ -180,8 +173,8 @@ export function EventForm({
         setSelectedVenue(venue)
         setEoQuery(eo?.legalName ?? '')
         setSelectedEo(eo)
-        setStartsAt(formatDateInput(event.startsOn))
-        setEndsAt(formatDateInput(event.endsOn))
+        setStartsAt(event.startsOn)
+        setEndsAt(event.endsOn)
       }
     })
   }, [enableExhibitors, event])
@@ -292,30 +285,25 @@ export function EventForm({
               Tanggal mulai
               <input
                 required
-                type="text"
-                inputMode="numeric"
+                type="date"
                 name="startsAt"
                 value={startsAt}
-                placeholder="dd/mm/yyyy"
                 onChange={(event) => {
-                  const value = formatDateValue(event.target.value)
-                  setStartsAt(value)
-                  if (!endsAt) setEndsAt(value)
+                  setStartsAt(event.target.value)
+                  if (!endsAt) setEndsAt(event.target.value)
                 }}
-                className="input placeholder:text-slate-400"
+                className="input"
               />
             </label>
             <label className="label">
               Tanggal selesai
               <input
                 required
-                type="text"
-                inputMode="numeric"
+                type="date"
                 name="endsAt"
                 value={endsAt}
-                placeholder="dd/mm/yyyy"
-                onChange={(event) => setEndsAt(formatDateValue(event.target.value))}
-                className="input placeholder:text-slate-400"
+                onChange={(event) => setEndsAt(event.target.value)}
+                className="input"
               />
             </label>
           </div>

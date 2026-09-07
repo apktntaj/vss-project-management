@@ -33,6 +33,47 @@ export type LocalStage = {
   updatedAt: string
 }
 
+export type JobTransportLeg = {
+  mode: 'SEA' | 'AIR' | 'LOCAL' | null
+  documentType: 'BL' | 'AWB' | null
+  documentNumber: string | null
+  carrier: string | null
+  scheduleAt: string | null
+  actualAt: string | null
+}
+
+export type JobCiplInfo = {
+  status: 'MISSING' | 'REQUESTED' | 'RECEIVED' | 'VERIFIED'
+  referenceNumber: string | null
+  receivedAt: string | null
+}
+
+export type JobBilling =
+  | { kind: 'NOT_READY' }
+  | { kind: 'NOT_APPLICABLE' }
+  | { kind: 'READY'; amount: number; currency: string }
+  | { kind: 'INVOICED'; amount: number; currency: string; reference: string }
+  | { kind: 'PAID'; reference: string }
+
+export type JobCustomsDocument = {
+  applicable: boolean
+  status: 'NOT_STARTED' | 'PREPARING' | 'SUBMITTED' | 'REGISTERED' | 'RELEASED' | 'COMPLETED' | 'ON_HOLD'
+  ajuNumber: string | null
+  registrationNumber: string | null
+  registrationDate: string | null
+  warehouseName: string | null
+  billing: JobBilling
+}
+
+export type JobOperationalDetails = {
+  inbound: JobTransportLeg
+  outbound: JobTransportLeg
+  cipl: JobCiplInfo
+  customs: Record<'BC_2_3' | 'BC_2_5' | 'BC_3_0', JobCustomsDocument>
+}
+
+export type JobDocumentKind = 'SOURCE' | 'INBOUND_TRANSPORT' | 'OUTBOUND_TRANSPORT' | 'CIPL' | 'BC_2_3' | 'BC_2_5' | 'BC_3_0' | 'OTHER'
+
 export type LocalJob = {
   id: string
   jobNumber: string
@@ -60,8 +101,10 @@ export type LocalJob = {
   createdAt: string
   updatedAt: string
   assignedTo?: LocalUser | null
+  exhibitor?: LocalExhibitor | null
   stages: LocalStage[]
   documents: LocalJobDocument[]
+  operational?: JobOperationalDetails
 }
 
 export type LocalJobDocument = {
@@ -72,6 +115,7 @@ export type LocalJobDocument = {
   fileSize: number
   file: Blob
   createdAt: string
+  kind?: JobDocumentKind
 }
 
 export type LocalVenue = {
@@ -228,6 +272,52 @@ function localMidnight(dateOnly: string) {
 
 function id() {
   return crypto.randomUUID()
+}
+
+function emptyCustomsDocument(applicable = true): JobCustomsDocument {
+  return {
+    applicable,
+    status: 'NOT_STARTED',
+    ajuNumber: null,
+    registrationNumber: null,
+    registrationDate: null,
+    warehouseName: null,
+    billing: applicable ? { kind: 'NOT_READY' } : { kind: 'NOT_APPLICABLE' },
+  }
+}
+
+/** Gives pre-existing event-initialized Jobs a useful operational starting point. */
+export function getOperationalDetails(job: Pick<LocalJob, 'operational' | 'blNumber' | 'awbNumber' | 'shippingLine'>): JobOperationalDetails {
+  if (job.operational) return job.operational
+  const documentType = job.blNumber ? 'BL' : job.awbNumber ? 'AWB' : null
+  return {
+    inbound: {
+      mode: documentType === 'BL' ? 'SEA' : documentType === 'AWB' ? 'AIR' : null,
+      documentType,
+      documentNumber: job.blNumber ?? job.awbNumber,
+      carrier: job.shippingLine,
+      scheduleAt: null,
+      actualAt: null,
+    },
+    outbound: { mode: null, documentType: null, documentNumber: null, carrier: null, scheduleAt: null, actualAt: null },
+    cipl: { status: 'MISSING', referenceNumber: null, receivedAt: null },
+    customs: {
+      BC_2_3: emptyCustomsDocument(),
+      BC_2_5: emptyCustomsDocument(false),
+      BC_3_0: emptyCustomsDocument(),
+    },
+  }
+}
+
+function initializeJobForExhibitor(exhibitor: LocalExhibitor, jobNumber: string, timestamp = now()): LocalJob {
+  return {
+    id: id(), jobNumber, awbNumber: null, blNumber: null, shipper: exhibitor.legalName,
+    consignee: null, notifyParty: null, agent: null, shippingLine: null, cargoDescription: null,
+    shipmentMode: null, cargoDetails: null, journeyDetails: null, type: 'IMPORT',
+    clientName: exhibitor.legalName, clientInfo: null, status: 'DRAFT', notes: null,
+    trackingToken: id(), assignedToId: null, eventId: exhibitor.eventId, exhibitorId: exhibitor.id,
+    sourceDocumentName: null, createdAt: timestamp, updatedAt: timestamp, stages: [], documents: [],
+  }
 }
 
 function requestValue<T>(request: IDBRequest<T>) {
@@ -516,12 +606,27 @@ export async function listUsers() {
 
 export async function listJobs(filters: { search?: string; status?: string } = {}) {
   await ensureDemoEvents()
-  const [jobs, stages, users, documents] = await Promise.all([
+  const [jobs, stages, users, documents, exhibitors] = await Promise.all([
     readAll<LocalJob>('jobs'),
     readAll<LocalStage>('stages'),
     ensureSeeded(),
     readAll<LocalJobDocument>('jobDocuments'),
+    readAll<LocalExhibitor>('exhibitors'),
   ])
+  const linkedExhibitorIds = new Set(jobs.flatMap((job) => job.exhibitorId ? [job.exhibitorId] : []))
+  const missingJobs = exhibitors.filter((exhibitor) => !linkedExhibitorIds.has(exhibitor.id))
+  if (missingJobs.length) {
+    const usedNumbers = new Set(jobs.map((job) => job.jobNumber))
+    let sequence = jobs.length + 1
+    const nextNumber = () => {
+      let value = `VSS-${String(sequence++).padStart(4, '0')}`
+      while (usedNumbers.has(value)) value = `VSS-${String(sequence++).padStart(4, '0')}`
+      usedNumbers.add(value)
+      return value
+    }
+    await Promise.all(missingJobs.map((exhibitor) => put('jobs', initializeJobForExhibitor(exhibitor, nextNumber()))))
+    return listJobs(filters)
+  }
   const search = filters.search?.toLowerCase() ?? ''
   return jobs
     .filter(
@@ -534,7 +639,9 @@ export async function listJobs(filters: { search?: string; status?: string } = {
     )
     .map((job) => ({
       ...job,
+      operational: getOperationalDetails(job),
       assignedTo: users.find((user) => user.id === job.assignedToId) ?? null,
+      exhibitor: exhibitors.find((exhibitor) => exhibitor.id === job.exhibitorId) ?? null,
       stages: stages.filter((stage) => stage.jobId === job.id).sort((a, b) => a.order - b.order),
       documents: documents.filter((document) => document.jobId === job.id),
     }))
@@ -587,13 +694,20 @@ export type EventExhibitorInput = Omit<LocalExhibitor, 'id' | 'eventId' | 'creat
 
 export async function saveEventExhibitors(eventId: string, inputs: EventExhibitorInput[]) {
   const database = await openDatabase()
-  const existing = await listEventExhibitors(eventId)
+  const [existing, existingJobs] = await Promise.all([
+    listEventExhibitors(eventId),
+    readAll<LocalJob>('jobs'),
+  ])
   const timestamp = now()
 
   return new Promise<LocalExhibitor[]>((resolve, reject) => {
-    const transaction = database.transaction(['exhibitors', 'cipls'], 'readwrite')
+    const transaction = database.transaction(['exhibitors', 'cipls', 'jobs'], 'readwrite')
     const store = transaction.objectStore('exhibitors')
+    const jobStore = transaction.objectStore('jobs')
     const existingById = new Map(existing.map((exhibitor) => [exhibitor.id, exhibitor]))
+    const jobsByExhibitor = new Map(
+      existingJobs.flatMap((job) => job.exhibitorId ? [[job.exhibitorId, job] as const] : []),
+    )
     const submittedIds = new Set(inputs.flatMap((input) => input.id ? [input.id] : []))
     const exhibitors = inputs.map((input) => {
       const previous = input.id ? existingById.get(input.id) : undefined
@@ -608,16 +722,44 @@ export async function saveEventExhibitors(eventId: string, inputs: EventExhibito
     })
     const ciplStore = transaction.objectStore('cipls')
     existing.filter((exhibitor) => !submittedIds.has(exhibitor.id)).forEach((exhibitor) => {
+      if (jobsByExhibitor.has(exhibitor.id)) {
+        transaction.abort()
+        return
+      }
       const request = ciplStore.index('eventExhibitorId').count(exhibitor.id)
       request.onsuccess = () => {
         if (request.result > 0) transaction.abort()
         else store.delete(exhibitor.id)
       }
     })
-    exhibitors.forEach((exhibitor) => store.put(exhibitor))
+    const usedJobNumbers = new Set(existingJobs.map((job) => job.jobNumber))
+    let sequence = existingJobs.length + 1
+    const nextJobNumber = () => {
+      let value = `VSS-${String(sequence++).padStart(4, '0')}`
+      while (usedJobNumbers.has(value)) value = `VSS-${String(sequence++).padStart(4, '0')}`
+      usedJobNumbers.add(value)
+      return value
+    }
+    exhibitors.forEach((exhibitor) => {
+      store.put(exhibitor)
+      const existingJob = jobsByExhibitor.get(exhibitor.id)
+      if (existingJob) {
+        jobStore.put({
+          ...existingJob,
+          eventId,
+          exhibitorId: exhibitor.id,
+          clientName: exhibitor.legalName,
+          shipper: exhibitor.legalName,
+          updatedAt: timestamp,
+        })
+        return
+      }
+      const job = initializeJobForExhibitor(exhibitor, nextJobNumber(), timestamp)
+      jobStore.put(job)
+    })
     transaction.oncomplete = () => resolve(exhibitors)
     transaction.onerror = () => reject(transaction.error ?? new Error('Gagal menyimpan exhibitor.'))
-    transaction.onabort = () => reject(new Error('Exhibitor yang masih dirujuk CIPL tidak dapat dihapus.'))
+    transaction.onabort = () => reject(new Error('Exhibitor yang sudah memiliki Job atau CIPL tidak dapat dihapus dari form ini.'))
   })
 }
 
@@ -720,7 +862,7 @@ export type JobInput = Pick<
   sourceDocumentName?: string | null
 }
 
-export async function saveJobDocument(jobId: string, file: File): Promise<LocalJobDocument> {
+export async function saveJobDocument(jobId: string, file: File, kind: JobDocumentKind = 'SOURCE'): Promise<LocalJobDocument> {
   const document: LocalJobDocument = {
     id: id(),
     jobId,
@@ -729,8 +871,45 @@ export async function saveJobDocument(jobId: string, file: File): Promise<LocalJ
     fileSize: file.size,
     file,
     createdAt: now(),
+    kind,
   }
   return put('jobDocuments', document)
+}
+
+export type JobOperationalAttachment = { kind: JobDocumentKind; file: File }
+
+/** Saves Job details and newly attached PDFs as one IndexedDB transaction. */
+export async function saveJobOperationalDetails(
+  jobId: string,
+  patch: Pick<LocalJob, 'clientName' | 'agent' | 'shipper' | 'consignee' | 'notifyParty' | 'assignedToId' | 'status' | 'notes'> & { operational: JobOperationalDetails },
+  attachments: JobOperationalAttachment[] = [],
+) {
+  const previous = await getJob(jobId)
+  if (!previous) throw new Error('Job tidak ditemukan.')
+  const timestamp = now()
+  const job: LocalJob = {
+    ...previous,
+    ...patch,
+    id: previous.id,
+    jobNumber: previous.jobNumber,
+    eventId: previous.eventId,
+    createdAt: previous.createdAt,
+    updatedAt: timestamp,
+    stages: previous.stages,
+    documents: previous.documents,
+  }
+  const documents: LocalJobDocument[] = attachments.map(({ kind, file }) => ({
+    id: id(), jobId, kind, fileName: file.name, mimeType: 'application/pdf', fileSize: file.size, file, createdAt: timestamp,
+  }))
+  const database = await openDatabase()
+  return new Promise<LocalJob>((resolve, reject) => {
+    const transaction = database.transaction(['jobs', 'jobDocuments'], 'readwrite')
+    transaction.objectStore('jobs').put(job)
+    documents.forEach((document) => transaction.objectStore('jobDocuments').put(document))
+    transaction.oncomplete = () => resolve(job)
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+  })
 }
 
 export async function saveJob(input: JobInput, existingId?: string) {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Plus, Trash2, X } from 'lucide-react'
 import {
   listEventExhibitors,
@@ -28,22 +28,14 @@ export function EventExhibitorModal({
   onSaved: () => void
   onCancel: () => void
 }) {
-  const [exhibitors, setExhibitors] = useState<EventExhibitorInput[]>([])
+  const [exhibitors, setExhibitors] = useState<EventExhibitorInput[]>([emptyExhibitor()])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    listEventExhibitors(event.id).then((items) => {
-      setExhibitors(
-        items.map(({ eventId, createdAt, updatedAt, ...exhibitor }) => exhibitor),
-      )
-    })
-  }, [event.id])
-
   function updateExhibitor(index: number, field: 'legalName' | 'phone', value: string) {
     setExhibitors((current) =>
-      current.map((exhibitor, currentIndex) =>
-        currentIndex === index ? { ...exhibitor, [field]: value || null } : exhibitor,
+      current.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [field]: value || null } : item,
       ),
     )
   }
@@ -58,10 +50,12 @@ export function EventExhibitorModal({
     setSaving(true)
     setError('')
     try {
-      await saveEventExhibitors(event.id, exhibitors)
+      const existing = await listEventExhibitors(event.id)
+      const existingInputs = existing.map(({ eventId, createdAt, updatedAt, ...item }) => item)
+      await saveEventExhibitors(event.id, [...existingInputs, ...exhibitors])
       onSaved()
-    } catch {
-      setError('Tidak dapat menyimpan exhibitor.')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Tidak dapat menyimpan exhibitor dan Job.')
     } finally {
       setSaving(false)
     }
@@ -87,7 +81,7 @@ export function EventExhibitorModal({
             <h2 id="add-exhibitor-title" className="text-xl font-bold">
               Tambah exhibitor
             </h2>
-            <p className="mt-1 text-sm text-slate-500">{event.officialName}</p>
+            <p className="mt-1 text-sm text-slate-500">{event.officialName} · satu exhibitor akan menjadi satu Job</p>
           </div>
           <button
             type="button"
@@ -120,16 +114,18 @@ export function EventExhibitorModal({
                   />
                   Local
                 </label>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setExhibitors((current) => current.filter((_, itemIndex) => itemIndex !== index))
-                  }
-                  aria-label={`Hapus exhibitor ${index + 1}`}
-                  className="rounded-md p-1.5 text-rose-600 hover:bg-rose-50"
-                >
-                  <Trash2 size={16} />
-                </button>
+                {exhibitors.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExhibitors((current) => current.filter((_, itemIndex) => itemIndex !== index))
+                    }
+                    aria-label={`Hapus exhibitor ${index + 1}`}
+                    className="rounded-md p-1.5 text-rose-600 hover:bg-rose-50"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
               </div>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <label className="label">
@@ -154,11 +150,6 @@ export function EventExhibitorModal({
               </div>
             </div>
           ))}
-          {!exhibitors.length && (
-            <p className="rounded-xl border border-dashed border-black/15 px-4 py-8 text-center text-sm text-slate-500">
-              Belum ada exhibitor.
-            </p>
-          )}
           <button
             type="button"
             onClick={() => setExhibitors((current) => [...current, emptyExhibitor()])}
@@ -172,7 +163,7 @@ export function EventExhibitorModal({
           {error && <p className="mb-4 text-sm text-rose-700">{error}</p>}
           <div className="flex justify-end gap-3">
             <button disabled={saving} className="btn-primary">
-              {saving ? 'Menyimpan...' : 'Simpan'}
+              {saving ? 'Menyimpan...' : 'Simpan & inisiasi Job'}
             </button>
             <button type="button" onClick={onCancel} className="btn-secondary">
               Batal
