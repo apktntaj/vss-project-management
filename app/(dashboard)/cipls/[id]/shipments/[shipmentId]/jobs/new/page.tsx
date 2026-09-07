@@ -1,0 +1,11 @@
+'use client'
+
+import { useState, type FormEvent } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { createCustomsJob } from '@/lib/indexeddb'
+
+export default function NewCustomsJobPage() {
+  const params = useParams<{ id: string; shipmentId: string }>(); const router = useRouter(); const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
+  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); setSaving(true); setError(''); try { await createCustomsJob(params.shipmentId, { documentType: String(form.get('documentType')) as 'BC_2_3' | 'BC_2_5' | 'BC_3_0', ajuNumber: String(form.get('ajuNumber') || '').trim() || null, registrationNumber: null, registrationDate: null, warehouseId: null, warehouseName: null, assignedToId: null, billing: { kind: 'NOT_READY' }, status: 'DRAFT', attachments: [], notes: String(form.get('notes') || '').trim() || null }, []); router.push(`/cipls/${params.id}/shipments/${params.shipmentId}`) } catch (caught) { setError(caught instanceof Error ? caught.message : 'Customs Job tidak dapat disimpan.') } finally { setSaving(false) } }
+  return <div className="mx-auto max-w-2xl"><form onSubmit={submit} className="card p-6 sm:p-8"><h1 className="text-2xl font-bold">Buat Customs Job</h1><p className="mt-2 text-sm text-slate-500">Dokumen BC direkam per Job dan selalu berada di bawah satu Shipment.</p><div className="mt-6 grid gap-5"><label className="label">Jenis dokumen BC<select name="documentType" className="input mt-1"><option value="BC_2_3">BC 2.3</option><option value="BC_2_5">BC 2.5</option><option value="BC_3_0">BC 3.0</option></select></label><label className="label">Nomor aju (opsional)<input name="ajuNumber" className="input mt-1"/></label><label className="label">Catatan<textarea name="notes" className="input mt-1 min-h-24"/></label></div>{error && <p className="mt-5 text-sm text-rose-700">{error}</p>}<div className="mt-6 flex justify-end gap-3"><button type="button" onClick={() => router.back()} className="btn-secondary">Batal</button><button disabled={saving} className="btn-primary">{saving ? 'Menyimpan...' : 'Simpan Job'}</button></div></form></div>
+}

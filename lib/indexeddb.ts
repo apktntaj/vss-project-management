@@ -857,6 +857,10 @@ export async function listShipments(ciplId: string) {
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
 }
 
+export async function getShipment(shipmentId: string) {
+  return (await readAll<Shipment>('shipmentsV2')).find((shipment) => shipment.id === shipmentId) ?? null
+}
+
 export type ShipmentInput = Omit<Shipment, 'id' | 'ciplId' | 'sourceCiplVersionId' | 'allocations' | 'createdAt' | 'updatedAt' | 'legacyReference'> & { legacyReference?: string | null }
 
 export async function createShipment(ciplId: string, sourceVersionId: string, input: ShipmentInput, allocations: ShipmentAllocation[]) {

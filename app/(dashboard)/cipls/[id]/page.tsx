@@ -56,7 +56,7 @@ export default function CiplDetailPage() {
       <section className="card p-6 sm:p-8">
         <div className="flex items-center justify-between gap-4"><div><h2 className="text-lg font-semibold">Shipment</h2><p className="mt-1 text-sm text-slate-500">Setiap shipment memakai tepat satu B/L atau AWB.</p></div><Package className="text-blue-600" size={22} /></div>
         {activeVersion && <Link href={`/cipls/${cipl.id}/shipments/new?version=${activeVersion.id}`} className="btn-secondary mt-5"><Plus size={16} /> Buat shipment</Link>}
-        {shipments.length ? <div className="mt-5 divide-y rounded-xl border">{shipments.map((shipment) => <div key={shipment.id} className="flex items-center justify-between gap-4 p-4"><div><p className="font-semibold">{shipment.documentType} · {shipment.documentNumber}</p><p className="mt-1 text-sm text-slate-500">{shipment.direction} · {shipment.allocations.length} alokasi item</p></div><StatusBadge status={shipment.status} /></div>)}</div> : <p className="mt-5 text-sm text-slate-500">Belum ada shipment.</p>}
+{shipments.length ? <div className="mt-5 divide-y rounded-xl border">{shipments.map((shipment) => <Link href={`/cipls/${cipl.id}/shipments/${shipment.id}`} key={shipment.id} className="flex items-center justify-between gap-4 p-4 hover:bg-slate-50"><div><p className="font-semibold">{shipment.documentType} · {shipment.documentNumber}</p><p className="mt-1 text-sm text-slate-500">{shipment.direction} · {shipment.allocations.length} alokasi item</p></div><StatusBadge status={shipment.status} /></Link>)}</div> : <p className="mt-5 text-sm text-slate-500">Belum ada shipment.</p>}
       </section>
     </div>
   )
