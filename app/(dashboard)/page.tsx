@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { CalendarDays, MapPin } from 'lucide-react'
 import { EventTimeline } from '@/components/event-timeline'
-import { listEvents, type LocalEvent } from '@/lib/indexeddb'
+import { listEvents, type LocalEvent } from '@/lib/data-client'
 
 export default function Dashboard() {
   const [events, setEvents] = useState<LocalEvent[]>([])

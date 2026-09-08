@@ -1,0 +1,21 @@
+{
+  "extends": ["next/core-web-vitals"],
+  "overrides": [
+    {
+      "files": ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@/lib/indexeddb",
+                "message": "Use @/lib/data-client so UI remains independent of the storage adapter."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

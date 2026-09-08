@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams, useParams, useRouter } from 'next/navigation'
-import { createShipment, listCiplVersions } from '@/lib/indexeddb'
+import { createShipment, listCiplVersions } from '@/lib/data-client'
 import type { CiplVersion } from '@/domain/exhibition/types'
 export default function NewShipmentPage() {
   const params = useParams<{ id: string }>(); const search = useSearchParams(); const router = useRouter(); const versionId = search.get('version')

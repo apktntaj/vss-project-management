@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { Plus, ReceiptText } from 'lucide-react'
 import { useParams } from 'next/navigation'
-import { getShipment, listCustomsJobs } from '@/lib/indexeddb'
+import { getShipment, listCustomsJobs } from '@/lib/data-client'
 import type { CustomsJob, Shipment } from '@/domain/exhibition/types'
 import { StatusBadge } from '@/components/status-badge'
 

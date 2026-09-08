@@ -1,6 +1,7 @@
 /** Domain model khusus MVP pameran. Tidak bergantung pada model project v2. */
 export type DateOnly = string
-export type Attachment = { id: string; fileName: string; mimeType: 'application/pdf'; fileSize: number; file: Blob; createdAt: string }
+/** Storage-neutral metadata. File bytes are retrieved through the attachment repository. */
+export type Attachment = { id: string; fileName: string; mimeType: 'application/pdf'; fileSize: number; createdAt: string }
 
 export type CoordinationAgent = {
   id: string; eventExhibitorId: string; organizationName: string; contactName: string | null

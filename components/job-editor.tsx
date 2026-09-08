@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Save } from 'lucide-react'
-import { getJob, getOperationalDetails, saveJobOperationalDetails, type JobCustomsDocument, type JobDocumentKind, type LocalJob } from '@/lib/indexeddb'
+import { getJob, getOperationalDetails, saveJobOperationalDetails, type JobCustomsDocument, type JobDocumentKind, type LocalJob } from '@/lib/data-client'
 
 const text = (form: FormData, key: string) => String(form.get(key) || '').trim() || null
 const statuses = ['NOT_STARTED', 'PREPARING', 'SUBMITTED', 'REGISTERED', 'RELEASED', 'COMPLETED', 'ON_HOLD'] as const

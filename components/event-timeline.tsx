@@ -1,4 +1,4 @@
-import type { LocalEvent } from '@/lib/indexeddb'
+import type { LocalEvent } from '@/lib/data-client'
 
 const DAY = 24 * 60 * 60 * 1000
 

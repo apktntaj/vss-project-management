@@ -1,7 +1,7 @@
 'use client'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { getJob, listUsers, saveJob, type LocalJob, type LocalUser } from '@/lib/indexeddb'
+import { getJob, listUsers, saveJob, type LocalJob, type LocalUser } from '@/lib/data-client'
 
 export function JobForm({ jobId }: { jobId?: string }) {
 	const router = useRouter()

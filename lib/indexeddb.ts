@@ -1,6 +1,7 @@
 'use client'
 
 import type {
+  Attachment,
   Cipl,
   CiplItem,
   CiplStatus,
@@ -13,6 +14,7 @@ import type {
   ShipmentAllocation,
 } from '@/domain/exhibition/types'
 import { validateCiplVersionReady, validateJobAllocation, validateJobTransition, validateShipmentAllocation } from '@/domain/exhibition/validation'
+import { createMockData, MOCK_DATA_VERSION } from '@/lib/mock-data'
 
 export type LocalUser = {
   id: string
@@ -113,9 +115,31 @@ export type LocalJobDocument = {
   fileName: string
   mimeType: 'application/pdf'
   fileSize: number
-  file: Blob
+  attachmentId: string
   createdAt: string
   kind?: JobDocumentKind
+}
+
+/** File bytes are an application input, never part of a persisted domain entity. */
+export type AttachmentUpload = {
+  id: string
+  fileName: string
+  mimeType: 'application/pdf'
+  fileSize: number
+  content: Blob
+  createdAt: string
+}
+
+type StoredFile = {
+  id: string
+  ownerType: 'CIPL_VERSION' | 'SHIPMENT' | 'CUSTOMS_JOB' | 'LEGACY_JOB'
+  ownerId: string
+  kind: string | null
+  fileName: string
+  mimeType: 'application/pdf'
+  fileSize: number
+  content: Blob
+  createdAt: string
 }
 
 export type LocalVenue = {
@@ -150,6 +174,9 @@ export type LocalEvent = {
   endsOn: string
   createdAt: string
   updatedAt: string
+  status: 'ACTIVE' | 'CANCELLED'
+  cancellationReason: string | null
+  cancelledAt: string | null
   venueId: string
   eoId: string
   venue?: LocalVenue
@@ -172,15 +199,15 @@ export type LocalExhibitor = {
 
 type StoreName =
   | 'jobs' | 'stages' | 'users' | 'events' | 'venues' | 'eos' | 'exhibitors' | 'jobDocuments'
-  | 'coordinationAgents' | 'cipls' | 'ciplVersions' | 'shipmentsV2' | 'customsJobs' | 'counters' | 'migrationReviewItems'
+  | 'coordinationAgents' | 'cipls' | 'ciplVersions' | 'shipmentsV2' | 'customsJobs' | 'counters' | 'migrationReviewItems' | 'files'
 
 const databaseName = 'vss-project-management'
-const databaseVersion = 5
+const databaseVersion = 7
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(databaseName, databaseVersion)
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (upgradeEvent) => {
       const database = request.result
       const upgradeTransaction = request.transaction!
       for (const store of [
@@ -199,6 +226,7 @@ function openDatabase(): Promise<IDBDatabase> {
         'customsJobs',
         'counters',
         'migrationReviewItems',
+        'files',
       ] as StoreName[]) {
         if (!database.objectStoreNames.contains(store))
           database.createObjectStore(store, { keyPath: 'id' })
@@ -220,10 +248,28 @@ function openDatabase(): Promise<IDBDatabase> {
       createIndex(upgradeTransaction, 'migrationReviewItems', 'legacyStore')
       createIndex(upgradeTransaction, 'migrationReviewItems', 'legacyId')
       createIndex(upgradeTransaction, 'migrationReviewItems', 'status')
+      createIndex(upgradeTransaction, 'files', 'ownerType')
+      createIndex(upgradeTransaction, 'files', 'ownerId')
+      if (upgradeEvent.oldVersion < 7) {
+        const events = upgradeTransaction.objectStore('events')
+        events.openCursor().onsuccess = (cursorEvent) => {
+          const cursor = (cursorEvent.target as IDBRequest<IDBCursorWithValue | null>).result
+          if (!cursor) return
+          const event = cursor.value as Partial<LocalEvent>
+          cursor.update({
+            ...event,
+            status: event.status ?? 'ACTIVE',
+            cancellationReason: event.cancellationReason ?? null,
+            cancelledAt: event.cancelledAt ?? null,
+          })
+          cursor.continue()
+        }
+      }
     }
     request.onsuccess = async () => {
       try {
         await migrateLegacyRecords(request.result)
+        await migrateAttachmentRecords(request.result)
         resolve(request.result)
       } catch (error) {
         reject(error)
@@ -240,6 +286,10 @@ function createIndex(transaction: IDBTransaction, storeName: StoreName, indexNam
 
 async function readAll<T>(storeName: StoreName): Promise<T[]> {
   const database = await openDatabase()
+  return readAllFromDatabase<T>(database, storeName)
+}
+
+function readAllFromDatabase<T>(database: IDBDatabase, storeName: StoreName): Promise<T[]> {
   return new Promise((resolve, reject) => {
     const request = database.transaction(storeName, 'readonly').objectStore(storeName).getAll()
     request.onsuccess = () => resolve(request.result as T[])
@@ -325,6 +375,91 @@ function requestValue<T>(request: IDBRequest<T>) {
     request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error)
   })
+}
+
+function attachmentMetadata(upload: AttachmentUpload): Attachment {
+  const { content: _content, ...attachment } = upload
+  return attachment
+}
+
+function toStoredFile(
+  upload: AttachmentUpload,
+  ownerType: StoredFile['ownerType'],
+  ownerId: string,
+  kind: string | null = null,
+): StoredFile {
+  return { ...upload, ownerType, ownerId, kind }
+}
+
+type LegacyAttachment = Attachment & { file?: Blob }
+type LegacyJobDocument = Omit<LocalJobDocument, 'attachmentId'> & { file?: Blob; attachmentId?: string }
+
+/**
+ * Moves file bytes out of aggregate records after the v5 -> v6 schema upgrade.
+ * The writes share one transaction and use stable attachment IDs, so retrying is safe.
+ */
+async function migrateAttachmentRecords(database: IDBDatabase) {
+  const [versions, shipments, customsJobs, documents] = await Promise.all([
+    readAllFromDatabase<CiplVersion>(database, 'ciplVersions'),
+    readAllFromDatabase<Shipment>(database, 'shipmentsV2'),
+    readAllFromDatabase<CustomsJob>(database, 'customsJobs'),
+    readAllFromDatabase<LegacyJobDocument>(database, 'jobDocuments'),
+  ])
+  const versionUpdates: CiplVersion[] = []
+  const shipmentUpdates: Shipment[] = []
+  const jobUpdates: CustomsJob[] = []
+  const documentUpdates: LocalJobDocument[] = []
+  const files: StoredFile[] = []
+  const collect = (attachment: LegacyAttachment | null, ownerType: StoredFile['ownerType'], ownerId: string, kind: string | null) => {
+    if (!attachment || !(attachment.file instanceof Blob)) return attachment
+    const { file, ...metadata } = attachment
+    files.push({ ...metadata, content: file, ownerType, ownerId, kind })
+    return metadata
+  }
+
+  versions.forEach((version) => {
+    const sourceDocument = collect(version.sourceDocument as LegacyAttachment | null, 'CIPL_VERSION', version.id, 'SOURCE')
+    if (sourceDocument !== version.sourceDocument) versionUpdates.push({ ...version, sourceDocument })
+  })
+  shipments.forEach((shipment) => {
+    const attachment = collect(shipment.attachment as LegacyAttachment | null, 'SHIPMENT', shipment.id, 'TRANSPORT')
+    if (attachment !== shipment.attachment) shipmentUpdates.push({ ...shipment, attachment })
+  })
+  customsJobs.forEach((job) => {
+    const attachments = job.attachments.map((attachment) => collect(attachment as LegacyAttachment, 'CUSTOMS_JOB', job.id, 'EVIDENCE') as Attachment)
+    if (attachments.some((attachment, index) => attachment !== job.attachments[index])) jobUpdates.push({ ...job, attachments })
+  })
+  documents.forEach((document) => {
+    if (!(document.file instanceof Blob)) return
+    const { file, ...metadata } = document
+    files.push({
+      id: document.attachmentId ?? document.id,
+      ownerType: 'LEGACY_JOB', ownerId: document.jobId, kind: document.kind ?? 'SOURCE',
+      fileName: document.fileName, mimeType: document.mimeType, fileSize: document.fileSize,
+      content: file, createdAt: document.createdAt,
+    })
+    documentUpdates.push({ ...metadata, attachmentId: document.attachmentId ?? document.id })
+  })
+  if (!files.length) return
+
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(['files', 'ciplVersions', 'shipmentsV2', 'customsJobs', 'jobDocuments'], 'readwrite')
+    files.forEach((file) => transaction.objectStore('files').put(file))
+    versionUpdates.forEach((version) => transaction.objectStore('ciplVersions').put(version))
+    shipmentUpdates.forEach((shipment) => transaction.objectStore('shipmentsV2').put(shipment))
+    jobUpdates.forEach((job) => transaction.objectStore('customsJobs').put(job))
+    documentUpdates.forEach((document) => transaction.objectStore('jobDocuments').put(document))
+    transaction.oncomplete = () => resolve()
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+  })
+}
+
+/** Returns attachment bytes without leaking the active storage implementation to UI code. */
+export async function getAttachmentContent(attachmentId: string): Promise<Blob | null> {
+  const database = await openDatabase()
+  const file = await requestValue(database.transaction('files', 'readonly').objectStore('files').get(attachmentId)) as StoredFile | undefined
+  return file?.content ?? null
 }
 
 /**
@@ -423,181 +558,21 @@ async function ensureSeeded() {
 }
 
 async function ensureDemoEvents() {
-  const events = await readAll<LocalEvent>('events')
-  if (events.length) return
+  const seedMarkers = await readAll<{ id: string; value: number }>('counters')
+  const marker = seedMarkers.find((item) => item.id === 'mockDataVersion')
+  if (marker && marker.value >= MOCK_DATA_VERSION) return
 
-  const timestamp = now()
-  const venueJakarta: LocalVenue = {
-    id: 'demo-venue-jakarta',
-    officialName: 'JAKARTA INTERNATIONAL EXPO',
-    aliasName: 'JIEXPO',
-    address: 'Kemayoran, Jakarta',
-    latitude: null,
-    longitude: null,
-    contactInfo: null,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  }
-  const venueBali: LocalVenue = {
-    id: 'demo-venue-bali',
-    officialName: 'BALI INTERNATIONAL CONVENTION CENTRE',
-    aliasName: 'BICC',
-    address: 'Nusa Dua, Bali',
-    latitude: null,
-    longitude: null,
-    contactInfo: null,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  }
-  const eoJakarta: LocalEo = {
-    id: 'demo-eo-jakarta',
-    legalName: 'NUSANTARA EVENT ORGANIZER',
-    aliasName: 'NEO',
-    contactInfo: null,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  }
-  const eoBali: LocalEo = {
-    id: 'demo-eo-bali',
-    legalName: 'ARCHIPELAGO EXHIBITION',
-    aliasName: 'AE',
-    contactInfo: null,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  }
-  const eventsToSeed: LocalEvent[] = [
-    {
-      id: 'demo-event-tech-expo',
-      officialName: 'INDONESIA TECH EXPO 2026',
-      alias: 'ITE 2026',
-      startsAt: '2026-09-08T00:00:00.000Z',
-      endsAt: '2026-09-12T23:59:59.000Z',
-      startsOn: '2026-09-08',
-      endsOn: '2026-09-12',
-      createdAt: '2026-08-01T00:00:00.000Z',
-      updatedAt: timestamp,
-      venueId: venueJakarta.id,
-      eoId: eoJakarta.id,
-    },
-    {
-      id: 'demo-event-retail-summit',
-      officialName: 'INDONESIA RETAIL SUMMIT 2026',
-      alias: 'IRS 2026',
-      startsAt: '2026-09-10T00:00:00.000Z',
-      endsAt: '2026-09-14T23:59:59.000Z',
-      startsOn: '2026-09-10',
-      endsOn: '2026-09-14',
-      createdAt: '2026-08-15T00:00:00.000Z',
-      updatedAt: timestamp,
-      venueId: venueJakarta.id,
-      eoId: eoJakarta.id,
-    },
-    {
-      id: 'demo-event-mice-forum',
-      officialName: 'BALI MICE FORUM 2026',
-      alias: 'BMF 2026',
-      startsAt: '2026-08-20T00:00:00.000Z',
-      endsAt: '2026-08-22T23:59:59.000Z',
-      startsOn: '2026-08-20',
-      endsOn: '2026-08-22',
-      createdAt: '2026-07-01T00:00:00.000Z',
-      updatedAt: timestamp,
-      venueId: venueBali.id,
-      eoId: eoBali.id,
-    },
-  ]
-  const jobDefaults = {
-    awbNumber: null,
-    blNumber: null,
-    shipper: null,
-    consignee: null,
-    notifyParty: null,
-    agent: null,
-    shippingLine: null,
-    cargoDescription: 'Exhibition equipment',
-    shipmentMode: 'LCL' as const,
-    cargoDetails: null,
-    journeyDetails: null,
-    type: 'IMPORT' as const,
-    clientInfo: null,
-    status: 'DRAFT' as const,
-    notes: null,
-    assignedToId: null,
-    exhibitorId: null,
-    sourceDocumentName: null,
-    stages: [],
-    documents: [],
-  }
-  const jobsToSeed: LocalJob[] = [
-    {
-      ...jobDefaults,
-      id: 'demo-job-tech-1',
-      jobNumber: 'DEMO-0001',
-      trackingToken: 'demo-token-tech-1',
-      clientName: 'PT DIGITAL NUSANTARA',
-      eventId: 'demo-event-tech-expo',
-      createdAt: '2026-08-10T00:00:00.000Z',
-      updatedAt: timestamp,
-    },
-    {
-      ...jobDefaults,
-      id: 'demo-job-tech-2',
-      jobNumber: 'DEMO-0002',
-      trackingToken: 'demo-token-tech-2',
-      clientName: 'GLOBAL ROBOTICS LTD',
-      eventId: 'demo-event-tech-expo',
-      createdAt: '2026-08-12T00:00:00.000Z',
-      updatedAt: timestamp,
-    },
-    {
-      ...jobDefaults,
-      id: 'demo-job-retail-1',
-      jobNumber: 'DEMO-0003',
-      trackingToken: 'demo-token-retail-1',
-      clientName: 'PT RETAIL MAJU',
-      eventId: 'demo-event-retail-summit',
-      createdAt: '2026-08-20T00:00:00.000Z',
-      updatedAt: timestamp,
-    },
-    {
-      ...jobDefaults,
-      id: 'demo-job-bali-1',
-      jobNumber: 'DEMO-0004',
-      trackingToken: 'demo-token-bali-1',
-      clientName: 'PACIFIC MICE GROUP',
-      eventId: 'demo-event-mice-forum',
-      createdAt: '2026-07-15T00:00:00.000Z',
-      updatedAt: timestamp,
-    },
-    {
-      ...jobDefaults,
-      id: 'demo-job-bali-2',
-      jobNumber: 'DEMO-0005',
-      trackingToken: 'demo-token-bali-2',
-      clientName: 'PT EVENT INTERNASIONAL',
-      eventId: 'demo-event-mice-forum',
-      createdAt: '2026-07-20T00:00:00.000Z',
-      updatedAt: timestamp,
-    },
-    {
-      ...jobDefaults,
-      id: 'demo-job-bali-3',
-      jobNumber: 'DEMO-0006',
-      trackingToken: 'demo-token-bali-3',
-      clientName: 'ASIA CONGRESS NETWORK',
-      eventId: 'demo-event-mice-forum',
-      createdAt: '2026-07-25T00:00:00.000Z',
-      updatedAt: timestamp,
-    },
-  ]
+  const mockData = createMockData()
   await Promise.all([
-    put('venues', venueJakarta),
-    put('venues', venueBali),
-    put('eos', eoJakarta),
-    put('eos', eoBali),
-    ...eventsToSeed.map((event) => put('events', event)),
-    ...jobsToSeed.map((job) => put('jobs', job)),
+    ...mockData.users.map((user) => put('users', user)),
+    ...mockData.venues.map((venue) => put('venues', venue)),
+    ...mockData.eventOrganizers.map((eventOrganizer) => put('eos', eventOrganizer)),
+    ...mockData.events.map((eventItem) => put('events', eventItem)),
+    ...mockData.exhibitors.map((exhibitor) => put('exhibitors', exhibitor)),
+    ...mockData.jobs.map((jobItem) => put('jobs', jobItem)),
+    ...mockData.stages.map((stage) => put('stages', stage)),
   ])
+  await put('counters', { id: 'mockDataVersion', value: MOCK_DATA_VERSION })
 }
 
 export async function listUsers() {
@@ -668,7 +643,16 @@ export async function listEvents() {
     .map((storedEvent) => {
       const startsOn = storedEvent.startsOn ?? toDateOnly(storedEvent.startsAt)
       const endsOn = storedEvent.endsOn ?? toDateOnly(storedEvent.endsAt)
-      const event = { ...storedEvent, startsOn, endsOn, startsAt: localMidnight(startsOn), endsAt: localMidnight(endsOn) }
+      const event = {
+        ...storedEvent,
+        startsOn,
+        endsOn,
+        startsAt: localMidnight(startsOn),
+        endsAt: localMidnight(endsOn),
+        status: storedEvent.status ?? 'ACTIVE',
+        cancellationReason: storedEvent.cancellationReason ?? null,
+        cancelledAt: storedEvent.cancelledAt ?? null,
+      }
       return {
       ...event,
       venue: venues.find((venue) => venue.id === event.venueId),
@@ -807,9 +791,43 @@ export async function saveEvent(input: EventInput, existingId?: string) {
     eoId: eventOrganizer.id,
     createdAt: previous?.createdAt ?? timestamp,
     updatedAt: timestamp,
+    status: previous?.status ?? 'ACTIVE',
+    cancellationReason: previous?.cancellationReason ?? null,
+    cancelledAt: previous?.cancelledAt ?? null,
   }
   await Promise.all([put('venues', venue), put('eos', eventOrganizer), put('events', event)])
   return event
+}
+
+export async function cancelEvent(eventId: string, reason: string) {
+  const cancellationReason = reason.trim()
+  if (!cancellationReason) throw new Error('Alasan pembatalan wajib diisi.')
+
+  const database = await openDatabase()
+  return new Promise<LocalEvent>((resolve, reject) => {
+    const transaction = database.transaction('events', 'readwrite')
+    const store = transaction.objectStore('events')
+    const request = store.get(eventId)
+    request.onsuccess = () => {
+      const event = request.result as LocalEvent | undefined
+      if (!event) {
+        transaction.abort()
+        return
+      }
+      const updated = {
+        ...event,
+        status: 'CANCELLED' as const,
+        cancellationReason,
+        cancelledAt: now(),
+        updatedAt: now(),
+      }
+      store.put(updated)
+      resolve(updated)
+    }
+    request.onerror = () => reject(request.error)
+    transaction.onerror = () => reject(transaction.error ?? new Error('Gagal membatalkan event.'))
+    transaction.onabort = () => reject(new Error('Event tidak ditemukan.'))
+  })
 }
 
 export async function deleteEvent(eventId: string) {
@@ -863,17 +881,31 @@ export type JobInput = Pick<
 }
 
 export async function saveJobDocument(jobId: string, file: File, kind: JobDocumentKind = 'SOURCE'): Promise<LocalJobDocument> {
+  const timestamp = now()
   const document: LocalJobDocument = {
     id: id(),
     jobId,
     fileName: file.name,
     mimeType: 'application/pdf',
     fileSize: file.size,
-    file,
-    createdAt: now(),
+    attachmentId: id(),
+    createdAt: timestamp,
     kind,
   }
-  return put('jobDocuments', document)
+  const storedFile: StoredFile = {
+    id: document.attachmentId, ownerType: 'LEGACY_JOB', ownerId: jobId, kind,
+    fileName: document.fileName, mimeType: document.mimeType, fileSize: document.fileSize,
+    content: file, createdAt: timestamp,
+  }
+  const database = await openDatabase()
+  return new Promise<LocalJobDocument>((resolve, reject) => {
+    const transaction = database.transaction(['jobDocuments', 'files'], 'readwrite')
+    transaction.objectStore('jobDocuments').put(document)
+    transaction.objectStore('files').put(storedFile)
+    transaction.oncomplete = () => resolve(document)
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+  })
 }
 
 export type JobOperationalAttachment = { kind: JobDocumentKind; file: File }
@@ -899,13 +931,18 @@ export async function saveJobOperationalDetails(
     documents: previous.documents,
   }
   const documents: LocalJobDocument[] = attachments.map(({ kind, file }) => ({
-    id: id(), jobId, kind, fileName: file.name, mimeType: 'application/pdf', fileSize: file.size, file, createdAt: timestamp,
+    id: id(), jobId, kind, fileName: file.name, mimeType: 'application/pdf', fileSize: file.size, attachmentId: id(), createdAt: timestamp,
   }))
   const database = await openDatabase()
   return new Promise<LocalJob>((resolve, reject) => {
-    const transaction = database.transaction(['jobs', 'jobDocuments'], 'readwrite')
+    const transaction = database.transaction(['jobs', 'jobDocuments', 'files'], 'readwrite')
     transaction.objectStore('jobs').put(job)
     documents.forEach((document) => transaction.objectStore('jobDocuments').put(document))
+    documents.forEach((document, index) => transaction.objectStore('files').put({
+      id: document.attachmentId, ownerType: 'LEGACY_JOB', ownerId: jobId, kind: document.kind ?? null,
+      fileName: document.fileName, mimeType: document.mimeType, fileSize: document.fileSize,
+      content: attachments[index].file, createdAt: timestamp,
+    } satisfies StoredFile))
     transaction.oncomplete = () => resolve(job)
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
@@ -943,11 +980,16 @@ export async function saveJobWithDocument(input: JobInput, file: File, existingI
     trackingToken: previous?.trackingToken ?? id(), createdAt: previous?.createdAt ?? timestamp, updatedAt: timestamp,
     stages: previous?.stages ?? [], documents: previous?.documents ?? [], ...input,
   }
-  const document: LocalJobDocument = { id: id(), jobId: job.id, fileName: file.name, mimeType: 'application/pdf', fileSize: file.size, file, createdAt: timestamp }
+  const document: LocalJobDocument = { id: id(), jobId: job.id, fileName: file.name, mimeType: 'application/pdf', fileSize: file.size, attachmentId: id(), createdAt: timestamp }
   return new Promise<LocalJob>((resolve, reject) => {
-    const transaction = database.transaction(['jobs', 'jobDocuments'], 'readwrite')
+    const transaction = database.transaction(['jobs', 'jobDocuments', 'files'], 'readwrite')
     transaction.objectStore('jobs').put(job)
     transaction.objectStore('jobDocuments').put(document)
+    transaction.objectStore('files').put({
+      id: document.attachmentId, ownerType: 'LEGACY_JOB', ownerId: job.id, kind: 'SOURCE',
+      fileName: document.fileName, mimeType: document.mimeType, fileSize: document.fileSize,
+      content: file, createdAt: timestamp,
+    } satisfies StoredFile)
     transaction.oncomplete = () => resolve(job)
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
@@ -980,7 +1022,7 @@ export type CiplVersionInput = {
   receivedAt: string
   receivedBy: string
   sourceDocumentName?: string | null
-  sourceDocument?: CiplVersion['sourceDocument']
+  sourceDocument?: AttachmentUpload | null
   items: CiplItem[]
   revisionNote?: string | null
 }
@@ -1012,17 +1054,20 @@ export async function createCipl(eventExhibitorId: string, initialVersion?: Cipl
   }
   const database = await openDatabase()
   return new Promise<Cipl>((resolve, reject) => {
-    const transaction = database.transaction(['cipls', 'ciplVersions'], 'readwrite')
+    const transaction = database.transaction(['cipls', 'ciplVersions', 'files'], 'readwrite')
     transaction.objectStore('cipls').put(cipl)
     if (initialVersion) {
       const version: CiplVersion = {
         id: id(), ciplId: cipl.id, versionNumber: 1, receivedAt: initialVersion.receivedAt, receivedBy: initialVersion.receivedBy,
-        sourceDocumentName: initialVersion.sourceDocumentName ?? null, sourceDocument: initialVersion.sourceDocument ?? null,
+        sourceDocumentName: initialVersion.sourceDocumentName ?? null, sourceDocument: initialVersion.sourceDocument ? attachmentMetadata(initialVersion.sourceDocument) : null,
         items: initialVersion.items, revisionNote: initialVersion.revisionNote ?? null, createdAt: timestamp,
       }
       cipl.activeVersionId = version.id
       transaction.objectStore('cipls').put(cipl)
       transaction.objectStore('ciplVersions').put(version)
+      if (initialVersion.sourceDocument) transaction.objectStore('files').put(
+        toStoredFile(initialVersion.sourceDocument, 'CIPL_VERSION', version.id, 'SOURCE'),
+      )
     }
     transaction.oncomplete = () => resolve(cipl)
     transaction.onerror = () => reject(transaction.error)
@@ -1040,12 +1085,21 @@ export async function addCiplVersion(ciplId: string, input: CiplVersionInput) {
   const version: CiplVersion = {
     id: id(), ciplId, versionNumber: (versions[0]?.versionNumber ?? 0) + 1,
     receivedAt: input.receivedAt, receivedBy: input.receivedBy, sourceDocumentName: input.sourceDocumentName ?? null,
-    sourceDocument: input.sourceDocument ?? null, items: input.items, revisionNote: input.revisionNote ?? null, createdAt: timestamp,
+    sourceDocument: input.sourceDocument ? attachmentMetadata(input.sourceDocument) : null, items: input.items, revisionNote: input.revisionNote ?? null, createdAt: timestamp,
   }
   const validation = validateCiplVersionReady(version)
   if (!validation.ok && cipl.status === 'READY') throw new Error(validation.issues.map((issue) => issue.message).join(' '))
-  await put('ciplVersions', version)
-  return version
+  const database = await openDatabase()
+  return new Promise<CiplVersion>((resolve, reject) => {
+    const transaction = database.transaction(['ciplVersions', 'files'], 'readwrite')
+    transaction.objectStore('ciplVersions').put(version)
+    if (input.sourceDocument) transaction.objectStore('files').put(
+      toStoredFile(input.sourceDocument, 'CIPL_VERSION', version.id, 'SOURCE'),
+    )
+    transaction.oncomplete = () => resolve(version)
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+  })
 }
 
 export async function activateCiplVersion(ciplId: string, versionId: string, status: CiplStatus = 'UNDER_REVIEW') {

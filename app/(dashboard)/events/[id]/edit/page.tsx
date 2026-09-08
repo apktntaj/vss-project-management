@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ArrowLeft, LoaderCircle } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
 import { EventForm } from '@/components/event-form'
-import { listEvents, type LocalEvent } from '@/lib/indexeddb'
+import { listEvents, type LocalEvent } from '@/lib/data-client'
 
 export default function EditEventPage() {
   const params = useParams<{ id: string }>()

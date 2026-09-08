@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
 import { useParams } from 'next/navigation'
-import { getCustomsJob, updateCustomsJob } from '@/lib/indexeddb'
+import { getCustomsJob, updateCustomsJob } from '@/lib/data-client'
 import type { CustomsJob, CustomsJobStatus } from '@/domain/exhibition/types'
 import { StatusBadge } from '@/components/status-badge'
 

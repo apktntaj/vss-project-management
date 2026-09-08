@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { ArrowLeft, CalendarDays, FileText, Pencil, ShipWheel } from 'lucide-react'
-import { getJob, getOperationalDetails, type LocalJob } from '@/lib/indexeddb'
+import { getJob, getOperationalDetails, type LocalJob } from '@/lib/data-client'
 import { StatusBadge } from '@/components/status-badge'
 
 const date = (value: string | null) => value ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(new Date(value)) : 'Belum diisi'

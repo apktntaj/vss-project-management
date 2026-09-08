@@ -1,0 +1,61 @@
+/**
+ * Public data-access boundary for UI code.
+ *
+ * IndexedDB is the active adapter during the prototype. A server-backed adapter
+ * can replace these exports without requiring UI modules to know its storage API.
+ */
+export {
+  addCiplVersion,
+  addStage,
+  activateCiplVersion,
+  cancelEvent,
+  createCipl,
+  createCustomsJob,
+  createShipment,
+  deleteEvent,
+  getAttachmentContent,
+  getCipl,
+  getCustomsJob,
+  getJob,
+  getOperationalDetails,
+  getShipment,
+  listCiplVersions,
+  listCipls,
+  listCustomsJobs,
+  listEos,
+  listEventExhibitors,
+  listEventJobs,
+  listEvents,
+  listJobs,
+  listShipments,
+  listUsers,
+  listVenues,
+  saveEvent,
+  saveEventExhibitors,
+  saveJob,
+  saveJobDocument,
+  saveJobOperationalDetails,
+  saveJobWithDocument,
+  toggleStage,
+  updateCustomsJob,
+} from '@/lib/indexeddb'
+
+export type {
+  AttachmentUpload,
+  CiplVersionInput,
+  EventExhibitorInput,
+  EventInput,
+  JobInput,
+  JobCustomsDocument,
+  JobDocumentKind,
+  JobOperationalAttachment,
+  LocalEo,
+  LocalEvent,
+  LocalExhibitor,
+  LocalJob,
+  LocalJobDocument,
+  LocalStage,
+  LocalUser,
+  LocalVenue,
+  ShipmentInput,
+} from '@/lib/indexeddb'

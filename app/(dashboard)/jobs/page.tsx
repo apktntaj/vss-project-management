@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, FileCheck2, FileWarning, Search, SlidersHorizontal } from 'lucide-react'
-import { getOperationalDetails, listEvents, listJobs, type LocalEvent, type LocalJob } from '@/lib/indexeddb'
+import { getOperationalDetails, listEvents, listJobs, type LocalEvent, type LocalJob } from '@/lib/data-client'
 import { StatusBadge } from '@/components/status-badge'
 
 type Scope = 'active' | 'all'

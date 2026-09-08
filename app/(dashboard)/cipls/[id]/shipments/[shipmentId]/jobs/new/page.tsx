@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { createCustomsJob, getShipment } from '@/lib/indexeddb'
+import { createCustomsJob, getShipment } from '@/lib/data-client'
 import type { Shipment } from '@/domain/exhibition/types'
 export default function NewCustomsJobPage() {
   const params = useParams<{ id: string; shipmentId: string }>(); const router = useRouter(); const [shipment, setShipment] = useState<Shipment | null>(null); const [quantities, setQuantities] = useState<Record<string, string>>({}); const [error, setError] = useState(''); const [saving, setSaving] = useState(false)

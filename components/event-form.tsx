@@ -11,8 +11,7 @@ import {
   type LocalEo,
   type LocalEvent,
   type LocalVenue,
-} from '@/lib/indexeddb'
-import { Plus } from 'lucide-react'
+} from '@/lib/data-client'
 
 function text(value: FormDataEntryValue | null) {
   return String(value || '')
@@ -57,7 +56,6 @@ function RelationPicker({
   query,
   onQueryChange,
   onSelect,
-  onAdd,
   selected,
 }: {
   label: string
@@ -66,7 +64,6 @@ function RelationPicker({
   query: string
   onQueryChange: (value: string) => void
   onSelect: (item: LocalVenue | LocalEo) => void
-  onAdd: () => void
   selected: LocalVenue | LocalEo | null
 }) {
   const matches = items
@@ -78,7 +75,7 @@ function RelationPicker({
     .slice(0, 6)
 
   return (
-    <div className="sm:col-span-2">
+    <div>
       <label className="label">
         {label}
         <span className="relative block">
@@ -86,17 +83,9 @@ function RelationPicker({
             value={query}
             onChange={(event) => onQueryChange(event.target.value.toUpperCase())}
             placeholder={placeholder}
-            className="input w-full pe-11 uppercase"
+            className="input w-full uppercase"
             autoComplete="off"
           />
-          <button
-            type="button"
-            onClick={onAdd}
-            aria-label={`Tambah ${label}`}
-            className="absolute inset-y-1 right-1 flex w-9 items-center justify-center rounded-md text-orange-600 transition hover:bg-orange-50 hover:text-orange-700"
-          >
-            <Plus size={18} />
-          </button>
         </span>
       </label>
       {selected && (
@@ -147,10 +136,9 @@ export function EventForm({
   const [eoQuery, setEoQuery] = useState('')
   const [selectedVenue, setSelectedVenue] = useState<LocalVenue | null>(null)
   const [selectedEo, setSelectedEo] = useState<LocalEo | null>(null)
-  const [newVenue, setNewVenue] = useState(false)
-  const [newEo, setNewEo] = useState(false)
   const [startsAt, setStartsAt] = useState('')
   const [endsAt, setEndsAt] = useState('')
+  const [endDateEdited, setEndDateEdited] = useState(false)
   const [exhibitors, setExhibitors] = useState<EventExhibitorInput[]>([])
 
   useEffect(() => {
@@ -175,6 +163,7 @@ export function EventForm({
         setSelectedEo(eo)
         setStartsAt(event.startsOn)
         setEndsAt(event.endsOn)
+        setEndDateEdited(true)
       }
     })
   }, [enableExhibitors, event])
@@ -194,12 +183,12 @@ export function EventForm({
       setError('Tanggal selesai harus sama dengan atau setelah tanggal mulai.')
       return
     }
-    if (!selectedVenue && !newVenue) {
-      setError('Pilih venue yang sudah ada atau buat venue baru.')
+    if (!selectedVenue) {
+      setError('Pilih venue yang sudah ada.')
       return
     }
-    if (!selectedEo && !newEo) {
-      setError('Pilih EO yang sudah ada atau buat EO baru.')
+    if (!selectedEo) {
+      setError('Pilih EO yang sudah ada.')
       return
     }
     if (enableExhibitors && exhibitors.some((exhibitor) => !exhibitor.legalName?.trim())) {
@@ -231,18 +220,18 @@ export function EventForm({
           startsOn: startDate.toISOString().slice(0, 10),
           endsOn: endDate.toISOString().slice(0, 10),
           venue: {
-            officialName: selectedVenue?.officialName || text(form.get('venueOfficialName')),
-            aliasName: selectedVenue?.aliasName || optional(form.get('venueAliasName')),
-            address: selectedVenue?.address || optional(form.get('venueAddress')),
-            latitude: selectedVenue?.latitude ?? latitude,
-            longitude: selectedVenue?.longitude ?? longitude,
-            contactInfo: selectedVenue?.contactInfo || optional(form.get('venueContactInfo')),
+            officialName: selectedVenue.officialName,
+            aliasName: selectedVenue.aliasName,
+            address: selectedVenue.address,
+            latitude: selectedVenue.latitude ?? latitude,
+            longitude: selectedVenue.longitude ?? longitude,
+            contactInfo: selectedVenue.contactInfo,
           },
           venueId: selectedVenue?.id,
           eventOrganizer: {
-            legalName: selectedEo?.legalName || text(form.get('eoLegalName')),
-            aliasName: selectedEo?.aliasName || optional(form.get('eoAliasName')),
-            contactInfo: selectedEo?.contactInfo || optional(form.get('eoContactInfo')),
+            legalName: selectedEo.legalName,
+            aliasName: selectedEo.aliasName,
+            contactInfo: selectedEo.contactInfo,
           },
           eoId: selectedEo?.id,
         },
@@ -262,8 +251,43 @@ export function EventForm({
       <div className="min-h-0 flex-1 space-y-8 overflow-y-auto p-6 sm:p-8">
         <section>
           <div className="mt-4 grid gap-5 sm:grid-cols-2">
+            <RelationPicker
+              label="Event Organizer"
+              placeholder="Ketik untuk mencari EO"
+              items={eos}
+              query={eoQuery}
+              onQueryChange={(value) => {
+                setEoQuery(value)
+                setSelectedEo(null)
+              }}
+              onSelect={(item) => {
+                setSelectedEo(item as LocalEo)
+                setEoQuery((item as LocalEo).legalName)
+              }}
+              selected={selectedEo}
+            />
+            <RelationPicker
+              label="Venue"
+              placeholder="Ketik untuk mencari venue"
+              items={venues}
+              query={venueQuery}
+              onQueryChange={(value) => {
+                setVenueQuery(value)
+                setSelectedVenue(null)
+              }}
+              onSelect={(item) => {
+                setSelectedVenue(item as LocalVenue)
+                setVenueQuery((item as LocalVenue).officialName)
+              }}
+              selected={selectedVenue}
+            />
+          </div>
+        </section>
+
+        <section>
+          <div className="mt-4 grid gap-5 sm:grid-cols-2">
             <label className="label">
-              Nama Official
+              Pameran
               <input
                 required
                 name="officialName"
@@ -290,7 +314,13 @@ export function EventForm({
                 value={startsAt}
                 onChange={(event) => {
                   setStartsAt(event.target.value)
-                  if (!endsAt) setEndsAt(event.target.value)
+                  if (!endDateEdited) {
+                    const start = parseDateInput(event.target.value)
+                    if (start) {
+                      start.setUTCDate(start.getUTCDate() + 3)
+                      setEndsAt(start.toISOString().slice(0, 10))
+                    }
+                  }
                 }}
                 className="input"
               />
@@ -302,136 +332,16 @@ export function EventForm({
                 type="date"
                 name="endsAt"
                 value={endsAt}
-                onChange={(event) => setEndsAt(event.target.value)}
+                onChange={(event) => {
+                  setEndsAt(event.target.value)
+                  setEndDateEdited(true)
+                }}
                 className="input"
               />
             </label>
           </div>
         </section>
 
-        <section className="pt-2">
-          <div className="mt-4 grid gap-5 sm:grid-cols-2">
-            <RelationPicker
-              label="Venue"
-              placeholder="Klik tambah untuk venue baru"
-              items={venues}
-              query={venueQuery}
-              onAdd={() => {
-                setSelectedVenue(null)
-                setVenueQuery('')
-                setNewVenue(true)
-              }}
-              onQueryChange={(value) => {
-                setVenueQuery(value)
-                setSelectedVenue(null)
-                setNewVenue(false)
-              }}
-              onSelect={(item) => {
-                setSelectedVenue(item as LocalVenue)
-                setVenueQuery((item as LocalVenue).officialName)
-                setNewVenue(false)
-              }}
-              selected={selectedVenue}
-            />
-            {newVenue && (
-              <>
-                <label className="label">
-                  Nama resmi
-                  <input
-                    required
-                    name="venueOfficialName"
-                    onInput={normalizeInput}
-                    className="input uppercase"
-                  />
-                </label>
-                <label className="label">
-                  Alias
-                  <input
-                    name="venueAliasName"
-                    onInput={normalizeInput}
-                    className="input uppercase"
-                  />
-                </label>
-                <label className="label sm:col-span-2">
-                  Alamat
-                  <textarea
-                    name="venueAddress"
-                    onInput={normalizeInput}
-                    className="input min-h-20 uppercase"
-                  />
-                </label>
-                <label className="label">
-                  Latitude
-                  <input type="number" step="any" name="latitude" className="input" />
-                </label>
-                <label className="label">
-                  Longitude
-                  <input type="number" step="any" name="longitude" className="input" />
-                </label>
-                <label className="label sm:col-span-2">
-                  Kontak venue
-                  <input
-                    name="venueContactInfo"
-                    onInput={normalizeInput}
-                    className="input uppercase"
-                  />
-                </label>
-              </>
-            )}
-          </div>
-        </section>
-
-        <section className="">
-          <div className="mt-4 grid gap-5 sm:grid-cols-2">
-            <RelationPicker
-              label="Event Organizer"
-              placeholder="Ketik untuk mencari"
-              items={eos}
-              query={eoQuery}
-              onAdd={() => {
-                setSelectedEo(null)
-                setEoQuery('')
-                setNewEo(true)
-              }}
-              onQueryChange={(value) => {
-                setEoQuery(value)
-                setSelectedEo(null)
-                setNewEo(false)
-              }}
-              onSelect={(item) => {
-                setSelectedEo(item as LocalEo)
-                setEoQuery((item as LocalEo).legalName)
-                setNewEo(false)
-              }}
-              selected={selectedEo}
-            />
-            {newEo && (
-              <>
-                <label className="label">
-                  Nama legal EO
-                  <input
-                    required
-                    name="eoLegalName"
-                    onInput={normalizeInput}
-                    className="input uppercase"
-                  />
-                </label>
-                <label className="label">
-                  Nama alias EO
-                  <input name="eoAliasName" onInput={normalizeInput} className="input uppercase" />
-                </label>
-                <label className="label sm:col-span-2">
-                  Kontak EO
-                  <input
-                    name="eoContactInfo"
-                    onInput={normalizeInput}
-                    className="input uppercase"
-                  />
-                </label>
-              </>
-            )}
-          </div>
-        </section>
         {enableExhibitors && (
           <section className="border-t pt-8">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">

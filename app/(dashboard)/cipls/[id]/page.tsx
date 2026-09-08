@@ -6,11 +6,12 @@ import { FileText, Package, Plus } from 'lucide-react'
 import { useParams } from 'next/navigation'
 import {
   getCipl,
+  getAttachmentContent,
   listCiplVersions,
   listShipments,
   type LocalExhibitor,
   listEventExhibitors,
-} from '@/lib/indexeddb'
+} from '@/lib/data-client'
 import type { Attachment, Cipl, CiplVersion, Shipment } from '@/domain/exhibition/types'
 import { StatusBadge } from '@/components/status-badge'
 
@@ -63,12 +64,19 @@ export default function CiplDetailPage() {
 }
 
 function OpenAttachment({ attachment }: { attachment: Attachment }) {
-  return <button type="button" onClick={() => window.open(URL.createObjectURL(attachment.file), '_blank', 'noopener,noreferrer')} className="mt-3 text-sm font-medium text-orange-700 hover:underline">Buka {attachment.fileName}</button>
+  async function open() {
+    const content = await getAttachmentContent(attachment.id)
+    if (!content) return
+    const url = URL.createObjectURL(content)
+    window.open(url, '_blank', 'noopener,noreferrer')
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+  return <button type="button" onClick={open} className="mt-3 text-sm font-medium text-orange-700 hover:underline">Buka {attachment.fileName}</button>
 }
 
 async function listEventExhibitorsForCipl(exhibitorId: string) {
   // Exhibition membership is scoped to an event; no global exhibitor lookup is allowed.
-  const events = await (await import('@/lib/indexeddb')).listEvents()
+  const events = await (await import('@/lib/data-client')).listEvents()
   const groups = await Promise.all(events.map((event) => listEventExhibitors(event.id)))
   return groups.flat().filter((exhibitor) => exhibitor.id === exhibitorId)
 }

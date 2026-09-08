@@ -19,7 +19,7 @@ import {
   listEvents,
   type LocalEvent,
   type LocalExhibitor,
-} from '@/lib/indexeddb'
+} from '@/lib/data-client'
 import { EventExhibitorModal } from '@/components/event-exhibitor-modal'
 import { EventTimeline } from '@/components/event-timeline'
 
@@ -43,6 +43,10 @@ function getEventTiming(startsAt: string, endsAt: string) {
   if (daysUntilEnd > 0) return `Berakhir ${daysUntilEnd} hari lagi`
   if (daysUntilEnd === 0) return 'Berakhir hari ini'
   return 'Event sudah berakhir'
+}
+
+function isCancelled(event: LocalEvent) {
+  return event.status === 'CANCELLED'
 }
 
 type EventStatus = 'soon' | 'ongoing' | 'done'
@@ -123,7 +127,7 @@ export default function EventsPage() {
   const [addingExhibitorsToEvent, setAddingExhibitorsToEvent] = useState<LocalEvent | null>(null)
   const [expandedExhibitorEventId, setExpandedExhibitorEventId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [status, setStatus] = useState<EventFilter>('active')
+  const [status, setStatus] = useState<EventFilter>('all')
   const reloadEvents = () => {
     listEvents().then((loadedEvents) => {
       setEvents(loadedEvents)
@@ -161,15 +165,59 @@ export default function EventsPage() {
     return matchesSearch && matchesStatus
   })
 
-  const hasFilters = Boolean(search || status !== 'active')
+  const hasFilters = Boolean(search || status !== 'all')
+  const activeEvents = events.filter((event) => !isCancelled(event))
+  const upcomingEvents = activeEvents.filter(
+    (event) => getEventStatus(event.startsAt, event.endsAt) === 'soon',
+  )
+  const ongoingEvents = activeEvents.filter(
+    (event) => getEventStatus(event.startsAt, event.endsAt) === 'ongoing',
+  )
+  const cancelledEvents = events.filter(isCancelled)
+  const horizonEnd = new Date()
+  horizonEnd.setDate(horizonEnd.getDate() + 30)
+  const horizonEvents = upcomingEvents
+    .filter((event) => new Date(event.startsAt) <= horizonEnd)
+    .slice(0, 3)
   const clearFilters = () => {
     setSearch('')
-    setStatus('active')
+    setStatus('all')
   }
 
   return (
     <>
       <div className="space-y-8">
+        <header>
+          <h1 className="text-3xl font-bold tracking-tight">Events</h1>
+          <p className="mt-2 text-sm text-slate-500">Pantau kesiapan dan jadwal pameran.</p>
+        </header>
+
+        <div className="grid gap-5 lg:grid-cols-3">
+          <section className="card p-5" aria-labelledby="events-summary-title">
+            <h2 id="events-summary-title" className="text-lg font-semibold">Summary</h2>
+            <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+              <div><p className="text-2xl font-bold text-orange-700">{upcomingEvents.length}</p><p className="mt-1 text-xs text-slate-500">Akan datang</p></div>
+              <div><p className="text-2xl font-bold text-emerald-700">{ongoingEvents.length}</p><p className="mt-1 text-xs text-slate-500">Berlangsung</p></div>
+              <div><p className="text-2xl font-bold text-slate-700">{events.length}</p><p className="mt-1 text-xs text-slate-500">Total event</p></div>
+            </div>
+          </section>
+          <section className="card p-5" aria-labelledby="events-horizon-title">
+            <h2 id="events-horizon-title" className="text-lg font-semibold">Time Horizin</h2>
+            {horizonEvents.length ? (
+              <ul className="mt-3 space-y-2 text-sm">
+                {horizonEvents.map((event) => <li key={event.id} className="flex justify-between gap-3"><span className="truncate font-medium">{event.officialName}</span><span className="shrink-0 text-slate-500">{getEventTiming(event.startsAt, event.endsAt)}</span></li>)}
+              </ul>
+            ) : <p className="mt-3 text-sm text-slate-500">Tidak ada event dalam 30 hari ke depan.</p>}
+          </section>
+          <section className="card p-5" aria-labelledby="events-attention-title">
+            <h2 id="events-attention-title" className="text-lg font-semibold">Attention</h2>
+            {cancelledEvents.length ? (
+              <p className="mt-3 text-sm text-rose-700">{cancelledEvents.length} event dibatalkan dan perlu dicatat dalam tindak lanjut.</p>
+            ) : (
+              <p className="mt-3 text-sm text-slate-500">Tidak ada event yang dibatalkan.</p>
+            )}
+          </section>
+        </div>
         <section>
           <div className="mb-5 p-0">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -223,7 +271,8 @@ export default function EventsPage() {
           {filteredEvents.length ? (
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
               {filteredEvents.map((event) => {
-                const isPastEvent = getEventStatus(event.startsAt, event.endsAt) === 'done'
+                const isCancelledEvent = isCancelled(event)
+                const isPastEvent = isCancelledEvent || getEventStatus(event.startsAt, event.endsAt) === 'done'
                 const exhibitors = exhibitorsByEvent[event.id] ?? []
                 return (
                   <article
@@ -285,13 +334,16 @@ export default function EventsPage() {
                       </div>
                     </div>
                     <p className="mt-2 text-sm text-slate-500">{event.alias || ''}</p>
+                    {isCancelledEvent && (
+                      <p className="mt-3 w-fit rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-700">Dibatalkan</p>
+                    )}
                     <div className="mt-5 space-y-3 border-t pt-4">
                       <div className="grid grid-cols-[16px_minmax(0,1fr)] items-start gap-2 text-sm text-slate-600">
                         <CalendarDays className="text-slate-400" size={16} />
                         <div className="flex flex-wrap items-center gap-2">
                           <span>{formatEventDateRange(event.startsAt, event.endsAt)}</span>
                           <span className="shrink-0 rounded-full bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-700">
-                            {getEventTiming(event.startsAt, event.endsAt)}
+                            {isCancelledEvent ? 'Dibatalkan' : getEventTiming(event.startsAt, event.endsAt)}
                           </span>
                         </div>
                       </div>

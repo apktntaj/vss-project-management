@@ -7,7 +7,7 @@ import {
   saveEventExhibitors,
   type EventExhibitorInput,
   type LocalEvent,
-} from '@/lib/indexeddb'
+} from '@/lib/data-client'
 
 const emptyExhibitor = (): EventExhibitorInput => ({
   legalName: '',
