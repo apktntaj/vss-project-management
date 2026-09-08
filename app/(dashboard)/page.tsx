@@ -3,13 +3,17 @@
 import { useEffect, useState } from 'react'
 import { CalendarDays, MapPin } from 'lucide-react'
 import { EventTimeline } from '@/components/event-timeline'
-import { listEvents, type LocalEvent } from '@/lib/data-client'
+import { listEvents, listJobs, type LocalEvent, type LocalJob } from '@/lib/data-client'
 
 export default function Dashboard() {
   const [events, setEvents] = useState<LocalEvent[]>([])
+  const [jobs, setJobs] = useState<LocalJob[]>([])
 
   useEffect(() => {
-    listEvents().then(setEvents)
+    Promise.all([listEvents(), listJobs()]).then(([loadedEvents, loadedJobs]) => {
+      setEvents(loadedEvents)
+      setJobs(loadedJobs)
+    })
   }, [])
 
   return (
@@ -41,7 +45,7 @@ export default function Dashboard() {
           </p>
         </article>
       </div>
-      <EventTimeline events={events} />
+      <EventTimeline events={events} jobs={jobs} />
     </div>
   )
 }
