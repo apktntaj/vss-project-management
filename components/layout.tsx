@@ -30,9 +30,6 @@ export function AppShell({
 }) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
-  const visibleLinks = user.isAdmin
-    ? [...links, { href: '/settings', label: 'Settings', icon: Settings, available: true }]
-    : links
   return (
     <div className="min-h-screen md:flex">
       <aside
@@ -58,7 +55,7 @@ export function AppShell({
           </button>
         </div>
         <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:block md:space-y-1">
-          {visibleLinks.map(({ href, label, icon: Icon, available = true }) => {
+          {links.map(({ href, label, icon: Icon, available = true }) => {
             const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
             const content = (
               <>
@@ -66,7 +63,7 @@ export function AppShell({
                 <span className={collapsed ? 'md:hidden' : ''}>{label}</span>
                 {!available && (
                   <span
-                    className={`rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-300 ${collapsed ? 'md:hidden' : ''}`}
+                    className={`rounded-full bg-orange-200 px-1.5 py-px text-[8px] font-semibold uppercase tracking-wide text-orange-900 ${collapsed ? 'md:hidden' : ''}`}
                   >
                     Soon
                   </span>
@@ -100,13 +97,19 @@ export function AppShell({
         <div
           className={`mt-auto border-t border-white/10 p-3 ${collapsed ? 'md:text-center' : ''}`}
         >
+          {user.isAdmin && (
+            <Link
+              href="/settings"
+              title={collapsed ? 'Settings' : undefined}
+              className={`mb-3 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${collapsed ? 'md:justify-center' : ''} ${pathname.startsWith('/settings') ? 'bg-orange-600 text-white shadow-lg shadow-orange-950/40' : 'hover:bg-slate-700 hover:text-white'}`}
+            >
+              <Settings size={18} />
+              <span className={collapsed ? 'md:hidden' : ''}>Settings</span>
+            </Link>
+          )}
           <div className={`mb-3 min-w-0 px-3 ${collapsed ? 'md:hidden' : ''}`}>
             <p className="truncate text-sm font-semibold text-white">
               {user.name ?? 'Pengguna demo'}
-            </p>
-            <p className="truncate text-xs text-white/45">{user.email}</p>
-            <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-orange-300">
-              {user.isAdmin ? 'Admin' : 'User'}
             </p>
           </div>
           <form action={logoutAction}>
