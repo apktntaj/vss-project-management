@@ -36,7 +36,7 @@ const label = (key: string) => key.replaceAll('_', ' ')
 function CustomsProgress({ job }: { job: LocalJob }) {
   const customs = getOperationalDetails(job).customs
   return (
-    <div className="flex min-w-[210px] gap-1.5">
+    <div className="flex min-w-[175px] gap-1">
       {(Object.keys(customs) as Array<keyof typeof customs>).map((key) => {
         const item = customs[key]
         const tone = !item.applicable
@@ -51,7 +51,7 @@ function CustomsProgress({ job }: { job: LocalJob }) {
         return (
           <div
             key={key}
-            className={`min-w-0 flex-1 rounded-lg border px-2 py-1.5 text-center text-[10px] font-semibold ${tone}`}
+            className={`min-w-0 flex-1 rounded-lg border px-1.5 py-1 text-center text-[10px] font-semibold ${tone}`}
             title={`${label(key)} · ${item.applicable ? item.status : 'Tidak diperlukan'}`}
           >
             <span className="block">{label(key)}</span>
@@ -78,17 +78,17 @@ function JobRow({ job }: { job: LocalJob }) {
   )
   const TransportIcon = inbound.mode === 'AIR' ? Plane : inbound.mode === 'SEA' ? Ship : Truck
   return (
-    <tr className="border-b border-slate-100 last:border-0 hover:bg-orange-50/40">
-      <td className="p-4 align-top">
+    <tr className="border-b border-slate-100 odd:bg-slate-50/70 last:border-0 hover:bg-orange-50/40">
+      <td className="px-3 py-3 align-top">
         <Link
           href={`/jobs/${job.id}`}
           className="font-semibold text-slate-900 hover:text-orange-700"
         >
           {job.jobNumber}
         </Link>
-        <p className="mt-1 text-xs text-slate-500">Dibuat {date(job.createdAt)}</p>
+        <p className="mt-1 text-xs text-slate-500"> {date(job.createdAt)}</p>
       </td>
-      <td className="w-[170px] max-w-[170px] p-4 align-top">
+      <td className="w-[145px] max-w-[145px] px-3 py-3 align-top">
         <p
           className="truncate font-medium text-slate-800"
           title={job.exhibitor?.legalName || job.shipper || job.clientName}
@@ -102,7 +102,7 @@ function JobRow({ job }: { job: LocalJob }) {
           {job.agent || 'Agent belum diisi'}
         </p>
       </td>
-      <td className="p-4 align-top">
+      <td className="px-3 py-3 align-top">
         <div className="flex items-start gap-2">
           <Upload size={16} className="mt-0.5 shrink-0 text-slate-400" aria-hidden="true" />
           <div>
@@ -119,7 +119,7 @@ function JobRow({ job }: { job: LocalJob }) {
           </div>
         </div>
       </td>
-      <td className="p-4 align-top">
+      <td className="px-3 py-3 align-top">
         <div className="flex items-start gap-2">
           <TransportIcon size={16} className="mt-0.5 shrink-0 text-slate-400" aria-hidden="true" />
           <div>
@@ -137,10 +137,10 @@ function JobRow({ job }: { job: LocalJob }) {
           </div>
         </div>
       </td>
-      <td className="p-4 align-top">
+      <td className="px-3 py-3 align-top">
         <CustomsProgress job={job} />
       </td>
-      <td className="p-4 align-top">
+      <td className="px-3 py-3 align-top">
         <p className="text-sm font-medium text-slate-700">
           {job.assignedTo?.name || 'Belum ada PIC'}
         </p>
@@ -243,9 +243,7 @@ export default function JobsPage() {
         </div>
         <div className="card p-5">
           <h2 className="text-lg font-semibold">Checkpoint event</h2>
-          <p className="mt-3 text-sm leading-6 text-slate-500">
-            ETA, move-in, dan move-out tampil pada timeline event.
-          </p>
+          <p className="mt-3 text-sm leading-6 text-slate-500">Soon.</p>
         </div>
         <div className="card p-5">
           <h2 className="text-lg font-semibold">Attention</h2>
@@ -330,23 +328,23 @@ export default function JobsPage() {
             </button>
             {isOpen && (
               <div className="overflow-x-auto">
-                <table className="min-w-[1120px] w-full table-fixed text-left text-sm">
+                <table className="min-w-[900px] w-full table-fixed text-left text-sm">
                   <colgroup>
-                    <col className="w-[140px]" />
-                    <col className="w-[170px]" />
-                    <col className="w-[250px]" />
-                    <col className="w-[170px]" />
-                    <col className="w-[270px]" />
-                    <col className="w-[120px]" />
+                    <col className="w-[115px]" />
+                    <col className="w-[145px]" />
+                    <col className="w-[190px]" />
+                    <col className="w-[135px]" />
+                    <col className="w-[210px]" />
+                    <col className="w-[105px]" />
                   </colgroup>
-                  <thead className="border-b bg-white text-xs uppercase tracking-wide text-orange-700">
+                  <thead className="border-b bg-white text-slate-900 font-semibold uppercase tracking-wider">
                     <tr>
-                      <th className="p-4">No Job</th>
-                      <th className="p-4">Exhibitor</th>
-                      <th className="p-4">Dokumen shipment</th>
-                      <th className="p-4">ETA</th>
-                      <th className="p-4">Dokumen BC</th>
-                      <th className="p-4">PIC</th>
+                      <th className="px-3 py-3">No Job</th>
+                      <th className="px-3 py-3">Exhibitor</th>
+                      <th className="px-3 py-3">Dokumen shipment</th>
+                      <th className="px-3 py-3">ETA</th>
+                      <th className="px-3 py-3">Dokumen BC</th>
+                      <th className="px-3 py-3">PIC</th>
                     </tr>
                   </thead>
                   <tbody>
