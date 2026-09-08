@@ -6,10 +6,10 @@ import {
   LayoutDashboard,
   BriefcaseBusiness,
   CalendarDays,
+  ChevronsLeft,
+  ChevronsRight,
   FolderKanban,
   Package,
-  PanelLeftClose,
-  PanelLeftOpen,
 } from 'lucide-react'
 const links = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -24,19 +24,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen md:flex">
       <aside
-        className={`flex w-full flex-col bg-black text-white/70 transition-[width] duration-200 md:fixed md:inset-y-0 md:z-20 ${collapsed ? 'md:w-20' : 'md:w-64'}`}
+        className={`flex w-full flex-col bg-slate-800 text-white/70 transition-[width] duration-200 md:fixed md:inset-y-0 md:z-20 ${collapsed ? 'md:w-20' : 'md:w-64'}`}
       >
         <div
-          className={`flex items-start justify-between gap-3 py-6 ${collapsed ? 'px-4' : 'px-6'}`}
+          className={`flex items-start gap-3 py-6 ${collapsed ? 'justify-center px-4' : 'justify-between px-6'}`}
         >
-          <div className="min-w-0">
+          <div className={`min-w-0 ${collapsed ? 'md:hidden' : ''}`}>
             <p className="text-lg font-bold text-white">
-              VSS{' '}
-              <span className={`text-orange-400 ${collapsed ? 'md:hidden' : ''}`}>Projects</span>
+              VSS <span className="text-orange-400">Projects</span>
             </p>
-            <p className={`mt-1 text-xs text-white/40 ${collapsed ? 'md:hidden' : ''}`}>
-              Operational control center
-            </p>
+            <p className="mt-1 text-xs text-white/40">Operational control center</p>
           </div>
           <button
             type="button"
@@ -45,7 +42,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             aria-expanded={!collapsed}
             className="hidden shrink-0 rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white md:inline-flex"
           >
-            {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+            {collapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
           </button>
         </div>
         <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:block md:space-y-1">
@@ -81,7 +78,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 key={href}
                 href={href}
                 title={collapsed ? label : undefined}
-                className={`flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${collapsed ? 'md:justify-center' : ''} ${active ? 'bg-orange-600 text-white shadow-lg shadow-orange-950/40' : 'hover:bg-blue-950 hover:text-white'}`}
+                className={`flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${collapsed ? 'md:justify-center' : ''} ${active ? 'bg-orange-600 text-white shadow-lg shadow-orange-950/40' : 'hover:bg-slate-700 hover:text-white'}`}
               >
                 {content}
               </Link>
