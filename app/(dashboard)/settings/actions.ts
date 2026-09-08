@@ -23,6 +23,6 @@ export async function addUserAction(
   })
   if (!result.ok) return { error: result.error, success: null }
 
-  revalidatePath('/users')
+  revalidatePath('/settings')
   return { error: null, success: `${result.user.nama} berhasil ditambahkan.` }
 }

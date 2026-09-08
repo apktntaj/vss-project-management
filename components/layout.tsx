@@ -11,7 +11,7 @@ import {
   FolderKanban,
   LogOut,
   Package,
-  Users,
+  Settings,
 } from 'lucide-react'
 import { logoutAction } from '@/app/(dashboard)/actions'
 const links = [
@@ -31,7 +31,7 @@ export function AppShell({
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const visibleLinks = user.isAdmin
-    ? [...links, { href: '/users', label: 'Users', icon: Users, available: true }]
+    ? [...links, { href: '/settings', label: 'Settings', icon: Settings, available: true }]
     : links
   return (
     <div className="min-h-screen md:flex">
