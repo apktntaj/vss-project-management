@@ -9,8 +9,10 @@ import {
   ChevronsLeft,
   ChevronsRight,
   FolderKanban,
+  LogOut,
   Package,
 } from 'lucide-react'
+import { logoutAction } from '@/app/(dashboard)/actions'
 const links = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/events', label: 'Events', icon: CalendarDays },
@@ -18,7 +20,13 @@ const links = [
   { href: '/general-cargo', label: 'General Cargo', icon: Package, available: false },
   { href: '/projects', label: 'Projects', icon: FolderKanban, available: false },
 ]
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  user,
+}: {
+  children: React.ReactNode
+  user: { name?: string | null; email?: string | null }
+}) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   return (
@@ -85,6 +93,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )
           })}
         </nav>
+        <div
+          className={`mt-auto border-t border-white/10 p-3 ${collapsed ? 'md:text-center' : ''}`}
+        >
+          <div className={`mb-3 min-w-0 px-3 ${collapsed ? 'md:hidden' : ''}`}>
+            <p className="truncate text-sm font-semibold text-white">
+              {user.name ?? 'Pengguna demo'}
+            </p>
+            <p className="truncate text-xs text-white/45">{user.email}</p>
+          </div>
+          <form action={logoutAction}>
+            <button
+              type="submit"
+              title={collapsed ? 'Keluar' : undefined}
+              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-slate-700 hover:text-white ${collapsed ? 'md:justify-center' : ''}`}
+            >
+              <LogOut size={18} />
+              <span className={collapsed ? 'md:hidden' : ''}>Keluar</span>
+            </button>
+          </form>
+        </div>
       </aside>
       <main
         className={`min-w-0 flex-1 transition-[margin] duration-200 ${collapsed ? 'md:ml-20' : 'md:ml-64'}`}
