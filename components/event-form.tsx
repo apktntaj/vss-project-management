@@ -362,6 +362,7 @@ export function EventForm({
                       type: 'LOCAL',
                       email: null,
                       phone: null,
+                      agent: null,
                       address: null,
                       countryCode: null,
                     },
@@ -451,6 +452,14 @@ export function EventForm({
                       <input
                         value={exhibitor.phone ?? ''}
                         onChange={(input) => updateExhibitor(index, 'phone', input.target.value)}
+                        className="input"
+                      />
+                    </label>
+                    <label className="label">
+                      Agent
+                      <input
+                        value={exhibitor.agent ?? ''}
+                        onChange={(input) => updateExhibitor(index, 'agent', input.target.value)}
                         className="input"
                       />
                     </label>

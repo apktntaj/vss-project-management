@@ -15,6 +15,7 @@ const emptyExhibitor = (): EventExhibitorInput => ({
   type: 'INTERNATIONAL',
   email: null,
   phone: null,
+  agent: null,
   address: null,
   countryCode: null,
 })
@@ -32,7 +33,7 @@ export function EventExhibitorModal({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  function updateExhibitor(index: number, field: 'legalName' | 'phone', value: string) {
+  function updateExhibitor(index: number, field: 'legalName' | 'agent' | 'phone', value: string) {
     setExhibitors((current) =>
       current.map((item, itemIndex) =>
         itemIndex === index ? { ...item, [field]: value || null } : item,
@@ -55,7 +56,9 @@ export function EventExhibitorModal({
       await saveEventExhibitors(event.id, [...existingInputs, ...exhibitors])
       onSaved()
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Tidak dapat menyimpan exhibitor dan Job.')
+      setError(
+        caught instanceof Error ? caught.message : 'Tidak dapat menyimpan exhibitor dan Job.',
+      )
     } finally {
       setSaving(false)
     }
@@ -81,7 +84,9 @@ export function EventExhibitorModal({
             <h2 id="add-exhibitor-title" className="text-xl font-bold">
               Tambah exhibitor
             </h2>
-            <p className="mt-1 text-sm text-slate-500">{event.officialName} · satu exhibitor akan menjadi satu Job</p>
+            <p className="mt-1 text-sm text-slate-500">
+              {event.officialName} · satu exhibitor akan menjadi satu Job
+            </p>
           </div>
           <button
             type="button"
@@ -118,7 +123,9 @@ export function EventExhibitorModal({
                   <button
                     type="button"
                     onClick={() =>
-                      setExhibitors((current) => current.filter((_, itemIndex) => itemIndex !== index))
+                      setExhibitors((current) =>
+                        current.filter((_, itemIndex) => itemIndex !== index),
+                      )
                     }
                     aria-label={`Hapus exhibitor ${index + 1}`}
                     className="rounded-md p-1.5 text-rose-600 hover:bg-rose-50"
@@ -128,7 +135,7 @@ export function EventExhibitorModal({
                 )}
               </div>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <label className="label">
+                <label className="label sm:col-span-2">
                   Nama exhibitor
                   <input
                     required
@@ -137,6 +144,14 @@ export function EventExhibitorModal({
                       updateExhibitor(index, 'legalName', input.target.value.toUpperCase())
                     }
                     className="input uppercase"
+                  />
+                </label>
+                <label className="label">
+                  Agent
+                  <input
+                    value={exhibitor.agent ?? ''}
+                    onChange={(input) => updateExhibitor(index, 'agent', input.target.value)}
+                    className="input"
                   />
                 </label>
                 <label className="label">
