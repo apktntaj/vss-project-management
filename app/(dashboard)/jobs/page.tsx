@@ -1,11 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronDown,
   ChevronRight,
   FileWarning,
+  LoaderCircle,
   Plane,
   Search,
   Ship,
@@ -17,8 +18,10 @@ import {
   getOperationalDetails,
   listEvents,
   listJobs,
+  saveJobDocument,
   type LocalEvent,
   type LocalJob,
+  type LocalJobDocument,
 } from '@/lib/data-client'
 import { StatusBadge } from '@/components/status-badge'
 
@@ -67,7 +70,16 @@ function CustomsProgress({ job }: { job: LocalJob }) {
   )
 }
 
-function JobRow({ job }: { job: LocalJob }) {
+function JobRow({
+  job,
+  onDocumentUploaded,
+}: {
+  job: LocalJob
+  onDocumentUploaded: (jobId: string, document: LocalJobDocument) => void
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
   const operational = getOperationalDetails(job)
   const inbound = operational.inbound
   const outbound = operational.outbound
@@ -77,6 +89,25 @@ function JobRow({ job }: { job: LocalJob }) {
     ),
   )
   const TransportIcon = inbound.mode === 'AIR' ? Plane : inbound.mode === 'SEA' ? Ship : Truck
+  async function uploadShipmentDocument(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      setUploadError('File harus berupa PDF')
+      return
+    }
+    setUploading(true)
+    setUploadError('')
+    try {
+      const document = await saveJobDocument(job.id, file, 'INBOUND_TRANSPORT')
+      onDocumentUploaded(job.id, document)
+    } catch {
+      setUploadError('Upload gagal')
+    } finally {
+      setUploading(false)
+    }
+  }
   return (
     <tr className="border-b border-slate-100 odd:bg-slate-50/70 last:border-0 hover:bg-orange-50/40">
       <td className="px-3 py-3 align-top">
@@ -104,17 +135,41 @@ function JobRow({ job }: { job: LocalJob }) {
       </td>
       <td className="px-3 py-3 align-top">
         <div className="flex items-start gap-2">
-          <Upload size={16} className="mt-0.5 shrink-0 text-slate-400" aria-hidden="true" />
-          <div>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            aria-label={`Upload dokumen shipment untuk ${job.jobNumber}`}
+            title="Upload dokumen shipment"
+            className="mt-0.5 shrink-0 rounded p-0.5 text-slate-400 hover:bg-orange-100 hover:text-orange-700 disabled:cursor-wait disabled:opacity-60"
+          >
+            {uploading ? (
+              <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
+            ) : (
+              <Upload size={16} aria-hidden="true" />
+            )}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/pdf,.pdf"
+            onChange={uploadShipmentDocument}
+            className="sr-only"
+            tabIndex={-1}
+          />
+          <div className="min-w-0">
             <p className="text-sm font-medium text-slate-700">
               {inbound.documentType || 'Masuk'} · {inbound.documentNumber || 'Belum ada dokumen'}
             </p>
-            <p className="mt-1 text-xs text-slate-500">
-              {shipmentDocuments.length
-                ? `${shipmentDocuments.length} dokumen diunggah`
-                : outbound.documentType
-                  ? `Keluar: ${outbound.documentType} · ${outbound.documentNumber || 'belum diisi'}`
-                  : 'Belum ada dokumen diunggah'}
+            <p className={`mt-1 text-xs ${uploadError ? 'text-rose-600' : 'text-slate-500'}`}>
+              {uploadError ||
+                (uploading
+                  ? 'Mengunggah dokumen…'
+                  : shipmentDocuments.length
+                    ? `${shipmentDocuments.length} dokumen diunggah`
+                    : outbound.documentType
+                      ? `Keluar: ${outbound.documentType} · ${outbound.documentNumber || 'belum diisi'}`
+                      : 'Belum ada dokumen diunggah')}
             </p>
           </div>
         </div>
@@ -166,6 +221,13 @@ export default function JobsPage() {
       setOpen(Object.fromEntries(loadedEvents.map((event) => [event.id, true])))
     })
   }, [])
+  const handleDocumentUploaded = (jobId: string, document: LocalJobDocument) => {
+    setJobs((current) =>
+      current.map((job) =>
+        job.id === jobId ? { ...job, documents: [...job.documents, document] } : job,
+      ),
+    )
+  }
   const eventById = useMemo(() => new Map(events.map((event) => [event.id, event])), [events])
   const filtered = useMemo(
     () =>
@@ -349,7 +411,7 @@ export default function JobsPage() {
                   </thead>
                   <tbody>
                     {eventJobs.map((job) => (
-                      <JobRow key={job.id} job={job} />
+                      <JobRow key={job.id} job={job} onDocumentUploaded={handleDocumentUploaded} />
                     ))}
                   </tbody>
                 </table>
