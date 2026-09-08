@@ -448,10 +448,11 @@ export function EventForm({
                       />
                     </label>
                     <label className="label">
-                      Nomor telepon
+                      Contact
                       <input
                         value={exhibitor.phone ?? ''}
                         onChange={(input) => updateExhibitor(index, 'phone', input.target.value)}
+                        placeholder="Nomor telepon atau email"
                         className="input"
                       />
                     </label>
