@@ -110,7 +110,11 @@ export function EventExhibitorModal({
                       setExhibitors((current) =>
                         current.map((item, itemIndex) =>
                           itemIndex === index
-                            ? { ...item, type: input.target.checked ? 'LOCAL' : 'INTERNATIONAL' }
+                            ? {
+                                ...item,
+                                type: input.target.checked ? 'LOCAL' : 'INTERNATIONAL',
+                                agent: input.target.checked ? null : item.agent,
+                              }
                             : item,
                         ),
                       )
@@ -146,15 +150,17 @@ export function EventExhibitorModal({
                     className="input uppercase"
                   />
                 </label>
-                <label className="label">
-                  Agent
-                  <input
-                    value={exhibitor.agent ?? ''}
-                    onChange={(input) => updateExhibitor(index, 'agent', input.target.value)}
-                    className="input"
-                  />
-                </label>
-                <label className="label">
+                {exhibitor.type === 'INTERNATIONAL' && (
+                  <label className="label">
+                    Agent
+                    <input
+                      value={exhibitor.agent ?? ''}
+                      onChange={(input) => updateExhibitor(index, 'agent', input.target.value)}
+                      className="input"
+                    />
+                  </label>
+                )}
+                <label className={`label ${exhibitor.type === 'LOCAL' ? 'sm:col-span-2' : ''}`}>
                   Contact
                   <input
                     value={exhibitor.phone ?? ''}

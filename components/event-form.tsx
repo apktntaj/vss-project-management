@@ -171,7 +171,13 @@ export function EventForm({
   function updateExhibitor(index: number, field: keyof EventExhibitorInput, value: string) {
     setExhibitors((current) =>
       current.map((exhibitor, currentIndex) =>
-        currentIndex === index ? { ...exhibitor, [field]: value || null } : exhibitor,
+        currentIndex === index
+          ? {
+              ...exhibitor,
+              [field]: value || null,
+              ...(field === 'type' && value === 'LOCAL' ? { agent: null } : {}),
+            }
+          : exhibitor,
       ),
     )
   }
@@ -456,14 +462,16 @@ export function EventForm({
                         className="input"
                       />
                     </label>
-                    <label className="label">
-                      Agent
-                      <input
-                        value={exhibitor.agent ?? ''}
-                        onChange={(input) => updateExhibitor(index, 'agent', input.target.value)}
-                        className="input"
-                      />
-                    </label>
+                    {exhibitor.type === 'INTERNATIONAL' && (
+                      <label className="label">
+                        Agent
+                        <input
+                          value={exhibitor.agent ?? ''}
+                          onChange={(input) => updateExhibitor(index, 'agent', input.target.value)}
+                          className="input"
+                        />
+                      </label>
+                    )}
                     <label className="label sm:col-span-2">
                       Alamat
                       <textarea

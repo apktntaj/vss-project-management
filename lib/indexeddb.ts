@@ -845,6 +845,7 @@ export async function saveEventExhibitors(eventId: string, inputs: EventExhibito
       if (input.id && !previous) throw new Error('Exhibitor tidak ditemukan dalam event ini.')
       return {
         ...input,
+        agent: input.type === 'LOCAL' ? null : (input.agent ?? null),
         id: previous?.id ?? id(),
         eventId,
         createdAt: previous?.createdAt ?? timestamp,
