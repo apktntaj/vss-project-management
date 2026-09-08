@@ -5,10 +5,13 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   ChevronDown,
   ChevronRight,
-  FileCheck2,
   FileWarning,
+  Plane,
   Search,
+  Ship,
   SlidersHorizontal,
+  Truck,
+  Upload,
 } from 'lucide-react'
 import {
   getOperationalDetails,
@@ -68,6 +71,12 @@ function JobRow({ job }: { job: LocalJob }) {
   const operational = getOperationalDetails(job)
   const inbound = operational.inbound
   const outbound = operational.outbound
+  const shipmentDocuments = job.documents.filter((document) =>
+    ['SOURCE', 'INBOUND_TRANSPORT', 'OUTBOUND_TRANSPORT', 'CIPL'].includes(
+      document.kind || 'SOURCE',
+    ),
+  )
+  const TransportIcon = inbound.mode === 'AIR' ? Plane : inbound.mode === 'SEA' ? Ship : Truck
   return (
     <tr className="border-b border-slate-100 last:border-0 hover:bg-orange-50/40">
       <td className="p-4 align-top">
@@ -86,25 +95,39 @@ function JobRow({ job }: { job: LocalJob }) {
         <p className="mt-1 text-xs text-slate-500">{job.agent || 'Agent belum diisi'}</p>
       </td>
       <td className="p-4 align-top">
-        <p className="text-sm font-medium text-slate-700">
-          {inbound.documentType || 'Masuk'} · {inbound.documentNumber || 'Belum ada dokumen'}
-        </p>
-        <p className="mt-1 text-xs text-slate-500">
-          Keluar:{' '}
-          {outbound.documentType
-            ? `${outbound.documentType} · ${outbound.documentNumber || 'belum diisi'}`
-            : 'belum direncanakan'}
-        </p>
+        <div className="flex items-start gap-2">
+          <Upload size={16} className="mt-0.5 shrink-0 text-slate-400" aria-hidden="true" />
+          <div>
+            <p className="text-sm font-medium text-slate-700">
+              {inbound.documentType || 'Masuk'} · {inbound.documentNumber || 'Belum ada dokumen'}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {shipmentDocuments.length
+                ? `${shipmentDocuments.length} dokumen diunggah`
+                : outbound.documentType
+                  ? `Keluar: ${outbound.documentType} · ${outbound.documentNumber || 'belum diisi'}`
+                  : 'Belum ada dokumen diunggah'}
+            </p>
+          </div>
+        </div>
       </td>
       <td className="p-4 align-top">
-        <span
-          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${operational.cipl.status === 'VERIFIED' ? 'bg-emerald-100 text-emerald-800' : operational.cipl.status === 'RECEIVED' ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}`}
-        >
-          {operational.cipl.status === 'MISSING' ? 'Menunggu CIPL' : label(operational.cipl.status)}
-        </span>
-        <p className="mt-1 text-xs text-slate-500">
-          {operational.cipl.referenceNumber || 'Belum ada referensi'}
-        </p>
+        <div className="flex items-start gap-2">
+          <TransportIcon size={16} className="mt-0.5 shrink-0 text-slate-400" aria-hidden="true" />
+          <div>
+            <p className="text-sm font-medium text-slate-700">{date(inbound.scheduleAt)}</p>
+            <p className="mt-1 text-xs text-slate-500">
+              {inbound.mode === 'AIR'
+                ? 'Udara'
+                : inbound.mode === 'SEA'
+                  ? 'Laut'
+                  : inbound.mode === 'LOCAL'
+                    ? 'Lokal'
+                    : 'Moda belum ditentukan'}
+              {inbound.carrier ? ` · ${inbound.carrier}` : ''}
+            </p>
+          </div>
+        </div>
       </td>
       <td className="p-4 align-top">
         <CustomsProgress job={job} />
@@ -117,37 +140,7 @@ function JobRow({ job }: { job: LocalJob }) {
           <StatusBadge status={job.status} />
         </div>
       </td>
-      <td className="p-4 align-top text-right">
-        <Link
-          href={`/jobs/${job.id}`}
-          className="btn-secondary whitespace-nowrap px-3 py-1.5 text-xs"
-        >
-          Lengkapi
-        </Link>
-      </td>
     </tr>
-  )
-}
-
-function Metric({
-  label,
-  value,
-  icon,
-  tone,
-}: {
-  label: string
-  value: number
-  icon: React.ReactNode
-  tone: string
-}) {
-  return (
-    <div className="card flex items-center gap-3 p-4">
-      <span className={`rounded-xl p-2.5 ${tone}`}>{icon}</span>
-      <div>
-        <p className="text-2xl font-bold text-slate-900">{value}</p>
-        <p className="text-sm text-slate-500">{label}</p>
-      </div>
-    </div>
   )
 }
 
@@ -210,6 +203,10 @@ export default function JobsPage() {
       (item) => item.applicable && item.status !== 'COMPLETED',
     ),
   ).length
+  const activeJobs = jobs.filter((job) => job.status === 'IN_PROGRESS').length
+  const pendingJobs = jobs.filter(
+    (job) => job.status === 'DRAFT' || job.status === 'ON_HOLD',
+  ).length
   return (
     <div className="space-y-6">
       <section>
@@ -217,45 +214,43 @@ export default function JobsPage() {
         <p className="mt-2 text-sm text-slate-500">Kelola milestone job berdasarkan tenggatnya.</p>
       </section>
       <section className="grid gap-3 lg:grid-cols-3">
-        <div className="card p-4">
-          <p className="text-sm font-semibold text-slate-900">Summary</p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <Metric
-              label="Job aktif"
-              value={filtered.length}
-              icon={<FileCheck2 size={18} />}
-              tone="text-blue-700 bg-blue-50"
-            />
-            <Metric
-              label="Selesai"
-              value={filtered.filter((job) => job.status === 'COMPLETED').length}
-              icon={<FileCheck2 size={18} />}
-              tone="text-emerald-700 bg-emerald-50"
-            />
+        <div className="card p-5" aria-labelledby="jobs-summary-title">
+          <h2 id="jobs-summary-title" className="text-lg font-semibold">
+            Summary
+          </h2>
+          <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+            <div>
+              <p className="text-2xl font-bold text-blue-700">{activeJobs}</p>
+              <p className="mt-1 text-xs text-slate-500">Job aktif</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-amber-700">{pendingJobs}</p>
+              <p className="mt-1 text-xs text-slate-500">Job pending</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-slate-700">{jobs.length}</p>
+              <p className="mt-1 text-xs text-slate-500">Total job</p>
+            </div>
           </div>
         </div>
-        <div className="card p-4">
-          <p className="text-sm font-semibold text-slate-900">Checkpoint event</p>
-          <p className="mt-2 text-sm leading-6 text-slate-500">
+        <div className="card p-5">
+          <h2 className="text-lg font-semibold">Checkpoint event</h2>
+          <p className="mt-3 text-sm leading-6 text-slate-500">
             ETA, move-in, dan move-out tampil pada timeline event.
           </p>
         </div>
-        <div className="card p-4">
-          <p className="text-sm font-semibold text-slate-900">Attention</p>
-          <div className="mt-3">
-            <Metric
-              label="Menunggu CIPL"
-              value={waitingCipl}
-              icon={<FileWarning size={18} />}
-              tone="text-amber-700 bg-amber-50"
-            />
-            <div className="mt-3">
-              <Metric
-                label="Perlu tindak lanjut"
-                value={needsAction}
-                icon={<SlidersHorizontal size={18} />}
-                tone="text-orange-700 bg-orange-50"
-              />
+        <div className="card p-5">
+          <h2 className="text-lg font-semibold">Attention</h2>
+          <div className="mt-4 grid grid-cols-2 gap-3 text-center">
+            <div>
+              <FileWarning className="mx-auto text-amber-700" size={18} />
+              <p className="mt-1 text-2xl font-bold text-amber-700">{waitingCipl}</p>
+              <p className="mt-1 text-xs text-slate-500">Menunggu CIPL</p>
+            </div>
+            <div>
+              <SlidersHorizontal className="mx-auto text-orange-700" size={18} />
+              <p className="mt-1 text-2xl font-bold text-orange-700">{needsAction}</p>
+              <p className="mt-1 text-xs text-slate-500">Perlu tindak lanjut</p>
             </div>
           </div>
         </div>
@@ -330,13 +325,12 @@ export default function JobsPage() {
                 <table className="min-w-[1120px] w-full text-left text-sm">
                   <thead className="border-b bg-white text-xs uppercase tracking-wide text-slate-500">
                     <tr>
-                      <th className="p-4">Job</th>
-                      <th className="p-4">Pihak</th>
-                      <th className="p-4">Transport</th>
-                      <th className="p-4">CIPL</th>
+                      <th className="p-4">No Job</th>
+                      <th className="p-4">Exhibitor</th>
+                      <th className="p-4">Dokumen shipment</th>
+                      <th className="p-4">ETA</th>
                       <th className="p-4">Dokumen BC</th>
-                      <th className="p-4">PIC & Status</th>
-                      <th className="p-4" />
+                      <th className="p-4">PIC</th>
                     </tr>
                   </thead>
                   <tbody>
