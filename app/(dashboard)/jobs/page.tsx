@@ -88,11 +88,19 @@ function JobRow({ job }: { job: LocalJob }) {
         </Link>
         <p className="mt-1 text-xs text-slate-500">Dibuat {date(job.createdAt)}</p>
       </td>
-      <td className="p-4 align-top">
-        <p className="font-medium text-slate-800">
+      <td className="w-[170px] max-w-[170px] p-4 align-top">
+        <p
+          className="truncate font-medium text-slate-800"
+          title={job.exhibitor?.legalName || job.shipper || job.clientName}
+        >
           {job.exhibitor?.legalName || job.shipper || job.clientName}
         </p>
-        <p className="mt-1 text-xs text-slate-500">{job.agent || 'Agent belum diisi'}</p>
+        <p
+          className="mt-1 truncate text-xs text-slate-500"
+          title={job.agent || 'Agent belum diisi'}
+        >
+          {job.agent || 'Agent belum diisi'}
+        </p>
       </td>
       <td className="p-4 align-top">
         <div className="flex items-start gap-2">
@@ -322,8 +330,16 @@ export default function JobsPage() {
             </button>
             {isOpen && (
               <div className="overflow-x-auto">
-                <table className="min-w-[1120px] w-full text-left text-sm">
-                  <thead className="border-b bg-white text-xs uppercase tracking-wide text-slate-500">
+                <table className="min-w-[1120px] w-full table-fixed text-left text-sm">
+                  <colgroup>
+                    <col className="w-[140px]" />
+                    <col className="w-[170px]" />
+                    <col className="w-[250px]" />
+                    <col className="w-[170px]" />
+                    <col className="w-[270px]" />
+                    <col className="w-[120px]" />
+                  </colgroup>
+                  <thead className="border-b bg-white text-xs uppercase tracking-wide text-orange-700">
                     <tr>
                       <th className="p-4">No Job</th>
                       <th className="p-4">Exhibitor</th>
