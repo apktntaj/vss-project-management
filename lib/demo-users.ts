@@ -4,21 +4,21 @@ import { UserSchema } from '@/domain/user/validation'
 
 export const MOCK_USERS: readonly User[] = [
   {
-    nama: 'Admin Demo VSS',
+    nama: 'Nurul Handayani',
     email: 'admin@vss.demo',
-    password: 'demo-vss-2026',
+    password: 'nurulhandayani',
     isAdmin: true,
   },
   {
-    nama: 'Staf Operasional',
+    nama: 'Andy',
     email: 'operasional@vss.demo',
-    password: 'operasional-2026',
+    password: 'andyandyandy',
     isAdmin: false,
   },
   {
-    nama: 'Viewer Proyek',
+    nama: 'Kevin',
     email: 'viewer@vss.demo',
-    password: 'viewer-2026',
+    password: 'kevinkevin',
     isAdmin: false,
   },
 ]
