@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { auth } from '@/auth'
-import { DEMO_USER } from '@/lib/demo-users'
+import { MOCK_USERS } from '@/lib/demo-users'
 import { LoginForm } from './login-form'
 
 export default async function LoginPage() {
@@ -19,15 +19,21 @@ export default async function LoginPage() {
           eksternal.
         </p>
         <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-950">
-          <p className="font-semibold">Kredensial demo</p>
-          <p className="mt-1">
-            <span className="text-blue-700">Email:</span> {DEMO_USER.email}
-          </p>
-          <p>
-            <span className="text-blue-700">Password:</span> {DEMO_USER.password}
-          </p>
+          <p className="font-semibold">Kredensial mock</p>
+          <div className="mt-2 space-y-2">
+            {MOCK_USERS.map((user) => (
+              <div key={user.email}>
+                <p className="font-medium">
+                  {user.nama} {user.isAdmin ? '(Admin)' : ''}
+                </p>
+                <p className="text-xs text-blue-800">
+                  {user.email} / {user.password}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
-        <LoginForm email={DEMO_USER.email} password={DEMO_USER.password} />
+        <LoginForm email={MOCK_USERS[0].email} password={MOCK_USERS[0].password} />
       </div>
     </main>
   )

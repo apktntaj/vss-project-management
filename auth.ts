@@ -1,7 +1,7 @@
 import NextAuth from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
 import { z } from 'zod'
-import { findDemoUser } from '@/lib/demo-users'
+import { authenticateDemoUser } from '@/lib/demo-users'
 
 const credentialsSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
@@ -26,8 +26,26 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         const parsed = credentialsSchema.safeParse(credentials)
         if (!parsed.success) return null
 
-        return findDemoUser(parsed.data.email, parsed.data.password)
+        const user = authenticateDemoUser(parsed.data.email, parsed.data.password)
+        if (!user) return null
+
+        return {
+          id: user.email,
+          name: user.nama,
+          email: user.email,
+          isAdmin: user.isAdmin,
+        }
       },
     }),
   ],
+  callbacks: {
+    jwt({ token, user }) {
+      if (user) token.isAdmin = user.isAdmin
+      return token
+    },
+    session({ session, token }) {
+      session.user.isAdmin = Boolean(token.isAdmin)
+      return session
+    },
+  },
 })

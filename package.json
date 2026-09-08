@@ -9,7 +9,7 @@
     "lint": "next lint",
     "data:build": "node scripts/build-discovery-dataset.mjs",
     "domain:demo": "tsx domain/v2/demo.ts",
-    "domain:test": "tsx domain/v2/validation.test.ts && tsx domain/exhibition/validation.test.ts",
+    "domain:test": "tsx domain/v2/validation.test.ts && tsx domain/exhibition/validation.test.ts && tsx domain/user/validation.test.ts",
     "domain:validate-samples": "tsx domain/v2/validate-samples.mts"
   },
   "dependencies": {

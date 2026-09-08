@@ -11,6 +11,7 @@ import {
   FolderKanban,
   LogOut,
   Package,
+  Users,
 } from 'lucide-react'
 import { logoutAction } from '@/app/(dashboard)/actions'
 const links = [
@@ -25,10 +26,13 @@ export function AppShell({
   user,
 }: {
   children: React.ReactNode
-  user: { name?: string | null; email?: string | null }
+  user: { name?: string | null; email?: string | null; isAdmin: boolean }
 }) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
+  const visibleLinks = user.isAdmin
+    ? [...links, { href: '/users', label: 'Users', icon: Users, available: true }]
+    : links
   return (
     <div className="min-h-screen md:flex">
       <aside
@@ -54,7 +58,7 @@ export function AppShell({
           </button>
         </div>
         <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:block md:space-y-1">
-          {links.map(({ href, label, icon: Icon, available = true }) => {
+          {visibleLinks.map(({ href, label, icon: Icon, available = true }) => {
             const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
             const content = (
               <>
@@ -101,6 +105,9 @@ export function AppShell({
               {user.name ?? 'Pengguna demo'}
             </p>
             <p className="truncate text-xs text-white/45">{user.email}</p>
+            <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-orange-300">
+              {user.isAdmin ? 'Admin' : 'User'}
+            </p>
           </div>
           <form action={logoutAction}>
             <button
