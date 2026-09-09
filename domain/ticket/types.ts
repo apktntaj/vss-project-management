@@ -6,14 +6,6 @@ export type TicketContext =
 export type TicketStatus = 'TODO' | 'PROGRESS' | 'DONE'
 export type TicketPriority = 'NORMAL' | 'URGENT'
 
-export type TicketBlocker = {
-  reason: string
-  nextAction: string
-  createdAt: string
-  resolvedAt: string | null
-  resolution: string | null
-}
-
 export type TicketCompletion = { note: string; completedAt: string }
 export type TicketStatusChange = {
   from: TicketStatus
@@ -31,7 +23,6 @@ export type Ticket = {
   status: TicketStatus
   order: number
   priority: TicketPriority
-  blocker: TicketBlocker | null
   completion: TicketCompletion | null
   statusHistory: TicketStatusChange[]
   createdAt: string

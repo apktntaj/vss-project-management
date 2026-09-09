@@ -20,10 +20,10 @@ import {
   validateShipmentAllocation,
 } from '@/domain/exhibition/validation'
 import { createMockData, MOCK_DATA_VERSION } from '@/lib/mock-data'
-import type { Ticket, TicketBlocker, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
+import type { Ticket, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
 import { validateStatusTransition, validateTicket } from '@/domain/ticket/validation'
 
-export type { Ticket, TicketBlocker, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
+export type { Ticket, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
 
 export type LocalUser = {
   id: string
@@ -237,7 +237,7 @@ type StoreName =
   | 'preferences'
 
 const databaseName = 'vss-project-management'
-const databaseVersion = 9
+const databaseVersion = 10
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -298,6 +298,16 @@ function openDatabase(): Promise<IDBDatabase> {
           const cursor = (cursorEvent.target as IDBRequest<IDBCursorWithValue | null>).result
           if (!cursor) return
           const { dueOn: _dueOn, ...ticket } = cursor.value as StoredTicket & { dueOn?: string | null }
+          cursor.update(ticket)
+          cursor.continue()
+        }
+      }
+      if (upgradeEvent.oldVersion < 10) {
+        const tickets = upgradeTransaction.objectStore('tickets')
+        tickets.openCursor().onsuccess = (cursorEvent) => {
+          const cursor = (cursorEvent.target as IDBRequest<IDBCursorWithValue | null>).result
+          if (!cursor) return
+          const { blocker: _blocker, ...ticket } = cursor.value as StoredTicket & { blocker?: unknown }
           cursor.update(ticket)
           cursor.continue()
         }
@@ -840,7 +850,7 @@ export async function createTicket(input: TicketInput): Promise<Ticket> {
     id: id(), assigneeId: user.id, context: input.context,
     title: input.title.trim(), description: input.description?.trim() || null,
     status: 'TODO', order: Math.max(0, ...current.filter((item) => item.status === 'TODO').map((item) => item.order)) + 1,
-    priority: input.priority ?? 'NORMAL', blocker: null, completion: null, statusHistory: [], createdAt: timestamp, updatedAt: timestamp,
+    priority: input.priority ?? 'NORMAL', completion: null, statusHistory: [], createdAt: timestamp, updatedAt: timestamp,
   }
   const error = validateTicket(ticket)
   if (error) throw new Error(error)
@@ -921,19 +931,6 @@ export async function moveAndReorderMyTickets(
     transaction.objectStore('tickets').put(ticketForStorage({ ...value, status, order: index + 1, updatedAt: timestamp }))
   })
   await transactionDone(transaction)
-}
-
-export async function setTicketBlocker(ticketId: string, reason: string, nextAction: string) {
-  const { ticket } = await assertTicketOwner(ticketId)
-  if (!reason.trim() || !nextAction.trim()) throw new Error('Alasan dan tindak lanjut blocker wajib diisi.')
-  return put('tickets', ticketForStorage({ ...ticket, blocker: { reason: reason.trim(), nextAction: nextAction.trim(), createdAt: now(), resolvedAt: null, resolution: null }, updatedAt: now() }))
-}
-
-export async function resolveTicketBlocker(ticketId: string, resolution: string) {
-  const { ticket } = await assertTicketOwner(ticketId)
-  if (!ticket.blocker) throw new Error('Ticket tidak memiliki blocker.')
-  if (!resolution.trim()) throw new Error('Resolusi blocker wajib diisi.')
-  return put('tickets', ticketForStorage({ ...ticket, blocker: { ...ticket.blocker, resolvedAt: now(), resolution: resolution.trim() }, updatedAt: now() }))
 }
 
 export async function listJobs(filters: { search?: string; status?: string } = {}) {
