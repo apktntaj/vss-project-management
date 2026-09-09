@@ -6,7 +6,7 @@
 
 ## 1. Tujuan
 
-Menyediakan ruang kerja per topik agar pekerjaan dan percakapan tidak menumpuk dalam satu kanal umum. Ticket menjadi unit koordinasi yang dapat dibuat sebelum konteks operasional lengkap tersedia, ditugaskan kepada satu user, dikerjakan melalui kanban personal, serta mempunyai komentar dan riwayat aktivitas.
+Menyediakan ruang kerja per topik agar pekerjaan dan percakapan tidak menumpuk dalam satu kanal umum. Ticket menjadi unit kerja utama yang dapat dibuat sebelum konteks operasional lengkap tersedia, ditugaskan kepada satu user, dikerjakan melalui kanban personal, serta mempunyai komentar dan riwayat aktivitas.
 
 Implementasi harus dilakukan satu tahap pada satu waktu. Setiap tahap harus divalidasi dan disepakati selesai sebelum tahap berikutnya dimulai.
 
@@ -14,27 +14,34 @@ Implementasi harus dilakukan satu tahap pada satu waktu. Setiap tahap harus diva
 
 ### Ticket
 
-Ticket adalah topik koordinasi, masalah, atau tindak lanjut yang perlu diselesaikan.
+Ticket adalah satu permintaan kerja, masalah, atau tindak lanjut yang perlu diselesaikan dan didokumentasikan.
 
 Contoh:
 
 - Meminta packing list dari exhibitor.
 - Mengonfirmasi jadwal move-in dengan venue.
+- Meminta tim menyiapkan driver untuk pickup.
+- Meminta pelaksanaan delivery atau customs clearance.
 - Memperbaiki data consignee.
 - Menindaklanjuti persetujuan customer.
 
-### Task atau Work Order
+### Ticket menggantikan Task atau Work Order
 
-Dokumen analisis domain proyek sebelumnya memakai istilah `Task` atau `Work Order` untuk permintaan kerja operasional formal, misalnya pickup, delivery, customs clearance, loading, atau instalasi. Konsep tersebut biasanya mempunyai jadwal, lokasi, cargo, kebutuhan resource, dan bukti penyelesaian.
+Dokumen analisis domain proyek sebelumnya memakai istilah `Task` atau `Work Order` untuk permintaan kerja operasional formal. Keputusan terbaru mengganti kedua konsep tersebut dengan `Ticket` agar permintaan, percakapan, assignment, perubahan status, dan hasil pekerjaan mempunyai satu identitas yang sama.
 
 Untuk MVP ini:
 
 - Ticket tidak menggantikan Job.
-- Ticket tidak menjadi Activity atau Movement operasional.
-- Ticket tidak mengimplementasikan Task atau Work Order.
-- Hubungan Ticket dengan Task atau Work Order dapat dipertimbangkan kemudian jika konsep operasional tersebut diimplementasikan.
+- Ticket menggantikan Task dan Work Order sebagai unit pekerjaan.
+- Pekerjaan koordinasi, administratif, dan operasional dibuat serta ditindaklanjuti melalui Ticket.
+- Permintaan driver, pickup, delivery, customs clearance, loading, instalasi, dan dokumen dapat direpresentasikan sebagai Ticket.
+- Satu ticket sebaiknya mempunyai satu hasil yang dapat diselesaikan. Permintaan dengan hasil independen dibuat sebagai ticket terpisah agar assignment dan statusnya tidak saling menutupi.
+- Detail operasional MVP ditulis pada judul, deskripsi, dan komentar. Field terstruktur seperti requested schedule, lokasi, cargo, resource requirement, dan evidence dapat ditambahkan kemudian pada Ticket jika dibutuhkan.
+- `TicketActivity` adalah riwayat lifecycle Ticket, bukan unit pekerjaan atau movement terpisah.
 
-Dengan batas ini, Ticket berfungsi sebagai alat koordinasi pekerjaan, sedangkan Job tetap menjadi konteks pekerjaan operasional.
+Job tetap menjadi konteks atau payung pekerjaan. Ticket adalah pekerjaan konkret yang dilakukan di dalam atau di luar konteks tersebut.
+
+Assignment Ticket menunjukkan user yang bertanggung jawab menindaklanjuti pekerjaan. Pada ticket “siapkan driver”, assignee bukan otomatis driver yang diminta; assignee adalah user yang bertanggung jawab memenuhi permintaan tersebut. Pemodelan driver sebagai resource atau user pelaksana berada di luar MVP ini.
 
 ## 3. Keputusan requirement
 
@@ -121,7 +128,7 @@ Aturan:
 
 Komentar adalah pesan yang sengaja ditulis user untuk berkomunikasi dalam konteks ticket.
 
-Activity log adalah catatan sistem atas perubahan lifecycle ticket. Gunakan nama domain `TicketActivity` agar tidak bertabrakan dengan Activity/Movement operasional.
+Activity log adalah catatan sistem atas perubahan lifecycle ticket. Gunakan nama domain `TicketActivity` agar jelas bahwa informasi ini merupakan riwayat Ticket, bukan pekerjaan baru.
 
 Activity minimum yang dicatat:
 
@@ -160,7 +167,7 @@ Ticket terdiri dari:
 
 Interpretasi:
 
-Satu ticket merepresentasikan satu topik kerja yang mempunyai identitas stabil walaupun isi, konteks, status, atau assignee berubah.
+Satu ticket merepresentasikan satu pekerjaan dengan hasil yang dapat diselesaikan dan mempunyai identitas stabil walaupun isi, konteks, status, atau assignee berubah.
 
 Invariant:
 
@@ -253,6 +260,7 @@ Acceptance criteria:
 - Tidak ada kode Ticket yang mengakses IndexedDB atau persistensi lain.
 - Refresh halaman mengembalikan store ke data awal runtime.
 - Ticket general, event, dan job dapat direpresentasikan.
+- Permintaan koordinasi, administratif, dan operasional dapat direpresentasikan tanpa Task atau Work Order terpisah.
 - Ticket hanya dapat mempunyai nol atau satu assignee.
 - Operasi mutasi menghasilkan activity yang sesuai.
 - Unit test tahap ini lulus.
@@ -269,12 +277,14 @@ Ruang lingkup:
 - Buat halaman detail ticket.
 - Sediakan penyuntingan judul, deskripsi, priority, dan context.
 - Sediakan filter dasar berdasarkan status, priority, context, dan assignee.
+- Pastikan deskripsi dapat mendokumentasikan instruksi permintaan operasional MVP; hasil dan percakapan ditambahkan melalui komentar pada Tahap 4.
 
 Acceptance criteria:
 
 - Ticket dapat dibuat tanpa event atau job.
 - Ticket dapat dibuat untuk event sebelum job tersedia.
 - Ticket dapat dipindahkan konteksnya ke job setelah job tersedia.
+- Permintaan driver atau pekerjaan operasional lain dapat dibuat sebagai ticket dan ditelusuri pada halaman detail yang sama.
 - Memilih job yang terkait event tidak menghasilkan relasi event duplikat pada ticket.
 - Perubahan terlihat segera selama sesi berjalan.
 - Refresh menghapus perubahan sesuai batas non-persisten MVP.
@@ -344,6 +354,7 @@ Tujuan: memastikan seluruh alur MVP bekerja sebagai satu kesatuan.
 Ruang lingkup:
 
 - Uji alur general ticket menjadi event ticket lalu job ticket.
+- Uji permintaan driver sebagai Ticket dari pembuatan hingga `DONE`.
 - Uji create, edit, assign, take, reassign, unassign, perubahan status, komentar, dan delete.
 - Jalankan type-check, test, lint jika tersedia, dan production build.
 - Perbarui README untuk menjelaskan sifat non-persisten fitur Ticket.
@@ -366,7 +377,7 @@ Untuk setiap tahap:
 5. Tutup issue hanya setelah validasi berhasil.
 6. Laporkan URL issue, hasil validasi, dan hash commit sebelum melanjutkan ke tahap berikutnya.
 
-Perubahan menuju persistensi, attachment, multi-assignee, label bebas, notifikasi, mention, due date, atau integrasi Task/Work Order harus dibuat sebagai scope lanjutan dan tidak dimasukkan diam-diam ke salah satu tahap MVP.
+Perubahan menuju persistensi, attachment, multi-assignee, label bebas, notifikasi, mention, due date, atau detail operasional terstruktur harus dibuat sebagai scope lanjutan dan tidak dimasukkan diam-diam ke salah satu tahap MVP. Detail operasional lanjutan memperkaya Ticket; tidak dibuat sebagai Task atau Work Order terpisah.
 
 ## 8. Skenario validasi utama
 
@@ -374,6 +385,7 @@ Perubahan menuju persistensi, attachment, multi-assignee, label bebas, notifikas
 |---|---|
 | Dokumen shipment belum diterima | Ticket dapat dibuat dengan context general atau event |
 | Job kemudian tersedia | Context ticket dapat diubah menjadi job |
+| Tim membutuhkan driver untuk pickup | Permintaan dibuat sebagai Ticket dan assignee bertanggung jawab memenuhi permintaan tersebut |
 | Ticket tidak mempunyai assignee | Ticket terlihat di antrean bersama dan tidak ada di board personal |
 | User mengambil ticket | User menjadi satu-satunya assignee dan ticket muncul di board-nya |
 | Ticket di-reassign | Ticket berpindah dari board assignee lama ke assignee baru |
@@ -390,3 +402,4 @@ Keputusan berikut tidak menghalangi Tahap 1, tetapi harus dikonfirmasi sebelum i
 1. Apakah semua user aktif boleh menghapus semua ticket, atau penghapusan dibatasi kepada creator/role tertentu?
 2. Apakah komentar perlu dapat dihapus pada MVP; jika ya, apakah hanya oleh author atau oleh semua user aktif?
 3. Apakah ticket yang di-unassign ketika berstatus `IN_PROGRESS` mempertahankan statusnya atau otomatis kembali ke `TODO`?
+4. Apakah ticket operasional boleh dipindahkan ke `DONE` tanpa komentar hasil atau evidence, atau keduanya belum diwajibkan pada MVP?
