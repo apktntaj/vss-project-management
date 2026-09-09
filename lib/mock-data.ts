@@ -10,7 +10,7 @@ import type {
   LocalVenue,
 } from '@/lib/indexeddb'
 
-export const MOCK_DATA_VERSION = 3
+export const MOCK_DATA_VERSION = 4
 
 // Identity references (event dates below are intentionally simulated):
 // https://indobuildtech.com/organisers/
@@ -220,24 +220,24 @@ export function createMockData(baseDate = new Date()): MockData {
   const timestamp = dateTime(baseDate, 0)
   const users: LocalUser[] = [
     {
-      id: 'local-user',
-      name: 'Rina Pratama',
-      email: 'rina@vss.local',
+      id: 'demo-user-nurul',
+      name: 'Nurul Handayani',
+      email: 'admin@vss.demo',
       role: 'SUPERVISOR',
       isActive: true,
     },
     {
-      id: 'demo-user-ari',
-      name: 'Ari Wibowo',
-      email: 'ari@vss.local',
+      id: 'demo-user-andy',
+      name: 'Andy',
+      email: 'operasional@vss.demo',
       role: 'STAFF',
       isActive: true,
     },
     {
-      id: 'demo-user-maya',
-      name: 'Maya Lestari',
-      email: 'maya@vss.local',
-      role: 'DOCUMENT_ASSISTANT',
+      id: 'demo-user-kevin',
+      name: 'Kevin',
+      email: 'viewer@vss.demo',
+      role: 'CUSTOMER_SERVICE',
       isActive: true,
     },
   ]
@@ -431,7 +431,7 @@ export function createMockData(baseDate = new Date()): MockData {
       status: 'COMPLETED',
       type: 'IMPORT',
       agent: 'Yamato Expo Logistics',
-      assignedToId: 'demo-user-ari',
+      assignedToId: 'demo-user-andy',
       createdIn: -88,
       updatedIn: -35,
       sourceDocumentName: 'CIPL-SAKURA-DEMO-001.pdf',
@@ -485,7 +485,7 @@ export function createMockData(baseDate = new Date()): MockData {
       status: 'COMPLETED',
       type: 'IMPORT',
       agent: 'Internal / local movement',
-      assignedToId: 'demo-user-maya',
+      assignedToId: 'demo-user-kevin',
       createdIn: -82,
       updatedIn: -37,
       notes: 'Barang lokal, tidak memerlukan dokumen impor sementara.',
@@ -519,7 +519,7 @@ export function createMockData(baseDate = new Date()): MockData {
       status: 'IN_PROGRESS',
       type: 'IMPORT',
       agent: 'Schenker Singapore',
-      assignedToId: 'demo-user-ari',
+      assignedToId: 'demo-user-andy',
       createdIn: -52,
       updatedIn: 0,
       sourceDocumentName: 'CIPL-NEOTECH-ID.pdf',
@@ -566,7 +566,7 @@ export function createMockData(baseDate = new Date()): MockData {
       status: 'IN_PROGRESS',
       type: 'IMPORT',
       agent: 'VSS Jakarta',
-      assignedToId: 'demo-user-maya',
+      assignedToId: 'demo-user-kevin',
       createdIn: -47,
       updatedIn: -1,
       operational: operational(baseDate, {
@@ -594,7 +594,7 @@ export function createMockData(baseDate = new Date()): MockData {
       status: 'ON_HOLD',
       type: 'IMPORT',
       agent: 'Kuehne + Nagel Germany',
-      assignedToId: 'local-user',
+      assignedToId: 'demo-user-nurul',
       createdIn: -43,
       updatedIn: 0,
       notes: 'Menunggu revisi nilai barang pada CIPL dari exhibitor.',
@@ -632,7 +632,7 @@ export function createMockData(baseDate = new Date()): MockData {
       status: 'IN_PROGRESS',
       type: 'IMPORT',
       agent: 'Fiera Milano Logistics',
-      assignedToId: 'demo-user-ari',
+      assignedToId: 'demo-user-andy',
       createdIn: -24,
       updatedIn: -2,
       sourceDocumentName: 'Packing-List-Lumina-Bali.pdf',
@@ -665,7 +665,7 @@ export function createMockData(baseDate = new Date()): MockData {
       exhibitorId: exhibitors[6].id,
       status: 'DRAFT',
       type: 'IMPORT',
-      assignedToId: 'demo-user-maya',
+      assignedToId: 'demo-user-kevin',
       createdIn: -20,
       updatedIn: -5,
       notes: 'Menunggu packing list final dari exhibitor.',

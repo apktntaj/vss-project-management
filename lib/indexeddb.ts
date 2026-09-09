@@ -707,12 +707,50 @@ async function ensureSeeded() {
   return seeded
 }
 
+const replacedDemoUserIds: Record<string, string> = {
+  'local-user': 'demo-user-nurul',
+  'demo-user-ari': 'demo-user-andy',
+  'demo-user-maya': 'demo-user-kevin',
+}
+
+async function migrateReplacedDemoUsers(users: LocalUser[]) {
+  const database = await openDatabase()
+  const [jobs, tickets, preferences] = await Promise.all([
+    readAllFromDatabase<LocalJob>(database, 'jobs'),
+    readAllFromDatabase<StoredTicket>(database, 'tickets'),
+    readAllFromDatabase<Preference>(database, 'preferences'),
+  ])
+  const transaction = database.transaction(['users', 'jobs', 'tickets', 'preferences'], 'readwrite')
+  const userStore = transaction.objectStore('users')
+  const jobStore = transaction.objectStore('jobs')
+  const ticketStore = transaction.objectStore('tickets')
+  const preferenceStore = transaction.objectStore('preferences')
+
+  users.forEach((user) => userStore.put(user))
+  Object.keys(replacedDemoUserIds).forEach((userId) => userStore.delete(userId))
+  jobs.forEach((job) => {
+    const assignedToId = job.assignedToId && replacedDemoUserIds[job.assignedToId]
+    if (assignedToId) jobStore.put({ ...job, assignedToId })
+  })
+  tickets.forEach((ticket) => {
+    const assigneeId = replacedDemoUserIds[ticket.assigneeId]
+    if (assigneeId) ticketStore.put({ ...ticket, assigneeId })
+  })
+  preferences.forEach((preference) => {
+    const value = replacedDemoUserIds[preference.value]
+    if (value) preferenceStore.put({ ...preference, value })
+  })
+
+  await transactionDone(transaction)
+}
+
 async function ensureDemoEvents() {
   const seedMarkers = await readAll<{ id: string; value: number }>('counters')
   const marker = seedMarkers.find((item) => item.id === 'mockDataVersion')
   if (marker && marker.value >= MOCK_DATA_VERSION) return
 
   const mockData = createMockData()
+  await migrateReplacedDemoUsers(mockData.users)
   await Promise.all([
     ...mockData.users.map((user) => put('users', user)),
     ...mockData.venues.map((venue) => put('venues', venue)),
