@@ -3,7 +3,7 @@ import { validateStatusTransition, validateTicket } from './validation'
 import type { Ticket } from './types'
 
 const ticket: Ticket = {
-  id: 'ticket-1', assigneeId: 'user-1', context: { kind: 'EVENT', id: 'event-1' },
+  id: 'ticket-1', ticketNumber: 1, eventId: 'event-1', assigneeId: 'user-1', context: { kind: 'EVENT', id: 'event-1' },
   title: 'Siapkan dokumen', description: null, status: 'TODO', order: 1,
   priority: 'NORMAL', completion: null, statusHistory: [],
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',

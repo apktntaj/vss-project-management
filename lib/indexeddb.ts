@@ -237,7 +237,7 @@ type StoreName =
   | 'preferences'
 
 const databaseName = 'vss-project-management'
-const databaseVersion = 10
+const databaseVersion = 11
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -310,6 +310,26 @@ function openDatabase(): Promise<IDBDatabase> {
           const { blocker: _blocker, ...ticket } = cursor.value as StoredTicket & { blocker?: unknown }
           cursor.update(ticket)
           cursor.continue()
+        }
+      }
+      if (upgradeEvent.oldVersion < 11) {
+        const tickets = upgradeTransaction.objectStore('tickets')
+        const jobs = upgradeTransaction.objectStore('jobs')
+        jobs.getAll().onsuccess = (jobsEvent) => {
+          const eventByJob = new Map((jobsEvent.target as IDBRequest<LocalJob[]>).result.map((job) => [job.id, job.eventId]))
+          const nextNumber = new Map<string, number>()
+          tickets.openCursor().onsuccess = (cursorEvent) => {
+            const cursor = (cursorEvent.target as IDBRequest<IDBCursorWithValue | null>).result
+            if (!cursor) return
+            const ticket = cursor.value as Ticket & { eventId?: string; ticketNumber?: number }
+            const eventId = ticket.eventId ?? (ticket.context.kind === 'EVENT' ? ticket.context.id : eventByJob.get(ticket.context.id))
+            if (eventId) {
+              const ticketNumber = ticket.ticketNumber ?? (nextNumber.get(eventId) ?? 0) + 1
+              nextNumber.set(eventId, Math.max(nextNumber.get(eventId) ?? 0, ticketNumber))
+              cursor.update({ ...ticket, eventId, ticketNumber })
+            }
+            cursor.continue()
+          }
         }
       }
       if (upgradeEvent.oldVersion < 7) {
@@ -845,11 +865,11 @@ async function assertTicketOwner(ticketId: string): Promise<{ ticket: StoredTick
 export async function createTicket(input: TicketInput): Promise<Ticket> {
   const users = await ensureSeeded()
   if (!users.some((user) => user.id === input.assigneeId && user.isActive)) throw new Error('Assignee wajib aktif dan valid.')
-  await assertTicketContext(input.context)
+  const eventId = await eventIdForTicketContext(input.context)
   const timestamp = now()
-  const current = await listTicketsForUser(input.assigneeId)
+  const current = (await readAll<StoredTicket>('tickets')).filter((ticket) => ticket.eventId === eventId)
   const ticket: Ticket = {
-    id: id(), assigneeId: input.assigneeId, context: input.context,
+    id: id(), ticketNumber: Math.max(0, ...current.map((ticket) => ticket.ticketNumber)) + 1, eventId, assigneeId: input.assigneeId, context: input.context,
     title: input.title.trim(), description: input.description?.trim() || null,
     status: 'TODO', order: Math.max(0, ...current.filter((item) => item.status === 'TODO').map((item) => item.order)) + 1,
     priority: input.priority ?? 'NORMAL', completion: null, statusHistory: [], createdAt: timestamp, updatedAt: timestamp,
@@ -868,17 +888,25 @@ export async function listTicketsForUser(userId: string): Promise<Ticket[]> {
 }
 
 async function assertTicketContext(context: TicketContext) {
+  await eventIdForTicketContext(context)
+}
+
+async function eventIdForTicketContext(context: TicketContext): Promise<string> {
   if (context.kind === 'EVENT') {
-    if (!(await listEvents()).some((event) => event.id === context.id && event.status === 'ACTIVE')) throw new Error('Event harus aktif dan valid.')
-    return
+    const event = (await listEvents()).find((item) => item.id === context.id && item.status === 'ACTIVE')
+    if (!event) throw new Error('Event harus aktif dan valid.')
+    return event.id
   }
-  if (!(await listJobs()).some((job) => job.id === context.id && job.status !== 'COMPLETED' && job.status !== 'CANCELLED')) throw new Error('Job harus aktif dan valid.')
+  const job = (await listJobs()).find((item) => item.id === context.id && item.status !== 'COMPLETED' && item.status !== 'CANCELLED')
+  const event = job?.eventId && (await listEvents()).find((item) => item.id === job.eventId && item.status === 'ACTIVE')
+  if (!event) throw new Error('Job harus aktif dan terkait Event aktif.')
+  return event.id
 }
 
 export async function updateTicket(ticketId: string, input: Partial<TicketInput>): Promise<Ticket> {
   const { ticket } = await assertTicketOwner(ticketId)
-  if (input.context) await assertTicketContext(input.context)
-  const updated: Ticket = { ...ticket, title: input.title === undefined ? ticket.title : input.title.trim(), description: input.description === undefined ? ticket.description : input.description?.trim() || null, priority: input.priority ?? ticket.priority, context: input.context ?? ticket.context, updatedAt: now() }
+  const eventId = input.context ? await eventIdForTicketContext(input.context) : ticket.eventId
+  const updated: Ticket = { ...ticket, eventId, title: input.title === undefined ? ticket.title : input.title.trim(), description: input.description === undefined ? ticket.description : input.description?.trim() || null, priority: input.priority ?? ticket.priority, context: input.context ?? ticket.context, updatedAt: now() }
   const error = validateTicket(updated)
   if (error) throw new Error(error)
   return put('tickets', ticketForStorage(updated))

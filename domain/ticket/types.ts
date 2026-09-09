@@ -16,6 +16,8 @@ export type TicketStatusChange = {
 
 export type Ticket = {
   id: string
+  ticketNumber: number
+  eventId: string
   assigneeId: string
   context: TicketContext
   title: string
