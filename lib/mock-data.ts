@@ -8,7 +8,7 @@ import type {
   LocalStage,
   LocalUser,
   LocalVenue,
-} from '@/lib/indexeddb'
+} from '@/lib/file'
 
 export const MOCK_DATA_VERSION = 4
 

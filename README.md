@@ -6,9 +6,10 @@ Website operasional untuk mengelola event dan shipment secara lokal di browser.
 
 - Dashboard event dan timeline operasional.
 - CRUD event, venue, organizer, exhibitor, dan shipment/job.
-- Stage shipment serta dokumen PDF disimpan di IndexedDB.
+- Data demo, perubahan CRUD, serta dokumen PDF disimpan hanya di memori selama runtime browser.
+- Seed dan model penyimpanan runtime didefinisikan di `lib/mock-data.ts` dan `lib/file.ts`; reload atau koneksi ulang mengembalikan data ke kondisi awal.
 - Ticket untuk koordinasi, administratif, dan operasional, dengan assignment, board, komentar, dan riwayat activity. Data Ticket sengaja hanya in-memory dan hilang saat halaman di-refresh.
-- Data demo dibuat otomatis pada browser pertama kali digunakan.
+- Data demo dibuat otomatis pada awal setiap runtime browser.
 
 ## Menjalankan lokal
 

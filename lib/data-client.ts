@@ -1,7 +1,7 @@
 /**
  * Public data-access boundary for UI code.
  *
- * IndexedDB is the active adapter during the prototype. A server-backed adapter
+ * A file-defined, runtime-only store is the active adapter during the prototype. A server-backed adapter
  * can replace these exports without requiring UI modules to know its storage API.
  */
 export {
@@ -47,7 +47,7 @@ export {
   updateTicket,
   toggleStage,
   updateCustomsJob,
-} from '@/lib/indexeddb'
+} from '@/lib/file'
 
 export type {
   AttachmentUpload,
@@ -72,4 +72,4 @@ export type {
   TicketPriority,
   TicketStatus,
   ShipmentInput,
-} from '@/lib/indexeddb'
+} from '@/lib/file'

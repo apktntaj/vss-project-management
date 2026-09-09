@@ -6,6 +6,7 @@ import type {
   CiplItem,
   CiplStatus,
   CiplVersion,
+  CoordinationAgent,
   CustomsJob,
   CustomsJobStatus,
   JobAllocation,
@@ -236,156 +237,71 @@ type StoreName =
   | 'tickets'
   | 'preferences'
 
-const databaseName = 'vss-project-management'
-const databaseVersion = 11
+type StoredRecord = { id: string }
+type RuntimeCounter = { id: string; value: number }
 
-function openDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(databaseName, databaseVersion)
-    request.onupgradeneeded = (upgradeEvent) => {
-      const database = request.result
-      const upgradeTransaction = request.transaction!
-      for (const store of [
-        'jobs',
-        'stages',
-        'users',
-        'events',
-        'venues',
-        'eos',
-        'exhibitors',
-        'jobDocuments',
-        'coordinationAgents',
-        'cipls',
-        'ciplVersions',
-        'shipmentsV2',
-        'customsJobs',
-        'counters',
-        'migrationReviewItems',
-        'files',
-        'tickets',
-        'preferences',
-      ] as StoreName[]) {
-        if (!database.objectStoreNames.contains(store))
-          database.createObjectStore(store, { keyPath: 'id' })
-      }
-      createIndex(upgradeTransaction, 'coordinationAgents', 'eventExhibitorId')
-      createIndex(upgradeTransaction, 'coordinationAgents', 'status')
-      createIndex(upgradeTransaction, 'cipls', 'eventExhibitorId')
-      createIndex(upgradeTransaction, 'cipls', 'status')
-      createIndex(upgradeTransaction, 'cipls', 'activeVersionId')
-      createIndex(upgradeTransaction, 'ciplVersions', 'ciplId')
-      createIndex(upgradeTransaction, 'shipmentsV2', 'ciplId')
-      createIndex(upgradeTransaction, 'shipmentsV2', 'sourceCiplVersionId')
-      createIndex(upgradeTransaction, 'shipmentsV2', 'documentNumber')
-      createIndex(upgradeTransaction, 'shipmentsV2', 'status')
-      createIndex(upgradeTransaction, 'customsJobs', 'shipmentId')
-      createIndex(upgradeTransaction, 'customsJobs', 'jobNumber')
-      createIndex(upgradeTransaction, 'customsJobs', 'documentType')
-      createIndex(upgradeTransaction, 'customsJobs', 'status')
-      createIndex(upgradeTransaction, 'migrationReviewItems', 'legacyStore')
-      createIndex(upgradeTransaction, 'migrationReviewItems', 'legacyId')
-      createIndex(upgradeTransaction, 'migrationReviewItems', 'status')
-      createIndex(upgradeTransaction, 'files', 'ownerType')
-      createIndex(upgradeTransaction, 'files', 'ownerId')
-      createIndex(upgradeTransaction, 'tickets', 'assigneeId')
-      createIndex(upgradeTransaction, 'tickets', 'status')
-      createIndex(upgradeTransaction, 'tickets', 'contextKind')
-      createIndex(upgradeTransaction, 'tickets', 'contextId')
-      if (upgradeEvent.oldVersion < 9) {
-        const tickets = upgradeTransaction.objectStore('tickets')
-        if (tickets.indexNames.contains('dueOn')) tickets.deleteIndex('dueOn')
-        tickets.openCursor().onsuccess = (cursorEvent) => {
-          const cursor = (cursorEvent.target as IDBRequest<IDBCursorWithValue | null>).result
-          if (!cursor) return
-          const { dueOn: _dueOn, ...ticket } = cursor.value as StoredTicket & { dueOn?: string | null }
-          cursor.update(ticket)
-          cursor.continue()
-        }
-      }
-      if (upgradeEvent.oldVersion < 10) {
-        const tickets = upgradeTransaction.objectStore('tickets')
-        tickets.openCursor().onsuccess = (cursorEvent) => {
-          const cursor = (cursorEvent.target as IDBRequest<IDBCursorWithValue | null>).result
-          if (!cursor) return
-          const { blocker: _blocker, ...ticket } = cursor.value as StoredTicket & { blocker?: unknown }
-          cursor.update(ticket)
-          cursor.continue()
-        }
-      }
-      if (upgradeEvent.oldVersion < 11) {
-        const tickets = upgradeTransaction.objectStore('tickets')
-        const jobs = upgradeTransaction.objectStore('jobs')
-        jobs.getAll().onsuccess = (jobsEvent) => {
-          const eventByJob = new Map((jobsEvent.target as IDBRequest<LocalJob[]>).result.map((job) => [job.id, job.eventId]))
-          const nextNumber = new Map<string, number>()
-          tickets.openCursor().onsuccess = (cursorEvent) => {
-            const cursor = (cursorEvent.target as IDBRequest<IDBCursorWithValue | null>).result
-            if (!cursor) return
-            const ticket = cursor.value as Ticket & { eventId?: string; ticketNumber?: number }
-            const eventId = ticket.eventId ?? (ticket.context.kind === 'EVENT' ? ticket.context.id : eventByJob.get(ticket.context.id))
-            if (eventId) {
-              const ticketNumber = ticket.ticketNumber ?? (nextNumber.get(eventId) ?? 0) + 1
-              nextNumber.set(eventId, Math.max(nextNumber.get(eventId) ?? 0, ticketNumber))
-              cursor.update({ ...ticket, eventId, ticketNumber })
-            }
-            cursor.continue()
-          }
-        }
-      }
-      if (upgradeEvent.oldVersion < 7) {
-        const events = upgradeTransaction.objectStore('events')
-        events.openCursor().onsuccess = (cursorEvent) => {
-          const cursor = (cursorEvent.target as IDBRequest<IDBCursorWithValue | null>).result
-          if (!cursor) return
-          const event = cursor.value as Partial<LocalEvent>
-          cursor.update({
-            ...event,
-            status: event.status ?? 'ACTIVE',
-            cancellationReason: event.cancellationReason ?? null,
-            cancelledAt: event.cancelledAt ?? null,
-          })
-          cursor.continue()
-        }
-      }
-    }
-    request.onsuccess = async () => {
-      try {
-        await migrateLegacyRecords(request.result)
-        await migrateAttachmentRecords(request.result)
-        resolve(request.result)
-      } catch (error) {
-        reject(error)
-      }
-    }
-    request.onerror = () => reject(request.error)
-  })
+/**
+ * Runtime-only tables. These explicit collections are the storage model to map
+ * to real database tables/repositories later.
+ */
+type RuntimeStore = {
+  jobs: LocalJob[]
+  stages: LocalStage[]
+  users: LocalUser[]
+  events: LocalEvent[]
+  venues: LocalVenue[]
+  eos: LocalEo[]
+  exhibitors: LocalExhibitor[]
+  jobDocuments: LocalJobDocument[]
+  coordinationAgents: CoordinationAgent[]
+  cipls: Cipl[]
+  ciplVersions: CiplVersion[]
+  shipmentsV2: Shipment[]
+  customsJobs: CustomsJob[]
+  counters: RuntimeCounter[]
+  migrationReviewItems: MigrationReviewItem[]
+  files: StoredFile[]
+  tickets: StoredTicket[]
+  preferences: Preference[]
 }
 
-function createIndex(transaction: IDBTransaction, storeName: StoreName, indexName: string) {
-  const store = transaction.objectStore(storeName)
-  if (!store.indexNames.contains(indexName)) store.createIndex(indexName, indexName)
+const runtimeStore: RuntimeStore = {
+  jobs: [],
+  stages: [],
+  users: [],
+  events: [],
+  venues: [],
+  eos: [],
+  exhibitors: [],
+  jobDocuments: [],
+  coordinationAgents: [],
+  cipls: [],
+  ciplVersions: [],
+  shipmentsV2: [],
+  customsJobs: [],
+  counters: [],
+  migrationReviewItems: [],
+  files: [],
+  tickets: [],
+  preferences: [],
 }
 
-async function readAll<T>(storeName: StoreName): Promise<T[]> {
-  const database = await openDatabase()
-  return readAllFromDatabase<T>(database, storeName)
+function readAll<T>(storeName: StoreName): Promise<T[]> {
+  return Promise.resolve([...runtimeStore[storeName]] as T[])
 }
 
-function readAllFromDatabase<T>(database: IDBDatabase, storeName: StoreName): Promise<T[]> {
-  return new Promise((resolve, reject) => {
-    const request = database.transaction(storeName, 'readonly').objectStore(storeName).getAll()
-    request.onsuccess = () => resolve(request.result as T[])
-    request.onerror = () => reject(request.error)
-  })
+function put<T extends StoredRecord>(storeName: StoreName, value: T): Promise<T> {
+  const records = runtimeStore[storeName] as StoredRecord[]
+  const index = records.findIndex((record) => record.id === value.id)
+  if (index === -1) records.push(value)
+  else records[index] = value
+  return Promise.resolve(value)
 }
 
-async function put<T extends { id: string }>(storeName: StoreName, value: T): Promise<T> {
-  const database = await openDatabase()
-  return new Promise((resolve, reject) => {
-    const request = database.transaction(storeName, 'readwrite').objectStore(storeName).put(value)
-    request.onsuccess = () => resolve(value)
-    request.onerror = () => reject(request.error)
-  })
+function remove(storeName: StoreName, recordId: string) {
+  const records = runtimeStore[storeName] as StoredRecord[]
+  const index = records.findIndex((record) => record.id === recordId)
+  if (index !== -1) records.splice(index, 1)
 }
 
 function now() {
@@ -486,13 +402,6 @@ function initializeJobForExhibitor(
   }
 }
 
-function requestValue<T>(request: IDBRequest<T>) {
-  return new Promise<T>((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
-  })
-}
-
 function attachmentMetadata(upload: AttachmentUpload): Attachment {
   const { content: _content, ...attachment } = upload
   return attachment
@@ -507,290 +416,19 @@ function toStoredFile(
   return { ...upload, ownerType, ownerId, kind }
 }
 
-type LegacyAttachment = Attachment & { file?: Blob }
-type LegacyJobDocument = Omit<LocalJobDocument, 'attachmentId'> & {
-  file?: Blob
-  attachmentId?: string
-}
-
-/**
- * Moves file bytes out of aggregate records after the v5 -> v6 schema upgrade.
- * The writes share one transaction and use stable attachment IDs, so retrying is safe.
- */
-async function migrateAttachmentRecords(database: IDBDatabase) {
-  const [versions, shipments, customsJobs, documents] = await Promise.all([
-    readAllFromDatabase<CiplVersion>(database, 'ciplVersions'),
-    readAllFromDatabase<Shipment>(database, 'shipmentsV2'),
-    readAllFromDatabase<CustomsJob>(database, 'customsJobs'),
-    readAllFromDatabase<LegacyJobDocument>(database, 'jobDocuments'),
-  ])
-  const versionUpdates: CiplVersion[] = []
-  const shipmentUpdates: Shipment[] = []
-  const jobUpdates: CustomsJob[] = []
-  const documentUpdates: LocalJobDocument[] = []
-  const files: StoredFile[] = []
-  const collect = (
-    attachment: LegacyAttachment | null,
-    ownerType: StoredFile['ownerType'],
-    ownerId: string,
-    kind: string | null,
-  ) => {
-    if (!attachment || !(attachment.file instanceof Blob)) return attachment
-    const { file, ...metadata } = attachment
-    files.push({ ...metadata, content: file, ownerType, ownerId, kind })
-    return metadata
-  }
-
-  versions.forEach((version) => {
-    const sourceDocument = collect(
-      version.sourceDocument as LegacyAttachment | null,
-      'CIPL_VERSION',
-      version.id,
-      'SOURCE',
-    )
-    if (sourceDocument !== version.sourceDocument)
-      versionUpdates.push({ ...version, sourceDocument })
-  })
-  shipments.forEach((shipment) => {
-    const attachment = collect(
-      shipment.attachment as LegacyAttachment | null,
-      'SHIPMENT',
-      shipment.id,
-      'TRANSPORT',
-    )
-    if (attachment !== shipment.attachment) shipmentUpdates.push({ ...shipment, attachment })
-  })
-  customsJobs.forEach((job) => {
-    const attachments = job.attachments.map(
-      (attachment) =>
-        collect(attachment as LegacyAttachment, 'CUSTOMS_JOB', job.id, 'EVIDENCE') as Attachment,
-    )
-    if (attachments.some((attachment, index) => attachment !== job.attachments[index]))
-      jobUpdates.push({ ...job, attachments })
-  })
-  documents.forEach((document) => {
-    if (!(document.file instanceof Blob)) return
-    const { file, ...metadata } = document
-    files.push({
-      id: document.attachmentId ?? document.id,
-      ownerType: 'LEGACY_JOB',
-      ownerId: document.jobId,
-      kind: document.kind ?? 'SOURCE',
-      fileName: document.fileName,
-      mimeType: document.mimeType,
-      fileSize: document.fileSize,
-      content: file,
-      createdAt: document.createdAt,
-    })
-    documentUpdates.push({ ...metadata, attachmentId: document.attachmentId ?? document.id })
-  })
-  if (!files.length) return
-
-  await new Promise<void>((resolve, reject) => {
-    const transaction = database.transaction(
-      ['files', 'ciplVersions', 'shipmentsV2', 'customsJobs', 'jobDocuments'],
-      'readwrite',
-    )
-    files.forEach((file) => transaction.objectStore('files').put(file))
-    versionUpdates.forEach((version) => transaction.objectStore('ciplVersions').put(version))
-    shipmentUpdates.forEach((shipment) => transaction.objectStore('shipmentsV2').put(shipment))
-    jobUpdates.forEach((job) => transaction.objectStore('customsJobs').put(job))
-    documentUpdates.forEach((document) => transaction.objectStore('jobDocuments').put(document))
-    transaction.oncomplete = () => resolve()
-    transaction.onerror = () => reject(transaction.error)
-    transaction.onabort = () => reject(transaction.error)
-  })
-}
-
 /** Returns attachment bytes without leaking the active storage implementation to UI code. */
 export async function getAttachmentContent(attachmentId: string): Promise<Blob | null> {
-  const database = await openDatabase()
-  const file = (await requestValue(
-    database.transaction('files', 'readonly').objectStore('files').get(attachmentId),
-  )) as StoredFile | undefined
+  const file = (await readAll<StoredFile>('files')).find((item) => item.id === attachmentId)
   return file?.content ?? null
 }
 
-/**
- * Legacy jobs deliberately never become CustomsJob: their BC document type is unknown.
- * A marker uses the legacy id, making migration safe to retry after an interrupted upgrade.
- */
-async function migrateLegacyRecords(database: IDBDatabase) {
-  if (!database.objectStoreNames.contains('jobs')) return
-  const readTransaction = database.transaction('jobs', 'readonly')
-  const jobs = (await requestValue(readTransaction.objectStore('jobs').getAll())) as LocalJob[]
-  await Promise.all(jobs.map((legacyJob) => migrateLegacyJob(database, legacyJob)))
-}
-
-async function migrateLegacyJob(database: IDBDatabase, legacyJob: LocalJob) {
-  const markerId = `jobs:${legacyJob.id}`
-  const transaction = database.transaction(
-    ['events', 'exhibitors', 'cipls', 'shipmentsV2', 'migrationReviewItems'],
-    'readwrite',
-  )
-  const markers = transaction.objectStore('migrationReviewItems')
-  if (await requestValue(markers.get(markerId))) return
-
-  const timestamp = now()
-  const review = (reason: string, relatedIds: string[] = []) => {
-    const item: MigrationReviewItem = {
-      id: markerId,
-      legacyStore: 'jobs',
-      legacyId: legacyJob.id,
-      status: 'REVIEW_REQUIRED',
-      reason,
-      relatedIds,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    }
-    markers.put(item)
-  }
-  if (!legacyJob.eventId || !legacyJob.exhibitorId) {
-    review(
-      'Parent event atau exhibitor tidak tersedia; pilih relasi yang benar sebelum migrasi.',
-      [],
-    )
-    return transactionDone(transaction)
-  }
-  const [event, exhibitor] = await Promise.all([
-    requestValue(transaction.objectStore('events').get(legacyJob.eventId)),
-    requestValue(transaction.objectStore('exhibitors').get(legacyJob.exhibitorId)),
-  ])
-  if (!event || !exhibitor || exhibitor.eventId !== legacyJob.eventId) {
-    review('Relasi parent legacy tidak lagi valid; tidak dibuat event atau exhibitor fiktif.', [])
-    return transactionDone(transaction)
-  }
-  if (!legacyJob.blNumber && !legacyJob.awbNumber) {
-    review('Nomor B/L atau AWB tidak tersedia; shipment operasional tidak dapat dibentuk.', [])
-    return transactionDone(transaction)
-  }
-  const ciplId = `legacy-cipl:${legacyJob.id}`
-  const cipl: Cipl = {
-    id: ciplId,
-    eventExhibitorId: legacyJob.exhibitorId,
-    referenceNumber: null,
-    status: 'AWAITING_DOCUMENT',
-    activeVersionId: null,
-    sourceDocumentUnavailable: true,
-    createdAt: legacyJob.createdAt,
-    updatedAt: timestamp,
-  }
-  transaction.objectStore('cipls').put(cipl)
-  const createShipment = (documentType: Shipment['documentType'], documentNumber: string) => {
-    const shipment: Shipment = {
-      id: `legacy-shipment:${legacyJob.id}:${documentType}`,
-      ciplId,
-      sourceCiplVersionId: '',
-      documentType,
-      documentNumber,
-      shipmentMode: documentType === 'BL' ? legacyJob.shipmentMode : null,
-      direction: legacyJob.type,
-      shipper: legacyJob.shipper,
-      consignee: legacyJob.consignee,
-      notifyParty: legacyJob.notifyParty,
-      carrier: legacyJob.shippingLine,
-      etaOrEtd: null,
-      origin: null,
-      destination: null,
-      allocations: [],
-      attachment: null,
-      status: 'DOCUMENT_RECEIVED',
-      legacyReference: legacyJob.jobNumber,
-      createdAt: legacyJob.createdAt,
-      updatedAt: timestamp,
-    }
-    transaction.objectStore('shipmentsV2').put(shipment)
-    return shipment.id
-  }
-  const shipmentIds = [
-    ...(legacyJob.blNumber ? [createShipment('BL', legacyJob.blNumber)] : []),
-    ...(legacyJob.awbNumber ? [createShipment('AWB', legacyJob.awbNumber)] : []),
-  ]
-  const item: MigrationReviewItem = {
-    id: markerId,
-    legacyStore: 'jobs',
-    legacyId: legacyJob.id,
-    status: legacyJob.blNumber && legacyJob.awbNumber ? 'REVIEW_REQUIRED' : 'MIGRATED',
-    reason:
-      legacyJob.blNumber && legacyJob.awbNumber
-        ? 'B/L dan AWB dipisahkan menjadi dua shipment; alokasi dan attachment perlu direkonsiliasi.'
-        : 'Legacy shipment berhasil dipetakan; jenis BC belum ditentukan sehingga CustomsJob tidak dibuat.',
-    relatedIds: [ciplId, ...shipmentIds],
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  }
-  markers.put(item)
-  return transactionDone(transaction)
-}
-
-function transactionDone(transaction: IDBTransaction) {
-  return new Promise<void>((resolve, reject) => {
-    transaction.oncomplete = () => resolve()
-    transaction.onerror = () => reject(transaction.error)
-    transaction.onabort = () => reject(transaction.error)
-  })
-}
-
-async function ensureSeeded() {
-  const users = await readAll<LocalUser>('users')
-  if (users.length) return users
-  const seeded: LocalUser[] = [
-    {
-      id: 'local-user',
-      name: 'Operator Lokal',
-      email: 'operator@vss.local',
-      role: 'SUPERVISOR',
-      isActive: true,
-    },
-  ]
-  await Promise.all(seeded.map((user) => put('users', user)))
-  return seeded
-}
-
-const replacedDemoUserIds: Record<string, string> = {
-  'local-user': 'demo-user-nurul',
-  'demo-user-ari': 'demo-user-andy',
-  'demo-user-maya': 'demo-user-kevin',
-}
-
-async function migrateReplacedDemoUsers(users: LocalUser[]) {
-  const database = await openDatabase()
-  const [jobs, tickets, preferences] = await Promise.all([
-    readAllFromDatabase<LocalJob>(database, 'jobs'),
-    readAllFromDatabase<StoredTicket>(database, 'tickets'),
-    readAllFromDatabase<Preference>(database, 'preferences'),
-  ])
-  const transaction = database.transaction(['users', 'jobs', 'tickets', 'preferences'], 'readwrite')
-  const userStore = transaction.objectStore('users')
-  const jobStore = transaction.objectStore('jobs')
-  const ticketStore = transaction.objectStore('tickets')
-  const preferenceStore = transaction.objectStore('preferences')
-
-  users.forEach((user) => userStore.put(user))
-  Object.keys(replacedDemoUserIds).forEach((userId) => userStore.delete(userId))
-  jobs.forEach((job) => {
-    const assignedToId = job.assignedToId && replacedDemoUserIds[job.assignedToId]
-    if (assignedToId) jobStore.put({ ...job, assignedToId })
-  })
-  tickets.forEach((ticket) => {
-    const assigneeId = replacedDemoUserIds[ticket.assigneeId]
-    if (assigneeId) ticketStore.put({ ...ticket, assigneeId })
-  })
-  preferences.forEach((preference) => {
-    const value = replacedDemoUserIds[preference.value]
-    if (value) preferenceStore.put({ ...preference, value })
-  })
-
-  await transactionDone(transaction)
-}
+let runtimeInitialized = false
 
 async function ensureDemoEvents() {
-  const seedMarkers = await readAll<{ id: string; value: number }>('counters')
-  const marker = seedMarkers.find((item) => item.id === 'mockDataVersion')
-  if (marker && marker.value >= MOCK_DATA_VERSION) return
+  if (runtimeInitialized) return
+  runtimeInitialized = true
 
   const mockData = createMockData()
-  await migrateReplacedDemoUsers(mockData.users)
   await Promise.all([
     ...mockData.users.map((user) => put('users', user)),
     ...mockData.venues.map((venue) => put('venues', venue)),
@@ -803,12 +441,17 @@ async function ensureDemoEvents() {
   await put('counters', { id: 'mockDataVersion', value: MOCK_DATA_VERSION })
 }
 
+async function ensureSeeded() {
+  await ensureDemoEvents()
+  return readAll<LocalUser>('users')
+}
+
 export async function listUsers() {
   await ensureDemoEvents()
   return ensureSeeded()
 }
 
-type StoredTicket = Ticket & { contextKind: TicketContext['kind']; contextId: string }
+type StoredTicket = Ticket
 type Preference = { id: 'activeDemoUserId'; value: string }
 export type TicketInput = {
   assigneeId: string
@@ -819,7 +462,7 @@ export type TicketInput = {
 }
 
 function ticketForStorage(ticket: Ticket): StoredTicket {
-  return { ...ticket, contextKind: ticket.context.kind, contextId: ticket.context.id }
+  return ticket
 }
 
 async function activeTicketUser() {
@@ -827,7 +470,9 @@ async function activeTicketUser() {
   const preference = (await readAll<Preference>('preferences')).find(
     (item) => item.id === 'activeDemoUserId',
   )
-  const user = users.find((item) => item.id === preference?.value && item.isActive) ?? users.find((item) => item.isActive)
+  const user =
+    users.find((item) => item.id === preference?.value && item.isActive) ??
+    users.find((item) => item.isActive)
   if (!user) throw new Error('User aktif wajib tersedia.')
   return user
 }
@@ -846,33 +491,48 @@ export async function setActiveDemoUser(userId: string) {
 
 export async function listMyTickets(): Promise<Ticket[]> {
   const user = await activeTicketUser()
-  const database = await openDatabase()
-  const tickets = (await requestValue(
-    database.transaction('tickets', 'readonly').objectStore('tickets').index('assigneeId').getAll(user.id),
-  )) as StoredTicket[]
+  const tickets = (await readAll<StoredTicket>('tickets')).filter(
+    (ticket) => ticket.assigneeId === user.id,
+  )
   return tickets.sort((a, b) => a.status.localeCompare(b.status) || a.order - b.order)
 }
 
-async function assertTicketOwner(ticketId: string): Promise<{ ticket: StoredTicket; user: LocalUser }> {
-  const [user, database] = await Promise.all([activeTicketUser(), openDatabase()])
-  const ticket = (await requestValue(
-    database.transaction('tickets', 'readonly').objectStore('tickets').get(ticketId),
-  )) as StoredTicket | undefined
-  if (!ticket || ticket.assigneeId !== user.id) throw new Error('Ticket tidak tersedia untuk user aktif.')
+async function assertTicketOwner(
+  ticketId: string,
+): Promise<{ ticket: StoredTicket; user: LocalUser }> {
+  const [user, tickets] = await Promise.all([activeTicketUser(), readAll<StoredTicket>('tickets')])
+  const ticket = tickets.find((item) => item.id === ticketId)
+  if (!ticket || ticket.assigneeId !== user.id)
+    throw new Error('Ticket tidak tersedia untuk user aktif.')
   return { ticket, user }
 }
 
 export async function createTicket(input: TicketInput): Promise<Ticket> {
   const users = await ensureSeeded()
-  if (!users.some((user) => user.id === input.assigneeId && user.isActive)) throw new Error('Assignee wajib aktif dan valid.')
+  if (!users.some((user) => user.id === input.assigneeId && user.isActive))
+    throw new Error('Assignee wajib aktif dan valid.')
   const eventId = await eventIdForTicketContext(input.context)
   const timestamp = now()
-  const current = (await readAll<StoredTicket>('tickets')).filter((ticket) => ticket.eventId === eventId)
+  const current = (await readAll<StoredTicket>('tickets')).filter(
+    (ticket) => ticket.eventId === eventId,
+  )
   const ticket: Ticket = {
-    id: id(), ticketNumber: Math.max(0, ...current.map((ticket) => ticket.ticketNumber)) + 1, eventId, assigneeId: input.assigneeId, context: input.context,
-    title: input.title.trim(), description: input.description?.trim() || null,
-    status: 'TODO', order: Math.max(0, ...current.filter((item) => item.status === 'TODO').map((item) => item.order)) + 1,
-    priority: input.priority ?? 'NORMAL', completion: null, statusHistory: [], createdAt: timestamp, updatedAt: timestamp,
+    id: id(),
+    ticketNumber: Math.max(0, ...current.map((ticket) => ticket.ticketNumber)) + 1,
+    eventId,
+    assigneeId: input.assigneeId,
+    context: input.context,
+    title: input.title.trim(),
+    description: input.description?.trim() || null,
+    status: 'TODO',
+    order:
+      Math.max(0, ...current.filter((item) => item.status === 'TODO').map((item) => item.order)) +
+      1,
+    priority: input.priority ?? 'NORMAL',
+    completion: null,
+    statusHistory: [],
+    createdAt: timestamp,
+    updatedAt: timestamp,
   }
   const error = validateTicket(ticket)
   if (error) throw new Error(error)
@@ -881,9 +541,11 @@ export async function createTicket(input: TicketInput): Promise<Ticket> {
 
 export async function listTicketsForUser(userId: string): Promise<Ticket[]> {
   const users = await ensureSeeded()
-  if (!users.some((user) => user.id === userId && user.isActive)) throw new Error('User tidak aktif atau tidak ditemukan.')
-  const database = await openDatabase()
-  const tickets = (await requestValue(database.transaction('tickets', 'readonly').objectStore('tickets').index('assigneeId').getAll(userId))) as StoredTicket[]
+  if (!users.some((user) => user.id === userId && user.isActive))
+    throw new Error('User tidak aktif atau tidak ditemukan.')
+  const tickets = (await readAll<StoredTicket>('tickets')).filter(
+    (ticket) => ticket.assigneeId === userId,
+  )
   return tickets.sort((a, b) => a.status.localeCompare(b.status) || a.order - b.order)
 }
 
@@ -893,12 +555,18 @@ async function assertTicketContext(context: TicketContext) {
 
 async function eventIdForTicketContext(context: TicketContext): Promise<string> {
   if (context.kind === 'EVENT') {
-    const event = (await listEvents()).find((item) => item.id === context.id && item.status === 'ACTIVE')
+    const event = (await listEvents()).find(
+      (item) => item.id === context.id && item.status === 'ACTIVE',
+    )
     if (!event) throw new Error('Event harus aktif dan valid.')
     return event.id
   }
-  const job = (await listJobs()).find((item) => item.id === context.id && item.status !== 'COMPLETED' && item.status !== 'CANCELLED')
-  const event = job?.eventId && (await listEvents()).find((item) => item.id === job.eventId && item.status === 'ACTIVE')
+  const job = (await listJobs()).find(
+    (item) => item.id === context.id && item.status !== 'COMPLETED' && item.status !== 'CANCELLED',
+  )
+  const event =
+    job?.eventId &&
+    (await listEvents()).find((item) => item.id === job.eventId && item.status === 'ACTIVE')
   if (!event) throw new Error('Job harus aktif dan terkait Event aktif.')
   return event.id
 }
@@ -906,43 +574,75 @@ async function eventIdForTicketContext(context: TicketContext): Promise<string> 
 export async function updateTicket(ticketId: string, input: Partial<TicketInput>): Promise<Ticket> {
   const { ticket } = await assertTicketOwner(ticketId)
   const eventId = input.context ? await eventIdForTicketContext(input.context) : ticket.eventId
-  const updated: Ticket = { ...ticket, eventId, title: input.title === undefined ? ticket.title : input.title.trim(), description: input.description === undefined ? ticket.description : input.description?.trim() || null, priority: input.priority ?? ticket.priority, context: input.context ?? ticket.context, updatedAt: now() }
+  const updated: Ticket = {
+    ...ticket,
+    eventId,
+    title: input.title === undefined ? ticket.title : input.title.trim(),
+    description:
+      input.description === undefined ? ticket.description : input.description?.trim() || null,
+    priority: input.priority ?? ticket.priority,
+    context: input.context ?? ticket.context,
+    updatedAt: now(),
+  }
   const error = validateTicket(updated)
   if (error) throw new Error(error)
   return put('tickets', ticketForStorage(updated))
 }
 
-export async function moveTicket(ticketId: string, status: TicketStatus, completionNote?: string, reopenReason?: string): Promise<Ticket> {
+export async function moveTicket(
+  ticketId: string,
+  status: TicketStatus,
+  completionNote?: string,
+  reopenReason?: string,
+): Promise<Ticket> {
   const { ticket } = await assertTicketOwner(ticketId)
   const reason = ticket.status === 'DONE' && status !== 'DONE' ? reopenReason?.trim() || null : null
-  const transitionError = validateStatusTransition(ticket.status, status, reason, completionNote?.trim() || null)
+  const transitionError = validateStatusTransition(
+    ticket.status,
+    status,
+    reason,
+    completionNote?.trim() || null,
+  )
   if (transitionError) throw new Error(transitionError)
   const timestamp = now()
   const updated: Ticket = {
-    ...ticket, status,
+    ...ticket,
+    status,
     completion: status === 'DONE' ? { note: completionNote!.trim(), completedAt: timestamp } : null,
-    statusHistory: ticket.status === status ? ticket.statusHistory : [...ticket.statusHistory, { from: ticket.status, to: status, reason, changedAt: timestamp }],
+    statusHistory:
+      ticket.status === status
+        ? ticket.statusHistory
+        : [
+            ...ticket.statusHistory,
+            { from: ticket.status, to: status, reason, changedAt: timestamp },
+          ],
     updatedAt: timestamp,
   }
   return put('tickets', ticketForStorage(updated))
 }
 
-/** Persists all positions in one transaction, preventing partially reordered columns. */
+/** Rewrites all positions as one synchronous runtime operation. */
 export async function reorderMyTickets(status: TicketStatus, ticketIds: string[]) {
   const user = await activeTicketUser()
-  const database = await openDatabase()
-  const tickets = (await requestValue(database.transaction('tickets', 'readonly').objectStore('tickets').getAll())) as StoredTicket[]
+  const tickets = await readAll<StoredTicket>('tickets')
   const owned = tickets.filter((ticket) => ticket.assigneeId === user.id)
-  if (new Set(ticketIds).size !== ticketIds.length || ticketIds.some((id) => !owned.some((ticket) => ticket.id === id))) throw new Error('Urutan ticket tidak valid.')
-  const transaction = database.transaction('tickets', 'readwrite')
-  ticketIds.forEach((ticketId, index) => {
-    const ticket = owned.find((item) => item.id === ticketId)!
-    transaction.objectStore('tickets').put(ticketForStorage({ ...ticket, status, order: index + 1, updatedAt: now() }))
-  })
-  await transactionDone(transaction)
+  if (
+    new Set(ticketIds).size !== ticketIds.length ||
+    ticketIds.some((id) => !owned.some((ticket) => ticket.id === id))
+  )
+    throw new Error('Urutan ticket tidak valid.')
+  await Promise.all(
+    ticketIds.map((ticketId, index) => {
+      const ticket = owned.find((item) => item.id === ticketId)!
+      return put(
+        'tickets',
+        ticketForStorage({ ...ticket, status, order: index + 1, updatedAt: now() }),
+      )
+    }),
+  )
 }
 
-/** Moves a ticket and rewrites its destination-column order in the same IndexedDB transaction. */
+/** Moves a ticket and rewrites its destination-column order in one synchronous runtime update. */
 export async function moveAndReorderMyTickets(
   ticketId: string,
   status: TicketStatus,
@@ -951,24 +651,51 @@ export async function moveAndReorderMyTickets(
   reopenReason?: string,
 ) {
   const { ticket, user } = await assertTicketOwner(ticketId)
-  if (!ticketIds.includes(ticketId)) throw new Error('Urutan tujuan harus memuat ticket yang dipindahkan.')
+  if (!ticketIds.includes(ticketId))
+    throw new Error('Urutan tujuan harus memuat ticket yang dipindahkan.')
   const reason = ticket.status === 'DONE' && status !== 'DONE' ? reopenReason?.trim() || null : null
-  const transitionError = validateStatusTransition(ticket.status, status, reason, completionNote?.trim() || null)
+  const transitionError = validateStatusTransition(
+    ticket.status,
+    status,
+    reason,
+    completionNote?.trim() || null,
+  )
   if (transitionError) throw new Error(transitionError)
-  const database = await openDatabase()
-  const all = (await requestValue(database.transaction('tickets', 'readonly').objectStore('tickets').getAll())) as StoredTicket[]
-  if (new Set(ticketIds).size !== ticketIds.length || ticketIds.some((id) => id !== ticketId && !all.some((item) => item.id === id && item.assigneeId === user.id && item.status === status))) throw new Error('Urutan ticket tidak valid.')
+  const all = await readAll<StoredTicket>('tickets')
+  if (
+    new Set(ticketIds).size !== ticketIds.length ||
+    ticketIds.some(
+      (id) =>
+        id !== ticketId &&
+        !all.some(
+          (item) => item.id === id && item.assigneeId === user.id && item.status === status,
+        ),
+    )
+  )
+    throw new Error('Urutan ticket tidak valid.')
   const timestamp = now()
   const moved: Ticket = {
-    ...ticket, status, completion: status === 'DONE' ? { note: completionNote!.trim(), completedAt: timestamp } : null,
-    statusHistory: ticket.status === status ? ticket.statusHistory : [...ticket.statusHistory, { from: ticket.status, to: status, reason, changedAt: timestamp }], updatedAt: timestamp,
+    ...ticket,
+    status,
+    completion: status === 'DONE' ? { note: completionNote!.trim(), completedAt: timestamp } : null,
+    statusHistory:
+      ticket.status === status
+        ? ticket.statusHistory
+        : [
+            ...ticket.statusHistory,
+            { from: ticket.status, to: status, reason, changedAt: timestamp },
+          ],
+    updatedAt: timestamp,
   }
-  const transaction = database.transaction('tickets', 'readwrite')
-  ticketIds.forEach((id, index) => {
-    const value = id === ticketId ? moved : all.find((item) => item.id === id)!
-    transaction.objectStore('tickets').put(ticketForStorage({ ...value, status, order: index + 1, updatedAt: timestamp }))
-  })
-  await transactionDone(transaction)
+  await Promise.all(
+    ticketIds.map((id, index) => {
+      const value = id === ticketId ? moved : all.find((item) => item.id === id)!
+      return put(
+        'tickets',
+        ticketForStorage({ ...value, status, order: index + 1, updatedAt: timestamp }),
+      )
+    }),
+  )
 }
 
 export async function listJobs(filters: { search?: string; status?: string } = {}) {
@@ -1079,81 +806,71 @@ export type EventExhibitorInput = Omit<
 > & { id?: string }
 
 export async function saveEventExhibitors(eventId: string, inputs: EventExhibitorInput[]) {
-  const database = await openDatabase()
-  const [existing, existingJobs] = await Promise.all([
+  const [existing, existingJobs, cipls] = await Promise.all([
     listEventExhibitors(eventId),
     readAll<LocalJob>('jobs'),
+    readAll<Cipl>('cipls'),
   ])
   const timestamp = now()
-
-  return new Promise<LocalExhibitor[]>((resolve, reject) => {
-    const transaction = database.transaction(['exhibitors', 'cipls', 'jobs'], 'readwrite')
-    const store = transaction.objectStore('exhibitors')
-    const jobStore = transaction.objectStore('jobs')
-    const existingById = new Map(existing.map((exhibitor) => [exhibitor.id, exhibitor]))
-    const jobsByExhibitor = new Map(
-      existingJobs.flatMap((job) => (job.exhibitorId ? [[job.exhibitorId, job] as const] : [])),
-    )
-    const submittedIds = new Set(inputs.flatMap((input) => (input.id ? [input.id] : [])))
-    const exhibitors = inputs.map((input) => {
-      const previous = input.id ? existingById.get(input.id) : undefined
-      if (input.id && !previous) throw new Error('Exhibitor tidak ditemukan dalam event ini.')
-      return {
-        ...input,
-        agent: input.type === 'LOCAL' ? null : (input.agent ?? null),
-        id: previous?.id ?? id(),
-        eventId,
-        createdAt: previous?.createdAt ?? timestamp,
-        updatedAt: timestamp,
-      }
-    })
-    const ciplStore = transaction.objectStore('cipls')
-    existing
-      .filter((exhibitor) => !submittedIds.has(exhibitor.id))
-      .forEach((exhibitor) => {
-        if (jobsByExhibitor.has(exhibitor.id)) {
-          transaction.abort()
-          return
-        }
-        const request = ciplStore.index('eventExhibitorId').count(exhibitor.id)
-        request.onsuccess = () => {
-          if (request.result > 0) transaction.abort()
-          else store.delete(exhibitor.id)
-        }
-      })
-    const usedJobNumbers = new Set(existingJobs.map((job) => job.jobNumber))
-    let sequence = existingJobs.length + 1
-    const nextJobNumber = () => {
-      let value = `VSS-${String(sequence++).padStart(4, '0')}`
-      while (usedJobNumbers.has(value)) value = `VSS-${String(sequence++).padStart(4, '0')}`
-      usedJobNumbers.add(value)
-      return value
+  const existingById = new Map(existing.map((exhibitor) => [exhibitor.id, exhibitor]))
+  const jobsByExhibitor = new Map(
+    existingJobs.flatMap((job) => (job.exhibitorId ? [[job.exhibitorId, job] as const] : [])),
+  )
+  const submittedIds = new Set(inputs.flatMap((input) => (input.id ? [input.id] : [])))
+  const exhibitors = inputs.map((input) => {
+    const previous = input.id ? existingById.get(input.id) : undefined
+    if (input.id && !previous) throw new Error('Exhibitor tidak ditemukan dalam event ini.')
+    return {
+      ...input,
+      agent: input.type === 'LOCAL' ? null : (input.agent ?? null),
+      id: previous?.id ?? id(),
+      eventId,
+      createdAt: previous?.createdAt ?? timestamp,
+      updatedAt: timestamp,
     }
-    exhibitors.forEach((exhibitor) => {
-      store.put(exhibitor)
-      const existingJob = jobsByExhibitor.get(exhibitor.id)
-      if (existingJob) {
-        jobStore.put({
-          ...existingJob,
-          eventId,
-          exhibitorId: exhibitor.id,
-          clientName: exhibitor.legalName,
-          shipper: exhibitor.legalName,
-          agent: exhibitor.agent ?? null,
-          updatedAt: timestamp,
-        })
-        return
-      }
-      const job = initializeJobForExhibitor(exhibitor, nextJobNumber(), timestamp)
-      jobStore.put(job)
-    })
-    transaction.oncomplete = () => resolve(exhibitors)
-    transaction.onerror = () => reject(transaction.error ?? new Error('Gagal menyimpan exhibitor.'))
-    transaction.onabort = () =>
-      reject(
-        new Error('Exhibitor yang sudah memiliki Job atau CIPL tidak dapat dihapus dari form ini.'),
-      )
   })
+
+  const removed = existing.filter((exhibitor) => !submittedIds.has(exhibitor.id))
+  if (
+    removed.some(
+      (exhibitor) =>
+        jobsByExhibitor.has(exhibitor.id) ||
+        cipls.some((cipl) => cipl.eventExhibitorId === exhibitor.id),
+    )
+  ) {
+    throw new Error(
+      'Exhibitor yang sudah memiliki Job atau CIPL tidak dapat dihapus dari form ini.',
+    )
+  }
+
+  const usedJobNumbers = new Set(existingJobs.map((job) => job.jobNumber))
+  let sequence = existingJobs.length + 1
+  const nextJobNumber = () => {
+    let value = `VSS-${String(sequence++).padStart(4, '0')}`
+    while (usedJobNumbers.has(value)) value = `VSS-${String(sequence++).padStart(4, '0')}`
+    usedJobNumbers.add(value)
+    return value
+  }
+
+  removed.forEach((exhibitor) => remove('exhibitors', exhibitor.id))
+  await Promise.all(
+    exhibitors.flatMap((exhibitor) => {
+      const existingJob = jobsByExhibitor.get(exhibitor.id)
+      const job = existingJob
+        ? {
+            ...existingJob,
+            eventId,
+            exhibitorId: exhibitor.id,
+            clientName: exhibitor.legalName,
+            shipper: exhibitor.legalName,
+            agent: exhibitor.agent ?? null,
+            updatedAt: timestamp,
+          }
+        : initializeJobForExhibitor(exhibitor, nextJobNumber(), timestamp)
+      return [put('exhibitors', exhibitor), put('jobs', job)]
+    }),
+  )
+  return exhibitors
 }
 
 export type EventInput = Pick<LocalEvent, 'officialName' | 'alias' | 'startsOn' | 'endsOn'> & {
@@ -1212,30 +929,15 @@ export async function cancelEvent(eventId: string, reason: string) {
   const cancellationReason = reason.trim()
   if (!cancellationReason) throw new Error('Alasan pembatalan wajib diisi.')
 
-  const database = await openDatabase()
-  return new Promise<LocalEvent>((resolve, reject) => {
-    const transaction = database.transaction('events', 'readwrite')
-    const store = transaction.objectStore('events')
-    const request = store.get(eventId)
-    request.onsuccess = () => {
-      const event = request.result as LocalEvent | undefined
-      if (!event) {
-        transaction.abort()
-        return
-      }
-      const updated = {
-        ...event,
-        status: 'CANCELLED' as const,
-        cancellationReason,
-        cancelledAt: now(),
-        updatedAt: now(),
-      }
-      store.put(updated)
-      resolve(updated)
-    }
-    request.onerror = () => reject(request.error)
-    transaction.onerror = () => reject(transaction.error ?? new Error('Gagal membatalkan event.'))
-    transaction.onabort = () => reject(new Error('Event tidak ditemukan.'))
+  const event = (await readAll<LocalEvent>('events')).find((item) => item.id === eventId)
+  if (!event) throw new Error('Event tidak ditemukan.')
+  const timestamp = now()
+  return put('events', {
+    ...event,
+    status: 'CANCELLED' as const,
+    cancellationReason,
+    cancelledAt: timestamp,
+    updatedAt: timestamp,
   })
 }
 
@@ -1263,15 +965,7 @@ export async function deleteEvent(eventId: string) {
   ) {
     throw new Error('Event tidak dapat dihapus karena masih mempunyai data turunan.')
   }
-  const database = await openDatabase()
-  return new Promise<void>((resolve, reject) => {
-    const request = database
-      .transaction('events', 'readwrite')
-      .objectStore('events')
-      .delete(eventId)
-    request.onsuccess = () => resolve()
-    request.onerror = () => reject(request.error)
-  })
+  remove('events', eventId)
 }
 
 export type JobInput = Pick<
@@ -1326,20 +1020,13 @@ export async function saveJobDocument(
     content: file,
     createdAt: timestamp,
   }
-  const database = await openDatabase()
-  return new Promise<LocalJobDocument>((resolve, reject) => {
-    const transaction = database.transaction(['jobDocuments', 'files'], 'readwrite')
-    transaction.objectStore('jobDocuments').put(document)
-    transaction.objectStore('files').put(storedFile)
-    transaction.oncomplete = () => resolve(document)
-    transaction.onerror = () => reject(transaction.error)
-    transaction.onabort = () => reject(transaction.error)
-  })
+  await Promise.all([put('jobDocuments', document), put('files', storedFile)])
+  return document
 }
 
 export type JobOperationalAttachment = { kind: JobDocumentKind; file: File }
 
-/** Saves Job details and newly attached PDFs as one IndexedDB transaction. */
+/** Saves Job details and newly attached PDFs in one synchronous runtime update. */
 export async function saveJobOperationalDetails(
   jobId: string,
   patch: Pick<
@@ -1379,13 +1066,11 @@ export async function saveJobOperationalDetails(
     attachmentId: id(),
     createdAt: timestamp,
   }))
-  const database = await openDatabase()
-  return new Promise<LocalJob>((resolve, reject) => {
-    const transaction = database.transaction(['jobs', 'jobDocuments', 'files'], 'readwrite')
-    transaction.objectStore('jobs').put(job)
-    documents.forEach((document) => transaction.objectStore('jobDocuments').put(document))
-    documents.forEach((document, index) =>
-      transaction.objectStore('files').put({
+  await Promise.all([
+    put('jobs', job),
+    ...documents.map((document) => put('jobDocuments', document)),
+    ...documents.map((document, index) =>
+      put('files', {
         id: document.attachmentId,
         ownerType: 'LEGACY_JOB',
         ownerId: jobId,
@@ -1396,11 +1081,9 @@ export async function saveJobOperationalDetails(
         content: attachments[index].file,
         createdAt: timestamp,
       } satisfies StoredFile),
-    )
-    transaction.oncomplete = () => resolve(job)
-    transaction.onerror = () => reject(transaction.error)
-    transaction.onabort = () => reject(transaction.error)
-  })
+    ),
+  ])
+  return job
 }
 
 export async function saveJob(input: JobInput, existingId?: string) {
@@ -1422,10 +1105,9 @@ export async function saveJob(input: JobInput, existingId?: string) {
   return put('jobs', job)
 }
 
-/** Metadata Job dan PDF sumber adalah satu aksi pengguna; kegagalan Blob membatalkan keduanya. */
+/** Metadata Job dan PDF sumber diperbarui bersama di runtime store. */
 export async function saveJobWithDocument(input: JobInput, file: File, existingId?: string) {
   const previous = existingId ? await getJob(existingId) : null
-  const database = await openDatabase()
   const timestamp = now()
   const job: LocalJob = {
     ...previous,
@@ -1449,11 +1131,10 @@ export async function saveJobWithDocument(input: JobInput, file: File, existingI
     attachmentId: id(),
     createdAt: timestamp,
   }
-  return new Promise<LocalJob>((resolve, reject) => {
-    const transaction = database.transaction(['jobs', 'jobDocuments', 'files'], 'readwrite')
-    transaction.objectStore('jobs').put(job)
-    transaction.objectStore('jobDocuments').put(document)
-    transaction.objectStore('files').put({
+  await Promise.all([
+    put('jobs', job),
+    put('jobDocuments', document),
+    put('files', {
       id: document.attachmentId,
       ownerType: 'LEGACY_JOB',
       ownerId: job.id,
@@ -1463,11 +1144,9 @@ export async function saveJobWithDocument(input: JobInput, file: File, existingI
       fileSize: document.fileSize,
       content: file,
       createdAt: timestamp,
-    } satisfies StoredFile)
-    transaction.oncomplete = () => resolve(job)
-    transaction.onerror = () => reject(transaction.error)
-    transaction.onabort = () => reject(transaction.error)
-  })
+    } satisfies StoredFile),
+  ])
+  return job
 }
 
 export async function addStage(jobId: string, name: string): Promise<LocalStage> {
@@ -1533,37 +1212,37 @@ export async function createCipl(eventExhibitorId: string, initialVersion?: Cipl
     createdAt: timestamp,
     updatedAt: timestamp,
   }
-  const database = await openDatabase()
-  return new Promise<Cipl>((resolve, reject) => {
-    const transaction = database.transaction(['cipls', 'ciplVersions', 'files'], 'readwrite')
-    transaction.objectStore('cipls').put(cipl)
-    if (initialVersion) {
-      const version: CiplVersion = {
-        id: id(),
-        ciplId: cipl.id,
-        versionNumber: 1,
-        receivedAt: initialVersion.receivedAt,
-        receivedBy: initialVersion.receivedBy,
-        sourceDocumentName: initialVersion.sourceDocumentName ?? null,
-        sourceDocument: initialVersion.sourceDocument
-          ? attachmentMetadata(initialVersion.sourceDocument)
-          : null,
-        items: initialVersion.items,
-        revisionNote: initialVersion.revisionNote ?? null,
-        createdAt: timestamp,
-      }
-      cipl.activeVersionId = version.id
-      transaction.objectStore('cipls').put(cipl)
-      transaction.objectStore('ciplVersions').put(version)
-      if (initialVersion.sourceDocument)
-        transaction
-          .objectStore('files')
-          .put(toStoredFile(initialVersion.sourceDocument, 'CIPL_VERSION', version.id, 'SOURCE'))
+  await put('cipls', cipl)
+  if (initialVersion) {
+    const version: CiplVersion = {
+      id: id(),
+      ciplId: cipl.id,
+      versionNumber: 1,
+      receivedAt: initialVersion.receivedAt,
+      receivedBy: initialVersion.receivedBy,
+      sourceDocumentName: initialVersion.sourceDocumentName ?? null,
+      sourceDocument: initialVersion.sourceDocument
+        ? attachmentMetadata(initialVersion.sourceDocument)
+        : null,
+      items: initialVersion.items,
+      revisionNote: initialVersion.revisionNote ?? null,
+      createdAt: timestamp,
     }
-    transaction.oncomplete = () => resolve(cipl)
-    transaction.onerror = () => reject(transaction.error)
-    transaction.onabort = () => reject(transaction.error)
-  })
+    cipl.activeVersionId = version.id
+    await Promise.all([
+      put('cipls', cipl),
+      put('ciplVersions', version),
+      ...(initialVersion.sourceDocument
+        ? [
+            put(
+              'files',
+              toStoredFile(initialVersion.sourceDocument, 'CIPL_VERSION', version.id, 'SOURCE'),
+            ),
+          ]
+        : []),
+    ])
+  }
+  return cipl
 }
 
 export async function addCiplVersion(ciplId: string, input: CiplVersionInput) {
@@ -1595,18 +1274,13 @@ export async function addCiplVersion(ciplId: string, input: CiplVersionInput) {
   const validation = validateCiplVersionReady(version)
   if (!validation.ok && cipl.status === 'READY')
     throw new Error(validation.issues.map((issue) => issue.message).join(' '))
-  const database = await openDatabase()
-  return new Promise<CiplVersion>((resolve, reject) => {
-    const transaction = database.transaction(['ciplVersions', 'files'], 'readwrite')
-    transaction.objectStore('ciplVersions').put(version)
-    if (input.sourceDocument)
-      transaction
-        .objectStore('files')
-        .put(toStoredFile(input.sourceDocument, 'CIPL_VERSION', version.id, 'SOURCE'))
-    transaction.oncomplete = () => resolve(version)
-    transaction.onerror = () => reject(transaction.error)
-    transaction.onabort = () => reject(transaction.error)
-  })
+  await Promise.all([
+    put('ciplVersions', version),
+    ...(input.sourceDocument
+      ? [put('files', toStoredFile(input.sourceDocument, 'CIPL_VERSION', version.id, 'SOURCE'))]
+      : []),
+  ])
+  return version
 }
 
 export async function activateCiplVersion(
@@ -1696,7 +1370,7 @@ export type CustomsJobInput = Omit<
   'id' | 'jobNumber' | 'shipmentId' | 'allocations' | 'statusHistory' | 'createdAt' | 'updatedAt'
 >
 
-/** The counter and CustomsJob live in one transaction, so issued numbers are never reused. */
+/** The counter and CustomsJob are updated together in the single-threaded runtime store. */
 export async function createCustomsJob(
   shipmentId: string,
   input: CustomsJobInput,
@@ -1708,35 +1382,23 @@ export async function createCustomsJob(
   const allocationValidation = validateJobAllocation(shipment, existing, allocations)
   if (!allocationValidation.ok)
     throw new Error(allocationValidation.issues.map((issue) => issue.message).join(' '))
-  const database = await openDatabase()
   const timestamp = now()
-  return new Promise<CustomsJob>((resolve, reject) => {
-    const transaction = database.transaction(['customsJobs', 'counters'], 'readwrite')
-    const counterStore = transaction.objectStore('counters')
-    const counterRequest = counterStore.get('customsJobNumber')
-    counterRequest.onsuccess = () => {
-      const counter = (counterRequest.result as { id: string; value: number } | undefined) ?? {
-        id: 'customsJobNumber',
-        value: 0,
-      }
-      const next = counter.value + 1
-      const job: CustomsJob = {
-        ...input,
-        id: id(),
-        jobNumber: `VSS-${String(next).padStart(5, '0')}`,
-        shipmentId,
-        allocations,
-        statusHistory: [],
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      }
-      counterStore.put({ ...counter, value: next })
-      transaction.objectStore('customsJobs').put(job)
-      transaction.oncomplete = () => resolve(job)
-    }
-    transaction.onerror = () => reject(transaction.error)
-    transaction.onabort = () => reject(transaction.error)
-  })
+  const counter = (await readAll<{ id: string; value: number }>('counters')).find(
+    (item) => item.id === 'customsJobNumber',
+  ) ?? { id: 'customsJobNumber', value: 0 }
+  const next = counter.value + 1
+  const job: CustomsJob = {
+    ...input,
+    id: id(),
+    jobNumber: `VSS-${String(next).padStart(5, '0')}`,
+    shipmentId,
+    allocations,
+    statusHistory: [],
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+  await Promise.all([put('counters', { ...counter, value: next }), put('customsJobs', job)])
+  return job
 }
 
 export async function updateCustomsJob(
