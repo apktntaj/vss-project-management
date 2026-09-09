@@ -849,10 +849,10 @@ export async function createTicket(input: TicketInput): Promise<Ticket> {
 
 async function assertTicketContext(context: TicketContext) {
   if (context.kind === 'EVENT') {
-    if (!(await listEvents()).some((event) => event.id === context.id)) throw new Error('Event wajib valid.')
+    if (!(await listEvents()).some((event) => event.id === context.id && event.status === 'ACTIVE')) throw new Error('Event harus aktif dan valid.')
     return
   }
-  if (!(await listJobs()).some((job) => job.id === context.id)) throw new Error('Job wajib valid.')
+  if (!(await listJobs()).some((job) => job.id === context.id && job.status !== 'COMPLETED' && job.status !== 'CANCELLED')) throw new Error('Job harus aktif dan valid.')
 }
 
 export async function updateTicket(ticketId: string, input: Partial<TicketInput>): Promise<Ticket> {
