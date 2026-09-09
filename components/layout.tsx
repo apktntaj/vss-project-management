@@ -10,11 +10,13 @@ import {
   ChevronsRight,
   FolderKanban,
   Package,
+  Ticket,
 } from 'lucide-react'
 const links = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/events', label: 'Events', icon: CalendarDays },
   { href: '/jobs', label: 'Jobs', icon: BriefcaseBusiness },
+  { href: '/tickets', label: 'Tickets', icon: Ticket },
   { href: '/general-cargo', label: 'General Cargo', icon: Package, available: false },
   { href: '/projects', label: 'Projects', icon: FolderKanban, available: false },
 ]

@@ -7,6 +7,7 @@ Website operasional untuk mengelola event dan shipment secara lokal di browser.
 - Dashboard event dan timeline operasional.
 - CRUD event, venue, organizer, exhibitor, dan shipment/job.
 - Stage shipment serta dokumen PDF disimpan di IndexedDB.
+- Ticket untuk koordinasi, administratif, dan operasional, dengan assignment, board, komentar, dan riwayat activity. Data Ticket sengaja hanya in-memory dan hilang saat halaman di-refresh.
 - Data demo dibuat otomatis pada browser pertama kali digunakan.
 
 ## Menjalankan lokal

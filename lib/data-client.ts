@@ -59,3 +59,7 @@ export type {
   LocalVenue,
   ShipmentInput,
 } from '@/lib/indexeddb'
+
+// Ticket MVP has its own in-memory façade and intentionally never touches IndexedDB.
+export { ticketStore } from '@/lib/tickets'
+export type { Ticket, TicketActivity, TicketAssignee, TicketComment, TicketContext, TicketInput, TicketPriority, TicketStatus, TicketUpdate } from '@/lib/tickets'
