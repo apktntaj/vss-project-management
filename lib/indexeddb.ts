@@ -237,7 +237,7 @@ type StoreName =
   | 'preferences'
 
 const databaseName = 'vss-project-management'
-const databaseVersion = 8
+const databaseVersion = 9
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -291,7 +291,17 @@ function openDatabase(): Promise<IDBDatabase> {
       createIndex(upgradeTransaction, 'tickets', 'status')
       createIndex(upgradeTransaction, 'tickets', 'contextKind')
       createIndex(upgradeTransaction, 'tickets', 'contextId')
-      createIndex(upgradeTransaction, 'tickets', 'dueOn')
+      if (upgradeEvent.oldVersion < 9) {
+        const tickets = upgradeTransaction.objectStore('tickets')
+        if (tickets.indexNames.contains('dueOn')) tickets.deleteIndex('dueOn')
+        tickets.openCursor().onsuccess = (cursorEvent) => {
+          const cursor = (cursorEvent.target as IDBRequest<IDBCursorWithValue | null>).result
+          if (!cursor) return
+          const { dueOn: _dueOn, ...ticket } = cursor.value as StoredTicket & { dueOn?: string | null }
+          cursor.update(ticket)
+          cursor.continue()
+        }
+      }
       if (upgradeEvent.oldVersion < 7) {
         const events = upgradeTransaction.objectStore('events')
         events.openCursor().onsuccess = (cursorEvent) => {
@@ -773,8 +783,7 @@ type Preference = { id: 'activeDemoUserId'; value: string }
 export type TicketInput = {
   title: string
   description?: string | null
-  eventId: string
-  dueOn?: string | null
+  context: TicketContext
   priority?: TicketPriority
 }
 
@@ -823,13 +832,13 @@ async function assertTicketOwner(ticketId: string): Promise<{ ticket: StoredTick
 }
 
 export async function createTicket(input: TicketInput): Promise<Ticket> {
-  const [user, events] = await Promise.all([activeTicketUser(), listEvents()])
-  if (!events.some((event) => event.id === input.eventId)) throw new Error('Event wajib valid.')
+  const user = await activeTicketUser()
+  await assertTicketContext(input.context)
   const timestamp = now()
   const current = await listMyTickets()
   const ticket: Ticket = {
-    id: id(), assigneeId: user.id, context: { kind: 'EVENT', id: input.eventId },
-    title: input.title.trim(), description: input.description?.trim() || null, dueOn: input.dueOn || null,
+    id: id(), assigneeId: user.id, context: input.context,
+    title: input.title.trim(), description: input.description?.trim() || null,
     status: 'TODO', order: Math.max(0, ...current.filter((item) => item.status === 'TODO').map((item) => item.order)) + 1,
     priority: input.priority ?? 'NORMAL', blocker: null, completion: null, statusHistory: [], createdAt: timestamp, updatedAt: timestamp,
   }
@@ -838,10 +847,18 @@ export async function createTicket(input: TicketInput): Promise<Ticket> {
   return put('tickets', ticketForStorage(ticket))
 }
 
-export async function updateTicket(ticketId: string, input: Partial<Pick<TicketInput, 'title' | 'description' | 'dueOn' | 'priority'>> & { eventId?: string }): Promise<Ticket> {
+async function assertTicketContext(context: TicketContext) {
+  if (context.kind === 'EVENT') {
+    if (!(await listEvents()).some((event) => event.id === context.id)) throw new Error('Event wajib valid.')
+    return
+  }
+  if (!(await listJobs()).some((job) => job.id === context.id)) throw new Error('Job wajib valid.')
+}
+
+export async function updateTicket(ticketId: string, input: Partial<TicketInput>): Promise<Ticket> {
   const { ticket } = await assertTicketOwner(ticketId)
-  if (input.eventId && !(await listEvents()).some((event) => event.id === input.eventId)) throw new Error('Event wajib valid.')
-  const updated: Ticket = { ...ticket, title: input.title === undefined ? ticket.title : input.title.trim(), description: input.description === undefined ? ticket.description : input.description?.trim() || null, dueOn: input.dueOn === undefined ? ticket.dueOn : input.dueOn || null, priority: input.priority ?? ticket.priority, context: input.eventId ? { kind: 'EVENT', id: input.eventId } : ticket.context, updatedAt: now() }
+  if (input.context) await assertTicketContext(input.context)
+  const updated: Ticket = { ...ticket, title: input.title === undefined ? ticket.title : input.title.trim(), description: input.description === undefined ? ticket.description : input.description?.trim() || null, priority: input.priority ?? ticket.priority, context: input.context ?? ticket.context, updatedAt: now() }
   const error = validateTicket(updated)
   if (error) throw new Error(error)
   return put('tickets', ticketForStorage(updated))

@@ -1,8 +1,7 @@
 /** Storage-neutral personal work ticket domain. */
 export type TicketContext =
   | { kind: 'EVENT'; id: string }
-  | { kind: 'GENERAL_CARGO'; id: string }
-  | { kind: 'PROJECT'; id: string }
+  | { kind: 'JOB'; id: string }
 
 export type TicketStatus = 'TODO' | 'PROGRESS' | 'DONE'
 export type TicketPriority = 'NORMAL' | 'URGENT'
@@ -29,7 +28,6 @@ export type Ticket = {
   context: TicketContext
   title: string
   description: string | null
-  dueOn: string | null
   status: TicketStatus
   order: number
   priority: TicketPriority
