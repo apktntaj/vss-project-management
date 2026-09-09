@@ -791,6 +791,7 @@ export async function listUsers() {
 type StoredTicket = Ticket & { contextKind: TicketContext['kind']; contextId: string }
 type Preference = { id: 'activeDemoUserId'; value: string }
 export type TicketInput = {
+  assigneeId: string
   title: string
   description?: string | null
   context: TicketContext
@@ -842,12 +843,13 @@ async function assertTicketOwner(ticketId: string): Promise<{ ticket: StoredTick
 }
 
 export async function createTicket(input: TicketInput): Promise<Ticket> {
-  const user = await activeTicketUser()
+  const users = await ensureSeeded()
+  if (!users.some((user) => user.id === input.assigneeId && user.isActive)) throw new Error('Assignee wajib aktif dan valid.')
   await assertTicketContext(input.context)
   const timestamp = now()
-  const current = await listMyTickets()
+  const current = await listTicketsForUser(input.assigneeId)
   const ticket: Ticket = {
-    id: id(), assigneeId: user.id, context: input.context,
+    id: id(), assigneeId: input.assigneeId, context: input.context,
     title: input.title.trim(), description: input.description?.trim() || null,
     status: 'TODO', order: Math.max(0, ...current.filter((item) => item.status === 'TODO').map((item) => item.order)) + 1,
     priority: input.priority ?? 'NORMAL', completion: null, statusHistory: [], createdAt: timestamp, updatedAt: timestamp,
@@ -855,6 +857,14 @@ export async function createTicket(input: TicketInput): Promise<Ticket> {
   const error = validateTicket(ticket)
   if (error) throw new Error(error)
   return put('tickets', ticketForStorage(ticket))
+}
+
+export async function listTicketsForUser(userId: string): Promise<Ticket[]> {
+  const users = await ensureSeeded()
+  if (!users.some((user) => user.id === userId && user.isActive)) throw new Error('User tidak aktif atau tidak ditemukan.')
+  const database = await openDatabase()
+  const tickets = (await requestValue(database.transaction('tickets', 'readonly').objectStore('tickets').index('assigneeId').getAll(userId))) as StoredTicket[]
+  return tickets.sort((a, b) => a.status.localeCompare(b.status) || a.order - b.order)
 }
 
 async function assertTicketContext(context: TicketContext) {

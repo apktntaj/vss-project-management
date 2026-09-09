@@ -30,6 +30,7 @@ export {
   listEvents,
   listJobs,
   listMyTickets,
+  listTicketsForUser,
   listShipments,
   listUsers,
   listVenues,
