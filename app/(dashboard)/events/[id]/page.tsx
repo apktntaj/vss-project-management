@@ -11,6 +11,7 @@ import {
   MapPin,
   FileStack,
   Pencil,
+  Plus,
   Users,
 } from 'lucide-react'
 import { useParams } from 'next/navigation'
@@ -105,6 +106,9 @@ export default function EventDetailPage() {
           {event.alias && <p className="mt-2 text-sm text-slate-500">{event.alias}</p>}
         </div>
         <div className="flex items-center gap-2">
+          <Link href={`/kanban?event=${event.id}&new=1`} className="btn-secondary shrink-0">
+            <Plus size={16} /> <span className="ml-2">Tambah ticket</span>
+          </Link>
           <Link href={`/events/${event.id}/edit`} className="btn-primary shrink-0">
             <Pencil size={16} /> <span className="ml-2">Edit</span>
           </Link>

@@ -9,11 +9,13 @@ export {
   addStage,
   activateCiplVersion,
   cancelEvent,
+  createTicket,
   createCipl,
   createCustomsJob,
   createShipment,
   deleteEvent,
   getAttachmentContent,
+  getActiveDemoUser,
   getCipl,
   getCustomsJob,
   getJob,
@@ -27,6 +29,7 @@ export {
   listEventJobs,
   listEvents,
   listJobs,
+  listMyTickets,
   listShipments,
   listUsers,
   listVenues,
@@ -36,6 +39,13 @@ export {
   saveJobDocument,
   saveJobOperationalDetails,
   saveJobWithDocument,
+  setActiveDemoUser,
+  setTicketBlocker,
+  resolveTicketBlocker,
+  moveTicket,
+  moveAndReorderMyTickets,
+  reorderMyTickets,
+  updateTicket,
   toggleStage,
   updateCustomsJob,
 } from '@/lib/indexeddb'
@@ -57,9 +67,11 @@ export type {
   LocalStage,
   LocalUser,
   LocalVenue,
+  Ticket,
+  TicketBlocker,
+  TicketContext,
+  TicketInput,
+  TicketPriority,
+  TicketStatus,
   ShipmentInput,
 } from '@/lib/indexeddb'
-
-// Ticket MVP has its own in-memory façade and intentionally never touches IndexedDB.
-export { ticketStore } from '@/lib/tickets'
-export type { Ticket, TicketActivity, TicketAssignee, TicketComment, TicketContext, TicketInput, TicketPriority, TicketStatus, TicketUpdate } from '@/lib/tickets'

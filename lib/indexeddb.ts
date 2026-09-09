@@ -20,6 +20,10 @@ import {
   validateShipmentAllocation,
 } from '@/domain/exhibition/validation'
 import { createMockData, MOCK_DATA_VERSION } from '@/lib/mock-data'
+import type { Ticket, TicketBlocker, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
+import { validateStatusTransition, validateTicket } from '@/domain/ticket/validation'
+
+export type { Ticket, TicketBlocker, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
 
 export type LocalUser = {
   id: string
@@ -229,9 +233,11 @@ type StoreName =
   | 'counters'
   | 'migrationReviewItems'
   | 'files'
+  | 'tickets'
+  | 'preferences'
 
 const databaseName = 'vss-project-management'
-const databaseVersion = 7
+const databaseVersion = 8
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -256,6 +262,8 @@ function openDatabase(): Promise<IDBDatabase> {
         'counters',
         'migrationReviewItems',
         'files',
+        'tickets',
+        'preferences',
       ] as StoreName[]) {
         if (!database.objectStoreNames.contains(store))
           database.createObjectStore(store, { keyPath: 'id' })
@@ -279,6 +287,11 @@ function openDatabase(): Promise<IDBDatabase> {
       createIndex(upgradeTransaction, 'migrationReviewItems', 'status')
       createIndex(upgradeTransaction, 'files', 'ownerType')
       createIndex(upgradeTransaction, 'files', 'ownerId')
+      createIndex(upgradeTransaction, 'tickets', 'assigneeId')
+      createIndex(upgradeTransaction, 'tickets', 'status')
+      createIndex(upgradeTransaction, 'tickets', 'contextKind')
+      createIndex(upgradeTransaction, 'tickets', 'contextId')
+      createIndex(upgradeTransaction, 'tickets', 'dueOn')
       if (upgradeEvent.oldVersion < 7) {
         const events = upgradeTransaction.objectStore('events')
         events.openCursor().onsuccess = (cursorEvent) => {
@@ -713,7 +726,159 @@ async function ensureDemoEvents() {
 }
 
 export async function listUsers() {
+  await ensureDemoEvents()
   return ensureSeeded()
+}
+
+type StoredTicket = Ticket & { contextKind: TicketContext['kind']; contextId: string }
+type Preference = { id: 'activeDemoUserId'; value: string }
+export type TicketInput = {
+  title: string
+  description?: string | null
+  eventId: string
+  dueOn?: string | null
+  priority?: TicketPriority
+}
+
+function ticketForStorage(ticket: Ticket): StoredTicket {
+  return { ...ticket, contextKind: ticket.context.kind, contextId: ticket.context.id }
+}
+
+async function activeTicketUser() {
+  const users = await ensureSeeded()
+  const preference = (await readAll<Preference>('preferences')).find(
+    (item) => item.id === 'activeDemoUserId',
+  )
+  const user = users.find((item) => item.id === preference?.value && item.isActive) ?? users.find((item) => item.isActive)
+  if (!user) throw new Error('User aktif wajib tersedia.')
+  return user
+}
+
+export async function getActiveDemoUser() {
+  return activeTicketUser()
+}
+
+export async function setActiveDemoUser(userId: string) {
+  const users = await ensureSeeded()
+  const user = users.find((item) => item.id === userId && item.isActive)
+  if (!user) throw new Error('User demo tidak aktif atau tidak ditemukan.')
+  await put('preferences', { id: 'activeDemoUserId', value: user.id })
+  return user
+}
+
+export async function listMyTickets(): Promise<Ticket[]> {
+  const user = await activeTicketUser()
+  const database = await openDatabase()
+  const tickets = (await requestValue(
+    database.transaction('tickets', 'readonly').objectStore('tickets').index('assigneeId').getAll(user.id),
+  )) as StoredTicket[]
+  return tickets.sort((a, b) => a.status.localeCompare(b.status) || a.order - b.order)
+}
+
+async function assertTicketOwner(ticketId: string): Promise<{ ticket: StoredTicket; user: LocalUser }> {
+  const [user, database] = await Promise.all([activeTicketUser(), openDatabase()])
+  const ticket = (await requestValue(
+    database.transaction('tickets', 'readonly').objectStore('tickets').get(ticketId),
+  )) as StoredTicket | undefined
+  if (!ticket || ticket.assigneeId !== user.id) throw new Error('Ticket tidak tersedia untuk user aktif.')
+  return { ticket, user }
+}
+
+export async function createTicket(input: TicketInput): Promise<Ticket> {
+  const [user, events] = await Promise.all([activeTicketUser(), listEvents()])
+  if (!events.some((event) => event.id === input.eventId)) throw new Error('Event wajib valid.')
+  const timestamp = now()
+  const current = await listMyTickets()
+  const ticket: Ticket = {
+    id: id(), assigneeId: user.id, context: { kind: 'EVENT', id: input.eventId },
+    title: input.title.trim(), description: input.description?.trim() || null, dueOn: input.dueOn || null,
+    status: 'TODO', order: Math.max(0, ...current.filter((item) => item.status === 'TODO').map((item) => item.order)) + 1,
+    priority: input.priority ?? 'NORMAL', blocker: null, completion: null, statusHistory: [], createdAt: timestamp, updatedAt: timestamp,
+  }
+  const error = validateTicket(ticket)
+  if (error) throw new Error(error)
+  return put('tickets', ticketForStorage(ticket))
+}
+
+export async function updateTicket(ticketId: string, input: Partial<Pick<TicketInput, 'title' | 'description' | 'dueOn' | 'priority'>> & { eventId?: string }): Promise<Ticket> {
+  const { ticket } = await assertTicketOwner(ticketId)
+  if (input.eventId && !(await listEvents()).some((event) => event.id === input.eventId)) throw new Error('Event wajib valid.')
+  const updated: Ticket = { ...ticket, title: input.title === undefined ? ticket.title : input.title.trim(), description: input.description === undefined ? ticket.description : input.description?.trim() || null, dueOn: input.dueOn === undefined ? ticket.dueOn : input.dueOn || null, priority: input.priority ?? ticket.priority, context: input.eventId ? { kind: 'EVENT', id: input.eventId } : ticket.context, updatedAt: now() }
+  const error = validateTicket(updated)
+  if (error) throw new Error(error)
+  return put('tickets', ticketForStorage(updated))
+}
+
+export async function moveTicket(ticketId: string, status: TicketStatus, completionNote?: string, reopenReason?: string): Promise<Ticket> {
+  const { ticket } = await assertTicketOwner(ticketId)
+  const reason = ticket.status === 'DONE' && status !== 'DONE' ? reopenReason?.trim() || null : null
+  const transitionError = validateStatusTransition(ticket.status, status, reason, completionNote?.trim() || null)
+  if (transitionError) throw new Error(transitionError)
+  const timestamp = now()
+  const updated: Ticket = {
+    ...ticket, status,
+    completion: status === 'DONE' ? { note: completionNote!.trim(), completedAt: timestamp } : null,
+    statusHistory: ticket.status === status ? ticket.statusHistory : [...ticket.statusHistory, { from: ticket.status, to: status, reason, changedAt: timestamp }],
+    updatedAt: timestamp,
+  }
+  return put('tickets', ticketForStorage(updated))
+}
+
+/** Persists all positions in one transaction, preventing partially reordered columns. */
+export async function reorderMyTickets(status: TicketStatus, ticketIds: string[]) {
+  const user = await activeTicketUser()
+  const database = await openDatabase()
+  const tickets = (await requestValue(database.transaction('tickets', 'readonly').objectStore('tickets').getAll())) as StoredTicket[]
+  const owned = tickets.filter((ticket) => ticket.assigneeId === user.id)
+  if (new Set(ticketIds).size !== ticketIds.length || ticketIds.some((id) => !owned.some((ticket) => ticket.id === id))) throw new Error('Urutan ticket tidak valid.')
+  const transaction = database.transaction('tickets', 'readwrite')
+  ticketIds.forEach((ticketId, index) => {
+    const ticket = owned.find((item) => item.id === ticketId)!
+    transaction.objectStore('tickets').put(ticketForStorage({ ...ticket, status, order: index + 1, updatedAt: now() }))
+  })
+  await transactionDone(transaction)
+}
+
+/** Moves a ticket and rewrites its destination-column order in the same IndexedDB transaction. */
+export async function moveAndReorderMyTickets(
+  ticketId: string,
+  status: TicketStatus,
+  ticketIds: string[],
+  completionNote?: string,
+  reopenReason?: string,
+) {
+  const { ticket, user } = await assertTicketOwner(ticketId)
+  if (!ticketIds.includes(ticketId)) throw new Error('Urutan tujuan harus memuat ticket yang dipindahkan.')
+  const reason = ticket.status === 'DONE' && status !== 'DONE' ? reopenReason?.trim() || null : null
+  const transitionError = validateStatusTransition(ticket.status, status, reason, completionNote?.trim() || null)
+  if (transitionError) throw new Error(transitionError)
+  const database = await openDatabase()
+  const all = (await requestValue(database.transaction('tickets', 'readonly').objectStore('tickets').getAll())) as StoredTicket[]
+  if (new Set(ticketIds).size !== ticketIds.length || ticketIds.some((id) => id !== ticketId && !all.some((item) => item.id === id && item.assigneeId === user.id && item.status === status))) throw new Error('Urutan ticket tidak valid.')
+  const timestamp = now()
+  const moved: Ticket = {
+    ...ticket, status, completion: status === 'DONE' ? { note: completionNote!.trim(), completedAt: timestamp } : null,
+    statusHistory: ticket.status === status ? ticket.statusHistory : [...ticket.statusHistory, { from: ticket.status, to: status, reason, changedAt: timestamp }], updatedAt: timestamp,
+  }
+  const transaction = database.transaction('tickets', 'readwrite')
+  ticketIds.forEach((id, index) => {
+    const value = id === ticketId ? moved : all.find((item) => item.id === id)!
+    transaction.objectStore('tickets').put(ticketForStorage({ ...value, status, order: index + 1, updatedAt: timestamp }))
+  })
+  await transactionDone(transaction)
+}
+
+export async function setTicketBlocker(ticketId: string, reason: string, nextAction: string) {
+  const { ticket } = await assertTicketOwner(ticketId)
+  if (!reason.trim() || !nextAction.trim()) throw new Error('Alasan dan tindak lanjut blocker wajib diisi.')
+  return put('tickets', ticketForStorage({ ...ticket, blocker: { reason: reason.trim(), nextAction: nextAction.trim(), createdAt: now(), resolvedAt: null, resolution: null }, updatedAt: now() }))
+}
+
+export async function resolveTicketBlocker(ticketId: string, resolution: string) {
+  const { ticket } = await assertTicketOwner(ticketId)
+  if (!ticket.blocker) throw new Error('Ticket tidak memiliki blocker.')
+  if (!resolution.trim()) throw new Error('Resolusi blocker wajib diisi.')
+  return put('tickets', ticketForStorage({ ...ticket, blocker: { ...ticket.blocker, resolvedAt: now(), resolution: resolution.trim() }, updatedAt: now() }))
 }
 
 export async function listJobs(filters: { search?: string; status?: string } = {}) {

@@ -9,18 +9,26 @@ import {
   ChevronsLeft,
   ChevronsRight,
   FolderKanban,
+  LogOut,
   Package,
-  Ticket,
+  Settings,
 } from 'lucide-react'
+import { logoutAction } from '@/app/(dashboard)/actions'
 const links = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/events', label: 'Events', icon: CalendarDays },
   { href: '/jobs', label: 'Jobs', icon: BriefcaseBusiness },
-  { href: '/tickets', label: 'Tickets', icon: Ticket },
+  { href: '/kanban', label: 'Ticket Saya', icon: FolderKanban },
   { href: '/general-cargo', label: 'General Cargo', icon: Package, available: false },
   { href: '/projects', label: 'Projects', icon: FolderKanban, available: false },
 ]
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  user,
+}: {
+  children: React.ReactNode
+  user: { name?: string | null; email?: string | null; isAdmin: boolean }
+}) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   return (
@@ -56,7 +64,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <span className={collapsed ? 'md:hidden' : ''}>{label}</span>
                 {!available && (
                   <span
-                    className={`rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-300 ${collapsed ? 'md:hidden' : ''}`}
+                    className={`rounded-full bg-orange-200 px-1.5 py-px text-[8px] font-semibold uppercase tracking-wide text-orange-900 ${collapsed ? 'md:hidden' : ''}`}
                   >
                     Soon
                   </span>
@@ -87,6 +95,35 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )
           })}
         </nav>
+        <div
+          className={`mt-auto border-t border-white/10 p-3 ${collapsed ? 'md:text-center' : ''}`}
+        >
+          {user.isAdmin && (
+            <Link
+              href="/settings"
+              title={collapsed ? 'Settings' : undefined}
+              className={`mb-3 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${collapsed ? 'md:justify-center' : ''} ${pathname.startsWith('/settings') ? 'bg-orange-600 text-white shadow-lg shadow-orange-950/40' : 'hover:bg-slate-700 hover:text-white'}`}
+            >
+              <Settings size={18} />
+              <span className={collapsed ? 'md:hidden' : ''}>Settings</span>
+            </Link>
+          )}
+          <div className={`mb-3 min-w-0 px-3 ${collapsed ? 'md:hidden' : ''}`}>
+            <p className="truncate text-sm font-semibold text-white">
+              {user.name ?? 'Pengguna demo'}
+            </p>
+          </div>
+          <form action={logoutAction}>
+            <button
+              type="submit"
+              title={collapsed ? 'Keluar' : undefined}
+              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-slate-700 hover:text-white ${collapsed ? 'md:justify-center' : ''}`}
+            >
+              <LogOut size={18} />
+              <span className={collapsed ? 'md:hidden' : ''}>Keluar</span>
+            </button>
+          </form>
+        </div>
       </aside>
       <main
         className={`min-w-0 flex-1 transition-[margin] duration-200 ${collapsed ? 'md:ml-20' : 'md:ml-64'}`}
