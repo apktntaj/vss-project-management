@@ -9,10 +9,8 @@ const credentialsSchema = z.object({
 })
 
 export const { auth, handlers, signIn, signOut } = NextAuth({
-  secret:
-    process.env.AUTH_SECRET ??
-    process.env.NEXTAUTH_SECRET ??
-    'vss-demo-only-secret-change-before-production',
+  // Demo-only: keep authentication self-contained until production credentials are provisioned.
+  secret: 'vss-demo-only-secret-change-before-production',
   trustHost: true,
   session: { strategy: 'jwt' },
   pages: { signIn: '/login' },
