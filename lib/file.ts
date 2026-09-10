@@ -81,19 +81,48 @@ export type JobCustomsDocument = {
 export type JobOperationalDetails = {
   inbound: JobTransportLeg
   outbound: JobTransportLeg
+  /** Optional for compatibility with Jobs saved before invoice tracking existed. */
+  invoiceNumber?: string | null
+  invoiceItems?: JobInvoiceItem[]
   cipl: JobCiplInfo
   customs: Record<'BC_2_3' | 'BC_2_5' | 'BC_3_0', JobCustomsDocument>
+}
+
+export type JobInvoiceItem = {
+  description: string
+  hsCode: string | null
+  unitPrice: number | null
+  lineTotal: number | null
+  currency: string | null
+}
+
+/** Provisional values extracted from one Commercial Invoice; users may correct them later. */
+export type JobInvoiceExtraction = {
+  invoiceNumber: string | null
+  items: JobInvoiceItem[]
 }
 
 export type JobDocumentKind =
   | 'SOURCE'
   | 'INBOUND_TRANSPORT'
   | 'OUTBOUND_TRANSPORT'
+  | 'BILL_OF_LADING'
+  | 'AIR_WAYBILL'
+  | 'COMMERCIAL_INVOICE'
   | 'CIPL'
   | 'BC_2_3'
   | 'BC_2_5'
   | 'BC_3_0'
   | 'OTHER'
+
+export type JobDocumentMimeType =
+  | 'application/pdf'
+  | 'application/vnd.ms-excel'
+  | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  | 'application/vnd.ms-excel.sheet.macroenabled.12'
+  | 'application/vnd.openxmlformats-officedocument.spreadsheetml.template'
+  | 'application/vnd.ms-excel.template.macroenabled.12'
+  | 'application/vnd.ms-excel.sheet.binary.macroenabled.12'
 
 export type LocalJob = {
   id: string
@@ -132,7 +161,7 @@ export type LocalJobDocument = {
   id: string
   jobId: string
   fileName: string
-  mimeType: 'application/pdf'
+  mimeType: JobDocumentMimeType
   fileSize: number
   attachmentId: string
   createdAt: string
@@ -155,7 +184,7 @@ type StoredFile = {
   ownerId: string
   kind: string | null
   fileName: string
-  mimeType: 'application/pdf'
+  mimeType: JobDocumentMimeType
   fileSize: number
   content: Blob
   createdAt: string
@@ -357,6 +386,7 @@ export function getOperationalDetails(
       scheduleAt: null,
       actualAt: null,
     },
+    invoiceNumber: null,
     cipl: { status: 'MISSING', referenceNumber: null, receivedAt: null },
     customs: {
       BC_2_3: emptyCustomsDocument(),
@@ -993,17 +1023,36 @@ export type JobInput = Pick<
   sourceDocumentName?: string | null
 }
 
+const jobDocumentMimeTypes: Record<string, JobDocumentMimeType> = {
+  pdf: 'application/pdf',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  xlsm: 'application/vnd.ms-excel.sheet.macroenabled.12',
+  xltx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.template',
+  xltm: 'application/vnd.ms-excel.template.macroenabled.12',
+  xlsb: 'application/vnd.ms-excel.sheet.binary.macroenabled.12',
+}
+
+function jobDocumentMimeType(file: File): JobDocumentMimeType {
+  const extension = file.name.split('.').pop()?.toLowerCase()
+  const mimeType = extension ? jobDocumentMimeTypes[extension] : undefined
+  if (!mimeType) throw new Error('Dokumen harus berupa PDF atau file Excel.')
+  return mimeType
+}
+
 export async function saveJobDocument(
   jobId: string,
   file: File,
   kind: JobDocumentKind = 'SOURCE',
+  invoiceExtraction?: JobInvoiceExtraction | null,
 ): Promise<LocalJobDocument> {
   const timestamp = now()
+  const mimeType = jobDocumentMimeType(file)
   const document: LocalJobDocument = {
     id: id(),
     jobId,
     fileName: file.name,
-    mimeType: 'application/pdf',
+    mimeType,
     fileSize: file.size,
     attachmentId: id(),
     createdAt: timestamp,
@@ -1020,7 +1069,25 @@ export async function saveJobDocument(
     content: file,
     createdAt: timestamp,
   }
-  await Promise.all([put('jobDocuments', document), put('files', storedFile)])
+  const invoice = invoiceExtraction ?? null
+  const previous = invoice ? await getJob(jobId) : null
+  if (invoice && !previous) throw new Error('Job tidak ditemukan.')
+  const updatedJob = previous && invoice
+    ? {
+        ...previous,
+        operational: {
+          ...getOperationalDetails(previous),
+          invoiceNumber: invoice.invoiceNumber ?? getOperationalDetails(previous).invoiceNumber ?? null,
+          invoiceItems: invoice.items,
+        },
+        updatedAt: timestamp,
+      }
+    : null
+  await Promise.all([
+    put('jobDocuments', document),
+    put('files', storedFile),
+    ...(updatedJob ? [put('jobs', updatedJob)] : []),
+  ])
   return document
 }
 

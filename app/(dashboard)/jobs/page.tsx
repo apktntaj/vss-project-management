@@ -22,10 +22,21 @@ import {
   type LocalEvent,
   type LocalJob,
   type LocalJobDocument,
+  type JobInvoiceExtraction,
 } from '@/lib/data-client'
 import { StatusBadge } from '@/components/status-badge'
 
 type Scope = 'active' | 'all'
+type AcceptedDocumentKind = 'BILL_OF_LADING' | 'AIR_WAYBILL' | 'COMMERCIAL_INVOICE'
+type DocumentClassification = {
+  documentType: AcceptedDocumentKind | 'OTHER' | 'UNREADABLE'
+  confidence: number
+  rationale: string | null
+}
+const spreadsheetExtensions = ['xls', 'xlsx', 'xlsm', 'xlsb', 'xltx', 'xltm']
+const fileExtension = (file: File) => file.name.split('.').pop()?.toLowerCase()
+const isPdf = (file: File) => file.type === 'application/pdf' || fileExtension(file) === 'pdf'
+const isAcceptedJobDocument = (file: File) => isPdf(file) || spreadsheetExtensions.includes(fileExtension(file) || '')
 const date = (value: string | null) =>
   value
     ? new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }).format(
@@ -73,37 +84,46 @@ function CustomsProgress({ job }: { job: LocalJob }) {
 function JobRow({
   job,
   onDocumentUploaded,
+  onToast,
 }: {
   job: LocalJob
-  onDocumentUploaded: (jobId: string, document: LocalJobDocument) => void
+  onDocumentUploaded: (jobId: string, document: LocalJobDocument, invoice?: JobInvoiceExtraction | null) => void
+  onToast: (message: string, tone?: 'info' | 'error') => void
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
-  const [uploadError, setUploadError] = useState('')
   const operational = getOperationalDetails(job)
   const inbound = operational.inbound
-  const outbound = operational.outbound
-  const shipmentDocuments = job.documents.filter((document) =>
-    ['SOURCE', 'INBOUND_TRANSPORT', 'OUTBOUND_TRANSPORT', 'CIPL'].includes(
-      document.kind || 'SOURCE',
-    ),
-  )
   const TransportIcon = inbound.mode === 'AIR' ? Plane : inbound.mode === 'SEA' ? Ship : Truck
   async function uploadShipmentDocument(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
-    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-      setUploadError('File harus berupa PDF')
+    if (!isAcceptedJobDocument(file)) {
+      onToast('File harus berupa PDF atau Excel (.xls, .xlsx, .xlsm, .xlsb, .xltx, .xltm).', 'error')
       return
     }
     setUploading(true)
-    setUploadError('')
     try {
-      const document = await saveJobDocument(job.id, file, 'INBOUND_TRANSPORT')
-      onDocumentUploaded(job.id, document)
-    } catch {
-      setUploadError('Upload gagal')
+      const formData = new FormData()
+      formData.set('file', file)
+      const response = await fetch('/api/classify-job-document', { method: 'POST', body: formData })
+      const payload = await response.json() as { classification?: DocumentClassification; invoice?: JobInvoiceExtraction | null; error?: string }
+      if (!response.ok || !payload.classification) throw new Error(payload.error || 'Dokumen tidak dapat diperiksa.')
+      const classification = payload.classification
+      const kind = classification.documentType === 'UNREADABLE' ? 'OTHER' : classification.documentType
+      const invoice = payload.invoice
+      const document = await saveJobDocument(job.id, file, kind, invoice)
+      onDocumentUploaded(job.id, document, invoice)
+      onToast(`Berhasil · keyakinan Gemini ${Math.round(classification.confidence * 100)}%`)
+    } catch (caught) {
+      try {
+        const document = await saveJobDocument(job.id, file, 'OTHER')
+        onDocumentUploaded(job.id, document)
+        onToast(`Dokumen tetap disimpan sebagai dokumen lain. ${caught instanceof Error ? caught.message : 'Gemini tidak dapat memeriksa dokumen.'}`)
+      } catch {
+        onToast('Dokumen tidak dapat disimpan.', 'error')
+      }
     } finally {
       setUploading(false)
     }
@@ -152,7 +172,7 @@ function JobRow({
           <input
             ref={fileInputRef}
             type="file"
-            accept="application/pdf,.pdf"
+            accept="application/pdf,.pdf,application/vnd.ms-excel,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/vnd.ms-excel.sheet.macroEnabled.12,.xlsm,application/vnd.ms-excel.sheet.binary.macroEnabled.12,.xlsb,application/vnd.openxmlformats-officedocument.spreadsheetml.template,.xltx,application/vnd.ms-excel.template.macroEnabled.12,.xltm"
             onChange={uploadShipmentDocument}
             className="sr-only"
             tabIndex={-1}
@@ -161,16 +181,7 @@ function JobRow({
             <p className="text-sm font-medium text-slate-700">
               {inbound.documentType || 'Masuk'} · {inbound.documentNumber || 'Belum ada dokumen'}
             </p>
-            <p className={`mt-1 text-xs ${uploadError ? 'text-rose-600' : 'text-slate-500'}`}>
-              {uploadError ||
-                (uploading
-                  ? 'Mengunggah dokumen…'
-                  : shipmentDocuments.length
-                    ? `${shipmentDocuments.length} dokumen diunggah`
-                    : outbound.documentType
-                      ? `Keluar: ${outbound.documentType} · ${outbound.documentNumber || 'belum diisi'}`
-                      : 'Belum ada dokumen diunggah')}
-            </p>
+            <p className="mt-1 text-xs text-slate-500">No. Invoice: {operational.invoiceNumber || '-'}</p>
           </div>
         </div>
       </td>
@@ -214,6 +225,7 @@ export default function JobsPage() {
   const [status, setStatus] = useState('')
   const [scope, setScope] = useState<Scope>('active')
   const [open, setOpen] = useState<Record<string, boolean>>({})
+  const [toast, setToast] = useState<{ message: string; tone: 'info' | 'error' } | null>(null)
   useEffect(() => {
     Promise.all([listJobs(), listEvents()]).then(([loadedJobs, loadedEvents]) => {
       setJobs(loadedJobs)
@@ -221,10 +233,28 @@ export default function JobsPage() {
       setOpen(Object.fromEntries(loadedEvents.map((event) => [event.id, true])))
     })
   }, [])
-  const handleDocumentUploaded = (jobId: string, document: LocalJobDocument) => {
+  useEffect(() => {
+    if (!toast) return
+    const timeout = window.setTimeout(() => setToast(null), 7000)
+    return () => window.clearTimeout(timeout)
+  }, [toast])
+  const showToast = (message: string, tone: 'info' | 'error' = 'info') => setToast({ message, tone })
+  const handleDocumentUploaded = (jobId: string, document: LocalJobDocument, invoice?: JobInvoiceExtraction | null) => {
     setJobs((current) =>
       current.map((job) =>
-        job.id === jobId ? { ...job, documents: [...job.documents, document] } : job,
+        job.id === jobId
+          ? {
+              ...job,
+              documents: [...job.documents, document],
+              operational: invoice
+                ? {
+                    ...getOperationalDetails(job),
+                    invoiceNumber: invoice.invoiceNumber ?? getOperationalDetails(job).invoiceNumber ?? null,
+                    invoiceItems: invoice.items,
+                  }
+                : job.operational,
+            }
+          : job,
       ),
     )
   }
@@ -411,7 +441,7 @@ export default function JobsPage() {
                   </thead>
                   <tbody>
                     {eventJobs.map((job) => (
-                      <JobRow key={job.id} job={job} onDocumentUploaded={handleDocumentUploaded} />
+                      <JobRow key={job.id} job={job} onDocumentUploaded={handleDocumentUploaded} onToast={showToast} />
                     ))}
                   </tbody>
                 </table>
@@ -428,6 +458,7 @@ export default function JobsPage() {
           </p>
         </section>
       )}
+      {toast && <div role="status" className={`fixed bottom-5 right-5 z-50 max-w-sm rounded-xl border px-4 py-3 text-sm shadow-lg ${toast.tone === 'error' ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>{toast.message}</div>}
     </div>
   )
 }
