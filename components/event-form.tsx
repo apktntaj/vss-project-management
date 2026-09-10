@@ -53,11 +53,7 @@ function parseDateInput(value: string) {
 function formatDateInput(value: string | Date) {
   const date = typeof value === 'string' ? parseDateInput(value) : value
   if (!date) return ''
-  return [
-    String(date.getUTCDate()).padStart(2, '0'),
-    String(date.getUTCMonth() + 1).padStart(2, '0'),
-    date.getUTCFullYear(),
-  ].join('/')
+  return date.toISOString().slice(0, 10)
 }
 
 function RelationPicker({
@@ -330,11 +326,9 @@ export function EventForm({
               Tanggal mulai
               <input
                 required
+                type="date"
                 name="startsAt"
                 value={startsAt}
-                inputMode="numeric"
-                placeholder="dd/mm/yyyy"
-                pattern="\\d{2}/\\d{2}/\\d{4}"
                 onChange={(event) => {
                   setStartsAt(event.target.value)
                   if (!endDateEdited) {
@@ -352,11 +346,10 @@ export function EventForm({
               Tanggal selesai
               <input
                 required
+                type="date"
                 name="endsAt"
                 value={endsAt}
-                inputMode="numeric"
-                placeholder="dd/mm/yyyy"
-                pattern="\\d{2}/\\d{2}/\\d{4}"
+                min={startsAt || undefined}
                 onChange={(event) => {
                   setEndsAt(event.target.value)
                   setEndDateEdited(true)
