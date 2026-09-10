@@ -20,11 +20,12 @@ import {
   validateJobTransition,
   validateShipmentAllocation,
 } from '@/domain/exhibition/validation'
-import { createMockData } from '@/lib/mock-data'
+import { createMockData, type DemoDataMode } from '@/lib/mock-data'
 import type { Ticket, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
 import { validateStatusTransition, validateTicket } from '@/domain/ticket/validation'
 
 export type { Ticket, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
+export type { DemoDataMode } from '@/lib/mock-data'
 
 export type LocalUser = {
   id: string
@@ -523,21 +524,52 @@ export async function getAttachmentContent(attachmentId: string): Promise<Blob |
 }
 
 let runtimeInitialized = false
+const demoDataModeStorageKey = 'vss-demo-data-mode'
+let demoDataMode: DemoDataMode =
+  typeof window !== 'undefined' && window.sessionStorage.getItem(demoDataModeStorageKey) === 'MOCK'
+    ? 'MOCK'
+    : 'EMPTY'
+
+function replaceRuntimeData(mode: DemoDataMode) {
+  const mockData = createMockData(mode)
+  runtimeStore.jobs = mockData.jobs
+  runtimeStore.stages = mockData.stages
+  runtimeStore.users = mockData.users
+  runtimeStore.events = mockData.events
+  runtimeStore.venues = mockData.venues
+  runtimeStore.eos = mockData.eventOrganizers
+  runtimeStore.exhibitors = mockData.exhibitors
+  runtimeStore.jobDocuments = []
+  runtimeStore.coordinationAgents = []
+  runtimeStore.cipls = mockData.cipls
+  runtimeStore.ciplVersions = mockData.ciplVersions
+  runtimeStore.shipmentsV2 = []
+  runtimeStore.customsJobs = []
+  runtimeStore.counters = []
+  runtimeStore.migrationReviewItems = []
+  runtimeStore.files = []
+  runtimeStore.tickets = []
+  runtimeStore.preferences = []
+}
 
 async function ensureDemoEvents() {
   if (runtimeInitialized) return
   runtimeInitialized = true
+  replaceRuntimeData(demoDataMode)
+}
 
-  const mockData = createMockData()
-  await Promise.all([
-    ...mockData.users.map((user) => put('users', user)),
-    ...mockData.venues.map((venue) => put('venues', venue)),
-    ...mockData.eventOrganizers.map((eventOrganizer) => put('eos', eventOrganizer)),
-    ...mockData.events.map((eventItem) => put('events', eventItem)),
-    ...mockData.exhibitors.map((exhibitor) => put('exhibitors', exhibitor)),
-    ...mockData.jobs.map((jobItem) => put('jobs', jobItem)),
-    ...mockData.stages.map((stage) => put('stages', stage)),
-  ])
+export async function getDemoDataMode(): Promise<DemoDataMode> {
+  await ensureDemoEvents()
+  return demoDataMode
+}
+
+/** Replaces the runtime-only demo store. This is intended for local UI demonstrations only. */
+export async function setDemoDataMode(mode: DemoDataMode): Promise<DemoDataMode> {
+  await ensureDemoEvents()
+  demoDataMode = mode
+  if (typeof window !== 'undefined') window.sessionStorage.setItem(demoDataModeStorageKey, mode)
+  replaceRuntimeData(mode)
+  return demoDataMode
 }
 
 async function ensureSeeded() {

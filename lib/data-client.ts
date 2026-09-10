@@ -16,6 +16,7 @@ export {
   deleteEvent,
   getAttachmentContent,
   getActiveDemoUser,
+  getDemoDataMode,
   getCipl,
   getCustomsJob,
   getJob,
@@ -43,6 +44,7 @@ export {
   saveJobTransportExtraction,
   saveJobWithDocument,
   setActiveDemoUser,
+  setDemoDataMode,
   moveTicket,
   moveAndReorderMyTickets,
   reorderMyTickets,
@@ -79,5 +81,6 @@ export type {
   TicketInput,
   TicketPriority,
   TicketStatus,
+  DemoDataMode,
   ShipmentInput,
 } from '@/lib/file'

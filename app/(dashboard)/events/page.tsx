@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   AlertTriangle,
@@ -16,10 +15,13 @@ import {
 import { EventForm } from '@/components/event-form'
 import {
   listEventExhibitors,
+  listCipls,
+  listCiplVersions,
   listEvents,
   type LocalEvent,
   type LocalExhibitor,
 } from '@/lib/data-client'
+import type { Cipl, CiplVersion } from '@/domain/exhibition/types'
 import { EventExhibitorModal } from '@/components/event-exhibitor-modal'
 import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
 
@@ -126,10 +128,34 @@ function overlapsInCalendar(event: LocalEvent, other: LocalEvent) {
   )
 }
 
+function overlapsThisWeek(event: LocalEvent, other: LocalEvent, today = new Date()) {
+  const daysSinceMonday = (today.getDay() + 6) % 7
+  const weekStartsAt = calendarDay(
+    new Date(today.getFullYear(), today.getMonth(), today.getDate() - daysSinceMonday),
+  )
+  const weekEndsAt = weekStartsAt + 6 * DAY
+  const overlapStartsAt = Math.max(
+    calendarDay(new Date(event.startsAt)),
+    calendarDay(new Date(other.startsAt)),
+  )
+  const overlapEndsAt = Math.min(
+    calendarDay(new Date(event.endsAt)),
+    calendarDay(new Date(other.endsAt)),
+  )
+
+  return overlapStartsAt <= overlapEndsAt && overlapEndsAt >= weekStartsAt && overlapStartsAt <= weekEndsAt
+}
+
+type CiplWithVersions = {
+  cipl: Cipl
+  versions: CiplVersion[]
+}
+
 export default function EventsPage() {
   const router = useRouter()
   const [events, setEvents] = useState<LocalEvent[]>([])
   const [exhibitorsByEvent, setExhibitorsByEvent] = useState<Record<string, LocalExhibitor[]>>({})
+  const [cipls, setCipls] = useState<CiplWithVersions[]>([])
   const [showNewEvent, setShowNewEvent] = useState(false)
   const [addingExhibitorsToEvent, setAddingExhibitorsToEvent] = useState<LocalEvent | null>(null)
   const [expandedExhibitorEventId, setExpandedExhibitorEventId] = useState<string | null>(null)
@@ -145,8 +171,22 @@ export default function EventsPage() {
       setEvents(loadedEvents)
       Promise.all(
         loadedEvents.map(async (event) => [event.id, await listEventExhibitors(event.id)] as const),
-      ).then((eventExhibitors) => {
+      ).then(async (eventExhibitors) => {
         setExhibitorsByEvent(Object.fromEntries(eventExhibitors))
+        const loadedCipls = await Promise.all(
+          eventExhibitors
+            .flatMap(([, exhibitors]) => exhibitors)
+            .map(async (exhibitor) => {
+              const exhibitorCipls = await listCipls(exhibitor.id)
+              return Promise.all(
+                exhibitorCipls.map(async (cipl) => ({
+                  cipl,
+                  versions: await listCiplVersions(cipl.id),
+                })),
+              )
+            }),
+        )
+        setCipls(loadedCipls.flat())
         finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
       })
     })
@@ -182,9 +222,6 @@ export default function EventsPage() {
 
   const hasFilters = Boolean(search || status !== 'all')
   const activeEvents = events.filter((event) => !isCancelled(event))
-  const upcomingEvents = activeEvents.filter(
-    (event) => getEventStatus(event.startsAt, event.endsAt) === 'soon',
-  )
   const ongoingEvents = activeEvents.filter(
     (event) => getEventStatus(event.startsAt, event.endsAt) === 'ongoing',
   )
@@ -192,19 +229,23 @@ export default function EventsPage() {
   const operationalEvents = activeEvents.filter(
     (event) => getEventStatus(event.startsAt, event.endsAt) !== 'done',
   )
-  const eventOverlaps = operationalEvents.flatMap((event, index) =>
+  const eventOverlapsThisWeek = operationalEvents.flatMap((event, index) =>
     operationalEvents
       .slice(index + 1)
-      .filter((other) => overlapsInCalendar(event, other))
+      .filter((other) => overlapsInCalendar(event, other) && overlapsThisWeek(event, other))
       .map((other) => [event, other] as const),
   )
-  const upcomingEventsWithoutExhibitors = upcomingEvents.filter(
-    (event) => !(exhibitorsByEvent[event.id] ?? []).length,
+  const venueConflicts = eventOverlapsThisWeek.filter(
+    ([event, other]) => event.venueId === other.venueId,
   )
-  const nearestEvent = [...operationalEvents].sort(
-    (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
-  )[0]
-  const actionEvent = upcomingEventsWithoutExhibitors[0] ?? nearestEvent
+  const exhibitors = Object.values(exhibitorsByEvent).flat()
+  const ciplsNotReady = cipls.filter(
+    ({ cipl }) => cipl.status !== 'READY' && cipl.status !== 'CANCELLED',
+  )
+  const ciplItemLoad = cipls.reduce((total, { cipl, versions }) => {
+    const activeVersion = versions.find((version) => version.id === cipl.activeVersionId)
+    return total + (activeVersion?.items.length ?? 0)
+  }, 0)
   const clearFilters = () => {
     setSearch('')
     setStatus('all')
@@ -221,46 +262,49 @@ export default function EventsPage() {
         </header>
 
         <div className="grid gap-5 lg:grid-cols-3">
-          <section className="card p-5" aria-labelledby="events-summary-title">
-            <h2 id="events-summary-title" className="text-lg font-semibold">
-              Summary
-            </h2>
-            <div className="mt-4 grid grid-cols-3 gap-3 text-center">
-              <div>
-                <p className="text-4xl font-bold text-orange-700">{upcomingEvents.length}</p>
-                <p className="mt-1 text-xs text-slate-500">Akan datang</p>
-              </div>
-              <div>
-                <p className="text-4xl font-bold text-emerald-700">{ongoingEvents.length}</p>
-                <p className="mt-1 text-xs text-slate-500">Berlangsung</p>
-              </div>
-              <div>
-                <p className="text-4xl font-bold text-slate-700">{events.length}</p>
-                <p className="mt-1 text-xs text-slate-500">Total event</p>
-              </div>
-            </div>
+          <section className="grid gap-4 sm:grid-cols-2 lg:col-span-2" aria-label="Summary">
+            <article className="card p-5">
+              <p className="text-sm text-slate-500">Total event</p>
+              <p className="mt-2 text-3xl font-bold text-slate-700">{events.length}</p>
+            </article>
+            <article className="card p-5">
+              <p className="text-sm text-slate-500">Berlangsung</p>
+              <p className="mt-2 text-3xl font-bold text-emerald-700">{ongoingEvents.length}</p>
+            </article>
+            <article className="card p-5">
+              <p className="text-sm text-slate-500">Exhibitor</p>
+              <p className="mt-2 text-3xl font-bold text-blue-700">{exhibitors.length}</p>
+            </article>
+            <article className="card p-5">
+              <p className="text-sm text-slate-500">Load item</p>
+              <p className="mt-2 text-3xl font-bold text-orange-700">{ciplItemLoad}</p>
+            </article>
           </section>
           <section className="card p-5" aria-labelledby="events-attention-title">
             <h2 id="events-attention-title" className="text-lg font-semibold">
               Attention
             </h2>
-            {eventOverlaps.length ||
-            upcomingEventsWithoutExhibitors.length ||
+            {eventOverlapsThisWeek.length ||
+            venueConflicts.length ||
+            ciplsNotReady.length ||
             cancelledEvents.length ? (
               <ul className="mt-3 flex flex-col gap-2 text-sm text-slate-600">
-                {eventOverlaps.length > 0 && (
+                {eventOverlapsThisWeek.length > 0 && (
                   <li className="flex gap-2">
                     <AlertTriangle className="mt-0.5 shrink-0 text-amber-600" size={16} />
-                    <span>{eventOverlaps.length} jadwal event aktif saling beririsan.</span>
+                    <span>{eventOverlapsThisWeek.length} event overlap minggu ini.</span>
                   </li>
                 )}
-                {upcomingEventsWithoutExhibitors.length > 0 && (
+                {venueConflicts.length > 0 && (
                   <li className="flex gap-2">
-                    <Users className="mt-0.5 shrink-0 text-amber-600" size={16} />
-                    <span>
-                      {upcomingEventsWithoutExhibitors.length} event mendatang belum memiliki
-                      exhibitor.
-                    </span>
+                    <MapPin className="mt-0.5 shrink-0 text-amber-600" size={16} />
+                    <span>{venueConflicts.length} konflik venue.</span>
+                  </li>
+                )}
+                {ciplsNotReady.length > 0 && (
+                  <li className="flex gap-2">
+                    <AlertTriangle className="mt-0.5 shrink-0 text-amber-600" size={16} />
+                    <span>{ciplsNotReady.length} CIPL belum ready.</span>
                   </li>
                 )}
                 {cancelledEvents.length > 0 && (
@@ -276,53 +320,6 @@ export default function EventsPage() {
               <p className="mt-3 text-sm text-slate-500">
                 Tidak ada perhatian operasional saat ini.
               </p>
-            )}
-          </section>
-          <section className="card p-5" aria-labelledby="events-action-title">
-            <h2 id="events-action-title" className="text-lg font-semibold">
-              Action
-            </h2>
-            {!events.length ? (
-              <div className="mt-3 flex flex-col gap-3">
-                <p className="text-sm text-slate-500">Mulai dengan mencatat event pertama.</p>
-              </div>
-            ) : actionEvent && !(exhibitorsByEvent[actionEvent.id] ?? []).length ? (
-              <div className="mt-3 flex flex-col gap-3">
-                <p className="text-sm text-slate-500">
-                  Tambahkan exhibitor untuk{' '}
-                  <span className="font-semibold text-slate-700">{actionEvent.officialName}</span>.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setAddingExhibitorsToEvent(actionEvent)}
-                  className="btn-primary w-fit"
-                >
-                  <Users size={16} /> Tambah exhibitor
-                </button>
-              </div>
-            ) : actionEvent ? (
-              <div className="mt-3 flex flex-col gap-3">
-                <p className="text-sm text-slate-500">
-                  {actionEvent.officialName} ·{' '}
-                  {getEventTiming(actionEvent.startsAt, actionEvent.endsAt)}
-                </p>
-                <Link href={`/events/${actionEvent.id}`} className="btn-primary w-fit">
-                  Buka event
-                </Link>
-              </div>
-            ) : (
-              <div className="mt-3 flex flex-col gap-3">
-                <p className="text-sm text-slate-500">
-                  Belum ada event aktif untuk ditindaklanjuti.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setShowNewEvent(true)}
-                  className="btn-primary w-fit"
-                >
-                  <Plus size={16} /> Buat event
-                </button>
-              </div>
             )}
           </section>
         </div>

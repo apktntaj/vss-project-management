@@ -1,19 +1,21 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   LayoutDashboard,
   BriefcaseBusiness,
   CalendarDays,
   ChevronsLeft,
   ChevronsRight,
+  Database,
   FolderKanban,
   LogOut,
   Package,
   Settings,
 } from 'lucide-react'
 import { logoutAction } from '@/app/(dashboard)/actions'
+import { getDemoDataMode, setDemoDataMode } from '@/lib/data-client'
 const links = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/events', label: 'Events', icon: CalendarDays },
@@ -31,6 +33,39 @@ export function AppShell({
 }) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
+  const [demoMode, setDemoMode] = useState<'EMPTY' | 'MOCK'>('EMPTY')
+  const [changingDemoMode, setChangingDemoMode] = useState(false)
+  const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' } | null>(null)
+
+  useEffect(() => {
+    getDemoDataMode().then(setDemoMode)
+    const pendingToast = window.sessionStorage.getItem('vss-demo-data-toast')
+    if (!pendingToast) return
+    window.sessionStorage.removeItem('vss-demo-data-toast')
+    setToast({ message: pendingToast, tone: 'success' })
+  }, [])
+
+  useEffect(() => {
+    if (!toast) return
+    const timeout = window.setTimeout(() => setToast(null), 4000)
+    return () => window.clearTimeout(timeout)
+  }, [toast])
+
+  async function toggleDemoMode() {
+    const nextMode = demoMode === 'MOCK' ? 'EMPTY' : 'MOCK'
+    setChangingDemoMode(true)
+    try {
+      await setDemoDataMode(nextMode)
+      window.sessionStorage.setItem(
+        'vss-demo-data-toast',
+        nextMode === 'MOCK' ? 'Data mock dimuat.' : 'Data demo dikosongkan.',
+      )
+      window.location.reload()
+    } catch {
+      setToast({ message: 'Mode data tidak dapat diubah.', tone: 'error' })
+      setChangingDemoMode(false)
+    }
+  }
   return (
     <div className="min-h-screen md:flex">
       <aside
@@ -98,6 +133,32 @@ export function AppShell({
         <div
           className={`mt-auto border-t border-white/10 p-3 ${collapsed ? 'md:text-center' : ''}`}
         >
+          <button
+            type="button"
+            role="switch"
+            aria-checked={demoMode === 'MOCK'}
+            aria-label="Ganti mode data demo"
+            title={collapsed ? `Data ${demoMode === 'MOCK' ? 'mock' : 'kosong'}` : undefined}
+            disabled={changingDemoMode}
+            onClick={toggleDemoMode}
+            className={`mb-3 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition hover:bg-slate-700 hover:text-white disabled:cursor-wait disabled:opacity-60 ${collapsed ? 'md:justify-center' : ''}`}
+          >
+            <Database size={18} />
+            <span className={`flex min-w-0 flex-1 items-center justify-between gap-2 ${collapsed ? 'md:hidden' : ''}`}>
+              <span>
+                <span className="block text-white">Data demo</span>
+                <span className="block text-xs text-white/45">{demoMode === 'MOCK' ? 'Mock lengkap' : 'Kosong'}</span>
+              </span>
+              <span
+                aria-hidden="true"
+                className={`relative h-5 w-9 rounded-full transition ${demoMode === 'MOCK' ? 'bg-orange-500' : 'bg-white/20'}`}
+              >
+                <span
+                  className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition ${demoMode === 'MOCK' ? 'left-[18px]' : 'left-0.5'}`}
+                />
+              </span>
+            </span>
+          </button>
           {user.isAdmin && (
             <Link
               href="/settings"
@@ -130,6 +191,14 @@ export function AppShell({
       >
         <div className="mx-auto max-w-[1440px] p-5 md:p-8">{children}</div>
       </main>
+      {toast && (
+        <div
+          role="status"
+          className={`fixed bottom-5 right-5 z-50 max-w-sm rounded-xl border px-4 py-3 text-sm shadow-lg ${toast.tone === 'error' ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}
+        >
+          {toast.message}
+        </div>
+      )}
     </div>
   )
 }
