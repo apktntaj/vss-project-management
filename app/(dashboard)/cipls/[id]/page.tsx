@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FileText, Package, Plus } from 'lucide-react'
 import { useParams } from 'next/navigation'
 import {
@@ -14,6 +14,7 @@ import {
 } from '@/lib/data-client'
 import type { Attachment, Cipl, CiplVersion, Shipment } from '@/domain/exhibition/types'
 import { StatusBadge } from '@/components/status-badge'
+import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
 
 export default function CiplDetailPage() {
   const params = useParams<{ id: string }>()
@@ -21,21 +22,29 @@ export default function CiplDetailPage() {
   const [versions, setVersions] = useState<CiplVersion[]>([])
   const [shipments, setShipments] = useState<Shipment[]>([])
   const [exhibitor, setExhibitor] = useState<LocalExhibitor | null>(null)
+  const [loading, setLoading] = useState(true)
+  const loadingStartedAt = useRef(Date.now())
 
   useEffect(() => {
+    loadingStartedAt.current = Date.now()
+    setLoading(true)
     getCipl(params.id).then(async (loaded) => {
       setCipl(loaded)
-      if (!loaded) return
+      if (!loaded) {
+        finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
+        return
+      }
       const [loadedVersions, loadedShipments, exhibitors] = await Promise.all([
         listCiplVersions(loaded.id), listShipments(loaded.id), listEventExhibitorsForCipl(loaded.eventExhibitorId),
       ])
       setVersions(loadedVersions)
       setShipments(loadedShipments)
       setExhibitor(exhibitors.find((item) => item.id === loaded.eventExhibitorId) ?? null)
+      finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
     })
   }, [params.id])
 
-  if (!cipl) return <p className="card p-6 text-sm text-slate-500">Memuat CIPL...</p>
+  if (loading || !cipl) return <PageSkeleton cards={2} rows={5} />
   const activeVersion = versions.find((version) => version.id === cipl.activeVersionId)
 
   return (

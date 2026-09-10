@@ -20,7 +20,7 @@ import {
   validateJobTransition,
   validateShipmentAllocation,
 } from '@/domain/exhibition/validation'
-import { createMockData, MOCK_DATA_VERSION } from '@/lib/mock-data'
+import { createMockData } from '@/lib/mock-data'
 import type { Ticket, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
 import { validateStatusTransition, validateTicket } from '@/domain/ticket/validation'
 
@@ -84,22 +84,89 @@ export type JobOperationalDetails = {
   /** Optional for compatibility with Jobs saved before invoice tracking existed. */
   invoiceNumber?: string | null
   invoiceItems?: JobInvoiceItem[]
+  /** Complete commercial invoice extraction retained as the source for BC 2.3. */
+  invoice?: JobInvoiceExtraction | null
+  /** Complete B/L or AWB extraction retained alongside the inbound leg summary. */
+  inboundDocument?: JobTransportExtraction | null
   cipl: JobCiplInfo
   customs: Record<'BC_2_3' | 'BC_2_5' | 'BC_3_0', JobCustomsDocument>
 }
 
+/** A party printed on a commercial or transport document. */
+export type JobDocumentParty = {
+  name: string | null
+  address: string | null
+  countryCode: string | null
+  taxId: string | null
+}
+
 export type JobInvoiceItem = {
+  lineNumber: number | null
+  itemCode: string | null
   description: string
   hsCode: string | null
+  quantity: number | null
+  unit: string | null
   unitPrice: number | null
   lineTotal: number | null
   currency: string | null
+  grossWeightKg: number | null
+  netWeightKg: number | null
+  countryOfOrigin: string | null
+  packageCount: number | null
+  packageType: string | null
 }
 
 /** Provisional values extracted from one Commercial Invoice; users may correct them later. */
 export type JobInvoiceExtraction = {
   invoiceNumber: string | null
+  invoiceDate: string | null
+  seller: JobDocumentParty | null
+  buyer: JobDocumentParty | null
+  currency: string | null
+  incoterm: string | null
+  incotermLocation: string | null
+  totalAmount: number | null
+  freightAmount: number | null
+  insuranceAmount: number | null
+  totalGrossWeightKg: number | null
+  totalNetWeightKg: number | null
+  totalPackageCount: number | null
+  packageType: string | null
   items: JobInvoiceItem[]
+}
+
+export type JobTransportContainer = {
+  containerNumber: string | null
+  size: string | null
+  type: string | null
+  sealNumber: string | null
+}
+
+/** Values printed on a B/L or AWB that describe the inbound transport. */
+export type JobTransportExtraction = {
+  documentNumber: string | null
+  documentDate: string | null
+  carrier: string | null
+  vesselOrFlight: string | null
+  voyageOrFlightNumber: string | null
+  bookingNumber: string | null
+  shipper: JobDocumentParty | null
+  consignee: JobDocumentParty | null
+  notifyParty: JobDocumentParty | null
+  portOfLoading: string | null
+  portOfDischarge: string | null
+  placeOfReceipt: string | null
+  placeOfDelivery: string | null
+  etd: string | null
+  eta: string | null
+  packageCount: number | null
+  packageType: string | null
+  marksAndNumbers: string | null
+  grossWeightKg: number | null
+  netWeightKg: number | null
+  volumeM3: number | null
+  containers: JobTransportContainer[]
 }
 
 export type JobDocumentKind =
@@ -145,12 +212,14 @@ export type LocalJob = {
   notes: string | null
   trackingToken: string
   assignedToId: string | null
+  createdById?: string | null
   eventId?: string | null
   exhibitorId?: string | null
   sourceDocumentName?: string | null
   createdAt: string
   updatedAt: string
   assignedTo?: LocalUser | null
+  createdBy?: LocalUser | null
   exhibitor?: LocalExhibitor | null
   stages: LocalStage[]
   documents: LocalJobDocument[]
@@ -422,6 +491,7 @@ function initializeJobForExhibitor(
     notes: null,
     trackingToken: id(),
     assignedToId: null,
+    createdById: null,
     eventId: exhibitor.eventId,
     exhibitorId: exhibitor.id,
     sourceDocumentName: null,
@@ -468,7 +538,6 @@ async function ensureDemoEvents() {
     ...mockData.jobs.map((jobItem) => put('jobs', jobItem)),
     ...mockData.stages.map((stage) => put('stages', stage)),
   ])
-  await put('counters', { id: 'mockDataVersion', value: MOCK_DATA_VERSION })
 }
 
 async function ensureSeeded() {
@@ -771,6 +840,7 @@ export async function listJobs(filters: { search?: string; status?: string } = {
       ...job,
       operational: getOperationalDetails(job),
       assignedTo: users.find((user) => user.id === job.assignedToId) ?? null,
+      createdBy: users.find((user) => user.id === job.createdById) ?? null,
       exhibitor: exhibitors.find((exhibitor) => exhibitor.id === job.exhibitorId) ?? null,
       stages: stages.filter((stage) => stage.jobId === job.id).sort((a, b) => a.order - b.order),
       documents: documents.filter((document) => document.jobId === job.id),
@@ -1045,6 +1115,7 @@ export async function saveJobDocument(
   file: File,
   kind: JobDocumentKind = 'SOURCE',
   invoiceExtraction?: JobInvoiceExtraction | null,
+  transportExtraction?: JobTransportExtraction | null,
 ): Promise<LocalJobDocument> {
   const timestamp = now()
   const mimeType = jobDocumentMimeType(file)
@@ -1070,18 +1141,49 @@ export async function saveJobDocument(
     createdAt: timestamp,
   }
   const invoice = invoiceExtraction ?? null
-  const previous = invoice ? await getJob(jobId) : null
-  if (invoice && !previous) throw new Error('Job tidak ditemukan.')
-  const updatedJob = previous && invoice
-    ? {
-        ...previous,
-        operational: {
-          ...getOperationalDetails(previous),
-          invoiceNumber: invoice.invoiceNumber ?? getOperationalDetails(previous).invoiceNumber ?? null,
-          invoiceItems: invoice.items,
-        },
-        updatedAt: timestamp,
-      }
+  const transport = transportExtraction ?? null
+  const isTransportDocument = kind === 'BILL_OF_LADING' || kind === 'AIR_WAYBILL'
+  const previous = invoice || (isTransportDocument && transport) ? await getJob(jobId) : null
+  if ((invoice || (isTransportDocument && transport)) && !previous) throw new Error('Job tidak ditemukan.')
+  const updatedJob = previous
+    ? (() => {
+        const operational = getOperationalDetails(previous)
+        const inbound = isTransportDocument && transport
+          ? {
+              ...operational.inbound,
+              mode: kind === 'BILL_OF_LADING' ? 'SEA' as const : 'AIR' as const,
+              documentType: kind === 'BILL_OF_LADING' ? 'BL' as const : 'AWB' as const,
+              documentNumber: transport.documentNumber,
+              carrier: transport.carrier,
+              scheduleAt: transport.eta ?? operational.inbound.scheduleAt,
+            }
+          : operational.inbound
+        return {
+          ...previous,
+          ...(isTransportDocument && transport
+            ? kind === 'BILL_OF_LADING'
+              ? { blNumber: transport.documentNumber }
+              : { awbNumber: transport.documentNumber }
+            : {}),
+          ...(isTransportDocument && transport ? { shippingLine: transport.carrier } : {}),
+          ...(isTransportDocument && transport?.shipper?.name ? { shipper: transport.shipper.name } : {}),
+          ...(isTransportDocument && transport?.consignee?.name ? { consignee: transport.consignee.name } : {}),
+          ...(isTransportDocument && transport?.notifyParty?.name ? { notifyParty: transport.notifyParty.name } : {}),
+          operational: {
+            ...operational,
+            inbound,
+            ...(isTransportDocument && transport ? { inboundDocument: transport } : {}),
+            ...(invoice
+              ? {
+                  invoiceNumber: invoice.invoiceNumber ?? operational.invoiceNumber ?? null,
+                  invoiceItems: invoice.items,
+                  invoice,
+                }
+              : {}),
+          },
+          updatedAt: timestamp,
+        }
+      })()
     : null
   await Promise.all([
     put('jobDocuments', document),
@@ -1089,6 +1191,54 @@ export async function saveJobDocument(
     ...(updatedJob ? [put('jobs', updatedJob)] : []),
   ])
   return document
+}
+
+export async function saveJobInvoiceExtraction(jobId: string, invoice: JobInvoiceExtraction) {
+  const previous = await getJob(jobId)
+  if (!previous) throw new Error('Job tidak ditemukan.')
+  const operational = getOperationalDetails(previous)
+  const updated: LocalJob = {
+    ...previous,
+    operational: {
+      ...operational,
+      invoiceNumber: invoice.invoiceNumber,
+      invoiceItems: invoice.items,
+      invoice,
+    },
+    updatedAt: now(),
+  }
+  await put('jobs', updated)
+  return updated
+}
+
+export async function saveJobTransportExtraction(jobId: string, transport: JobTransportExtraction) {
+  const previous = await getJob(jobId)
+  if (!previous) throw new Error('Job tidak ditemukan.')
+  const operational = getOperationalDetails(previous)
+  const documentType = operational.inbound.documentType ?? (previous.blNumber ? 'BL' : previous.awbNumber ? 'AWB' : 'BL')
+  const updated: LocalJob = {
+    ...previous,
+    ...(documentType === 'BL' ? { blNumber: transport.documentNumber } : { awbNumber: transport.documentNumber }),
+    shippingLine: transport.carrier,
+    ...(transport.shipper?.name ? { shipper: transport.shipper.name } : {}),
+    ...(transport.consignee?.name ? { consignee: transport.consignee.name } : {}),
+    ...(transport.notifyParty?.name ? { notifyParty: transport.notifyParty.name } : {}),
+    operational: {
+      ...operational,
+      inbound: {
+        ...operational.inbound,
+        mode: documentType === 'BL' ? 'SEA' : 'AIR',
+        documentType,
+        documentNumber: transport.documentNumber,
+        carrier: transport.carrier,
+        scheduleAt: transport.eta ?? operational.inbound.scheduleAt,
+      },
+      inboundDocument: transport,
+    },
+    updatedAt: now(),
+  }
+  await put('jobs', updated)
+  return updated
 }
 
 export type JobOperationalAttachment = { kind: JobDocumentKind; file: File }
@@ -1156,6 +1306,7 @@ export async function saveJobOperationalDetails(
 export async function saveJob(input: JobInput, existingId?: string) {
   const previous = existingId ? await getJob(existingId) : null
   const timestamp = now()
+  const createdById = previous ? previous.createdById ?? null : (await activeTicketUser()).id
   const job: LocalJob = {
     ...previous,
     id: existingId ?? id(),
@@ -1163,6 +1314,7 @@ export async function saveJob(input: JobInput, existingId?: string) {
       previous?.jobNumber ??
       `VSS-${String((await readAll<LocalJob>('jobs')).length + 1).padStart(4, '0')}`,
     trackingToken: previous?.trackingToken ?? id(),
+    createdById,
     createdAt: previous?.createdAt ?? timestamp,
     updatedAt: timestamp,
     stages: previous?.stages ?? [],
@@ -1176,6 +1328,7 @@ export async function saveJob(input: JobInput, existingId?: string) {
 export async function saveJobWithDocument(input: JobInput, file: File, existingId?: string) {
   const previous = existingId ? await getJob(existingId) : null
   const timestamp = now()
+  const createdById = previous ? previous.createdById ?? null : (await activeTicketUser()).id
   const job: LocalJob = {
     ...previous,
     id: existingId ?? id(),
@@ -1183,6 +1336,7 @@ export async function saveJobWithDocument(input: JobInput, file: File, existingI
       previous?.jobNumber ??
       `VSS-${String((await readAll<LocalJob>('jobs')).length + 1).padStart(4, '0')}`,
     trackingToken: previous?.trackingToken ?? id(),
+    createdById,
     createdAt: previous?.createdAt ?? timestamp,
     updatedAt: timestamp,
     stages: previous?.stages ?? [],

@@ -1,10 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, CalendarDays, FileText, Pencil, ShipWheel } from 'lucide-react'
 import { getJob, getOperationalDetails, type LocalJob } from '@/lib/data-client'
 import { StatusBadge } from '@/components/status-badge'
+import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
 
 const date = (value: string | null) => value ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(new Date(value)) : 'Belum diisi'
 const label = (value: string) => value.replaceAll('_', ' ')
@@ -12,8 +13,8 @@ const label = (value: string) => value.replaceAll('_', ' ')
 function Info({ label: title, value }: { label: string; value: string | null | undefined }) { return <div><dt className="text-xs font-medium uppercase tracking-wide text-slate-500">{title}</dt><dd className="mt-1 text-sm font-medium text-slate-800">{value || '—'}</dd></div> }
 
 export default function JobDetail({ params }: { params: { id: string } }) {
-  const [job, setJob] = useState<LocalJob | null>(null); useEffect(() => { getJob(params.id).then(setJob) }, [params.id])
-  if (!job) return <p className="card p-6 text-sm text-slate-500">Memuat Job…</p>
+  const [job, setJob] = useState<LocalJob | null>(null); const [loading, setLoading] = useState(true); const loadingStartedAt = useRef(Date.now()); useEffect(() => { loadingStartedAt.current = Date.now(); setLoading(true); getJob(params.id).then((loadedJob) => { setJob(loadedJob); finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false)) }) }, [params.id])
+  if (loading || !job) return <PageSkeleton cards={2} rows={5} />
   const details = getOperationalDetails(job); const completed = Object.values(details.customs).filter((item) => item.applicable && item.status === 'COMPLETED').length; const required = Object.values(details.customs).filter((item) => item.applicable).length; const invoiceItems = details.invoiceItems ?? []
   return <div className="space-y-6"><div className="flex flex-wrap items-start justify-between gap-4"><div><Link href="/jobs" className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-orange-700"><ArrowLeft size={16}/> Kembali ke Jobs</Link><div className="mt-3 flex flex-wrap items-center gap-3"><h1 className="text-3xl font-bold tracking-tight">{job.jobNumber}</h1><StatusBadge status={job.status}/></div><p className="mt-2 text-sm text-slate-500">{job.exhibitor?.legalName || job.shipper || job.clientName} · {job.agent || 'Agent belum diisi'}</p></div><Link href={`/jobs/${job.id}/edit`} className="btn-primary"><Pencil size={16}/> Edit Job</Link></div>
     <section className="rounded-2xl border border-orange-200 bg-orange-50 p-5"><div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-sm font-semibold text-orange-900">Kesiapan Job</p><p className="mt-1 text-sm text-orange-800">CIPL: {label(details.cipl.status)} · Dokumen BC selesai: {completed}/{required}</p></div><div className="h-2 w-full max-w-xs overflow-hidden rounded-full bg-orange-100"><div className="h-full rounded-full bg-orange-600" style={{ width: `${required ? Math.round((completed / required) * 100) : 0}%` }}/></div></div></section>

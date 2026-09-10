@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
+  AlertTriangle,
   Building2,
   CalendarDays,
   MapPin,
-  Pencil,
   Plus,
   Search,
   Users,
@@ -21,7 +21,7 @@ import {
   type LocalExhibitor,
 } from '@/lib/data-client'
 import { EventExhibitorModal } from '@/components/event-exhibitor-modal'
-import { EventTimeline } from '@/components/event-timeline'
+import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -119,6 +119,13 @@ function getEventPosition(startsAt: string, endsAt: string, today = new Date()) 
   return { label: 'Berlangsung', progress }
 }
 
+function overlapsInCalendar(event: LocalEvent, other: LocalEvent) {
+  return (
+    calendarDay(new Date(event.startsAt)) <= calendarDay(new Date(other.endsAt)) &&
+    calendarDay(new Date(other.startsAt)) <= calendarDay(new Date(event.endsAt))
+  )
+}
+
 export default function EventsPage() {
   const router = useRouter()
   const [events, setEvents] = useState<LocalEvent[]>([])
@@ -128,12 +135,20 @@ export default function EventsPage() {
   const [expandedExhibitorEventId, setExpandedExhibitorEventId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<EventFilter>('all')
+  const [loading, setLoading] = useState(true)
+  const loadingStartedAt = useRef(Date.now())
+
   const reloadEvents = () => {
+    loadingStartedAt.current = Date.now()
+    setLoading(true)
     listEvents().then((loadedEvents) => {
       setEvents(loadedEvents)
       Promise.all(
         loadedEvents.map(async (event) => [event.id, await listEventExhibitors(event.id)] as const),
-      ).then((eventExhibitors) => setExhibitorsByEvent(Object.fromEntries(eventExhibitors)))
+      ).then((eventExhibitors) => {
+        setExhibitorsByEvent(Object.fromEntries(eventExhibitors))
+        finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
+      })
     })
   }
   useEffect(() => {
@@ -174,15 +189,28 @@ export default function EventsPage() {
     (event) => getEventStatus(event.startsAt, event.endsAt) === 'ongoing',
   )
   const cancelledEvents = events.filter(isCancelled)
-  const horizonEnd = new Date()
-  horizonEnd.setDate(horizonEnd.getDate() + 30)
-  const horizonEvents = upcomingEvents
-    .filter((event) => new Date(event.startsAt) <= horizonEnd)
-    .slice(0, 3)
+  const operationalEvents = activeEvents.filter(
+    (event) => getEventStatus(event.startsAt, event.endsAt) !== 'done',
+  )
+  const eventOverlaps = operationalEvents.flatMap((event, index) =>
+    operationalEvents
+      .slice(index + 1)
+      .filter((other) => overlapsInCalendar(event, other))
+      .map((other) => [event, other] as const),
+  )
+  const upcomingEventsWithoutExhibitors = upcomingEvents.filter(
+    (event) => !(exhibitorsByEvent[event.id] ?? []).length,
+  )
+  const nearestEvent = [...operationalEvents].sort(
+    (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
+  )[0]
+  const actionEvent = upcomingEventsWithoutExhibitors[0] ?? nearestEvent
   const clearFilters = () => {
     setSearch('')
     setStatus('all')
   }
+
+  if (loading) return <PageSkeleton cards={3} rows={6} />
 
   return (
     <>
@@ -194,27 +222,107 @@ export default function EventsPage() {
 
         <div className="grid gap-5 lg:grid-cols-3">
           <section className="card p-5" aria-labelledby="events-summary-title">
-            <h2 id="events-summary-title" className="text-lg font-semibold">Summary</h2>
+            <h2 id="events-summary-title" className="text-lg font-semibold">
+              Summary
+            </h2>
             <div className="mt-4 grid grid-cols-3 gap-3 text-center">
-              <div><p className="text-2xl font-bold text-orange-700">{upcomingEvents.length}</p><p className="mt-1 text-xs text-slate-500">Akan datang</p></div>
-              <div><p className="text-2xl font-bold text-emerald-700">{ongoingEvents.length}</p><p className="mt-1 text-xs text-slate-500">Berlangsung</p></div>
-              <div><p className="text-2xl font-bold text-slate-700">{events.length}</p><p className="mt-1 text-xs text-slate-500">Total event</p></div>
+              <div>
+                <p className="text-4xl font-bold text-orange-700">{upcomingEvents.length}</p>
+                <p className="mt-1 text-xs text-slate-500">Akan datang</p>
+              </div>
+              <div>
+                <p className="text-4xl font-bold text-emerald-700">{ongoingEvents.length}</p>
+                <p className="mt-1 text-xs text-slate-500">Berlangsung</p>
+              </div>
+              <div>
+                <p className="text-4xl font-bold text-slate-700">{events.length}</p>
+                <p className="mt-1 text-xs text-slate-500">Total event</p>
+              </div>
             </div>
           </section>
-          <section className="card p-5" aria-labelledby="events-horizon-title">
-            <h2 id="events-horizon-title" className="text-lg font-semibold">Time Horizin</h2>
-            {horizonEvents.length ? (
-              <ul className="mt-3 space-y-2 text-sm">
-                {horizonEvents.map((event) => <li key={event.id} className="flex justify-between gap-3"><span className="truncate font-medium">{event.officialName}</span><span className="shrink-0 text-slate-500">{getEventTiming(event.startsAt, event.endsAt)}</span></li>)}
-              </ul>
-            ) : <p className="mt-3 text-sm text-slate-500">Tidak ada event dalam 30 hari ke depan.</p>}
-          </section>
           <section className="card p-5" aria-labelledby="events-attention-title">
-            <h2 id="events-attention-title" className="text-lg font-semibold">Attention</h2>
-            {cancelledEvents.length ? (
-              <p className="mt-3 text-sm text-rose-700">{cancelledEvents.length} event dibatalkan dan perlu dicatat dalam tindak lanjut.</p>
+            <h2 id="events-attention-title" className="text-lg font-semibold">
+              Attention
+            </h2>
+            {eventOverlaps.length ||
+            upcomingEventsWithoutExhibitors.length ||
+            cancelledEvents.length ? (
+              <ul className="mt-3 flex flex-col gap-2 text-sm text-slate-600">
+                {eventOverlaps.length > 0 && (
+                  <li className="flex gap-2">
+                    <AlertTriangle className="mt-0.5 shrink-0 text-amber-600" size={16} />
+                    <span>{eventOverlaps.length} jadwal event aktif saling beririsan.</span>
+                  </li>
+                )}
+                {upcomingEventsWithoutExhibitors.length > 0 && (
+                  <li className="flex gap-2">
+                    <Users className="mt-0.5 shrink-0 text-amber-600" size={16} />
+                    <span>
+                      {upcomingEventsWithoutExhibitors.length} event mendatang belum memiliki
+                      exhibitor.
+                    </span>
+                  </li>
+                )}
+                {cancelledEvents.length > 0 && (
+                  <li className="flex gap-2 text-rose-700">
+                    <AlertTriangle className="mt-0.5 shrink-0" size={16} />
+                    <span>
+                      {cancelledEvents.length} event dibatalkan dan perlu ditindaklanjuti.
+                    </span>
+                  </li>
+                )}
+              </ul>
             ) : (
-              <p className="mt-3 text-sm text-slate-500">Tidak ada event yang dibatalkan.</p>
+              <p className="mt-3 text-sm text-slate-500">
+                Tidak ada perhatian operasional saat ini.
+              </p>
+            )}
+          </section>
+          <section className="card p-5" aria-labelledby="events-action-title">
+            <h2 id="events-action-title" className="text-lg font-semibold">
+              Action
+            </h2>
+            {!events.length ? (
+              <div className="mt-3 flex flex-col gap-3">
+                <p className="text-sm text-slate-500">Mulai dengan mencatat event pertama.</p>
+              </div>
+            ) : actionEvent && !(exhibitorsByEvent[actionEvent.id] ?? []).length ? (
+              <div className="mt-3 flex flex-col gap-3">
+                <p className="text-sm text-slate-500">
+                  Tambahkan exhibitor untuk{' '}
+                  <span className="font-semibold text-slate-700">{actionEvent.officialName}</span>.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setAddingExhibitorsToEvent(actionEvent)}
+                  className="btn-primary w-fit"
+                >
+                  <Users size={16} /> Tambah exhibitor
+                </button>
+              </div>
+            ) : actionEvent ? (
+              <div className="mt-3 flex flex-col gap-3">
+                <p className="text-sm text-slate-500">
+                  {actionEvent.officialName} ·{' '}
+                  {getEventTiming(actionEvent.startsAt, actionEvent.endsAt)}
+                </p>
+                <Link href={`/events/${actionEvent.id}`} className="btn-primary w-fit">
+                  Buka event
+                </Link>
+              </div>
+            ) : (
+              <div className="mt-3 flex flex-col gap-3">
+                <p className="text-sm text-slate-500">
+                  Belum ada event aktif untuk ditindaklanjuti.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowNewEvent(true)}
+                  className="btn-primary w-fit"
+                >
+                  <Plus size={16} /> Buat event
+                </button>
+              </div>
             )}
           </section>
         </div>
@@ -272,7 +380,8 @@ export default function EventsPage() {
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
               {filteredEvents.map((event) => {
                 const isCancelledEvent = isCancelled(event)
-                const isPastEvent = isCancelledEvent || getEventStatus(event.startsAt, event.endsAt) === 'done'
+                const isPastEvent =
+                  isCancelledEvent || getEventStatus(event.startsAt, event.endsAt) === 'done'
                 const exhibitors = exhibitorsByEvent[event.id] ?? []
                 return (
                   <article
@@ -335,7 +444,9 @@ export default function EventsPage() {
                     </div>
                     <p className="mt-2 text-sm text-slate-500">{event.alias || ''}</p>
                     {isCancelledEvent && (
-                      <p className="mt-3 w-fit rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-700">Dibatalkan</p>
+                      <p className="mt-3 w-fit rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-700">
+                        Dibatalkan
+                      </p>
                     )}
                     <div className="mt-5 space-y-3 border-t pt-4">
                       <div className="grid grid-cols-[16px_minmax(0,1fr)] items-start gap-2 text-sm text-slate-600">
@@ -343,7 +454,9 @@ export default function EventsPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <span>{formatEventDateRange(event.startsAt, event.endsAt)}</span>
                           <span className="shrink-0 rounded-full bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-700">
-                            {isCancelledEvent ? 'Dibatalkan' : getEventTiming(event.startsAt, event.endsAt)}
+                            {isCancelledEvent
+                              ? 'Dibatalkan'
+                              : getEventTiming(event.startsAt, event.endsAt)}
                           </span>
                         </div>
                       </div>
@@ -446,7 +559,7 @@ export default function EventsPage() {
           >
             <div className="flex shrink-0 items-center justify-between border-b px-6 py-5 sm:px-8">
               <div>
-                <h2 id="new-event-title" className="text-xl font-bold">
+                <h2 id="new-event-title" className="text-2xl font-bold">
                   Form Input Pameran
                 </h2>
               </div>

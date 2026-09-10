@@ -19,7 +19,8 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Building2, CalendarDays, EllipsisVertical, GripVertical, Plus } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
 import {
   createTicket,
   listEvents,
@@ -400,21 +401,29 @@ export function TicketBoard({
   const [priority, setPriority] = useState('')
   const [editor, setEditor] = useState<Ticket | null | 'new'>(openNew ? 'new' : null)
   const [toast, setToast] = useState('')
+  const [loading, setLoading] = useState(true)
+  const loadingStartedAt = useRef(Date.now())
   const load = async () => {
-    const nextUsers = await listUsers()
-    const user = nextUsers.find((item) => item.email === userEmail && item.isActive) ?? null
-    if (!user) throw new Error('Akun login tidak tersedia sebagai assignee.')
-    await setActiveDemoUser(user.id)
-    const [nextTickets, nextEvents, nextJobs] = await Promise.all([
-      listTicketsForUser(user.id),
-      listEvents(),
-      listJobs(),
-    ])
-    setTickets(nextTickets)
-    setEvents(nextEvents)
-    setJobs(nextJobs)
-    setUsers(nextUsers)
-    setActiveUser(user)
+    loadingStartedAt.current = Date.now()
+    setLoading(true)
+    try {
+      const nextUsers = await listUsers()
+      const user = nextUsers.find((item) => item.email === userEmail && item.isActive) ?? null
+      if (!user) throw new Error('Akun login tidak tersedia sebagai assignee.')
+      await setActiveDemoUser(user.id)
+      const [nextTickets, nextEvents, nextJobs] = await Promise.all([
+        listTicketsForUser(user.id),
+        listEvents(),
+        listJobs(),
+      ])
+      setTickets(nextTickets)
+      setEvents(nextEvents)
+      setJobs(nextJobs)
+      setUsers(nextUsers)
+      setActiveUser(user)
+    } finally {
+      finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
+    }
   }
   useEffect(() => {
     load()
@@ -471,6 +480,8 @@ export function TicketBoard({
       window.alert(caught instanceof Error ? caught.message : 'Ticket gagal dipindahkan.')
     }
   }
+  if (loading) return <PageSkeleton cards={4} rows={3} />
+
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

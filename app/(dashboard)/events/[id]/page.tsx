@@ -1,13 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   AlertTriangle,
   Building2,
   CalendarDays,
   Globe2,
-  LoaderCircle,
   MapPin,
   FileStack,
   Pencil,
@@ -25,6 +24,7 @@ import {
   type LocalExhibitor,
   type LocalJob,
 } from '@/lib/data-client'
+import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
 
 function formatDateRange(startsAt: string, endsAt: string) {
   const formatter = new Intl.DateTimeFormat('id-ID', {
@@ -42,12 +42,14 @@ export default function EventDetailPage() {
   const [jobs, setJobs] = useState<LocalJob[]>([])
   const [ciplCounts, setCiplCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
+  const loadingStartedAt = useRef(Date.now())
   const [showCancelDialog, setShowCancelDialog] = useState(false)
   const [cancellationReason, setCancellationReason] = useState('')
   const [cancelError, setCancelError] = useState('')
   const [cancelling, setCancelling] = useState(false)
 
   useEffect(() => {
+    loadingStartedAt.current = Date.now()
     Promise.all([listEvents(), listEventExhibitors(params.id), listEventJobs(params.id)]).then(
       ([events, eventExhibitors, eventJobs]) => {
         setEvent(events.find((item) => item.id === params.id) ?? null)
@@ -55,7 +57,7 @@ export default function EventDetailPage() {
         setJobs(eventJobs)
         Promise.all(eventExhibitors.map(async (exhibitor) => [exhibitor.id, (await listCipls(exhibitor.id)).length] as const))
           .then((counts) => setCiplCounts(Object.fromEntries(counts)))
-        setLoading(false)
+        finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
       },
     )
   }, [params.id])
@@ -79,11 +81,7 @@ export default function EventDetailPage() {
   }
 
   if (loading) {
-    return (
-      <div className="flex min-h-[50vh] items-center justify-center text-slate-500">
-        <LoaderCircle className="mr-2 animate-spin" size={18} /> Memuat event...
-      </div>
-    )
+    return <PageSkeleton cards={2} rows={5} />
   }
 
   if (!event) {

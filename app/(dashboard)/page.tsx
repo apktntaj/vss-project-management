@@ -1,20 +1,26 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CalendarDays, MapPin } from 'lucide-react'
 import { EventTimeline } from '@/components/event-timeline'
+import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
 import { listEvents, listJobs, type LocalEvent, type LocalJob } from '@/lib/data-client'
 
 export default function Dashboard() {
   const [events, setEvents] = useState<LocalEvent[]>([])
   const [jobs, setJobs] = useState<LocalJob[]>([])
+  const [loading, setLoading] = useState(true)
+  const loadingStartedAt = useRef(Date.now())
 
   useEffect(() => {
     Promise.all([listEvents(), listJobs()]).then(([loadedEvents, loadedJobs]) => {
       setEvents(loadedEvents)
       setJobs(loadedJobs)
+      finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
     })
   }, [])
+
+  if (loading) return <PageSkeleton />
 
   return (
     <div className="space-y-8">

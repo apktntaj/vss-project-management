@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Save } from 'lucide-react'
 import { getJob, getOperationalDetails, saveJobOperationalDetails, type JobCustomsDocument, type JobDocumentKind, type LocalJob } from '@/lib/data-client'
+import { finishLoadingAfterMinimum, FormSkeleton } from '@/components/loading-skeletons'
 
 const text = (form: FormData, key: string) => String(form.get(key) || '').trim() || null
 const statuses = ['NOT_STARTED', 'PREPARING', 'SUBMITTED', 'REGISTERED', 'RELEASED', 'COMPLETED', 'ON_HOLD'] as const
@@ -18,9 +19,9 @@ function CustomsCard({ kind, detail }: { kind: 'BC_2_3' | 'BC_2_5' | 'BC_3_0'; d
 }
 
 export function JobEditor({ jobId }: { jobId: string }) {
-  const router = useRouter(); const [job, setJob] = useState<LocalJob | null>(null); const [saving, setSaving] = useState(false); const [error, setError] = useState('')
-  useEffect(() => { getJob(jobId).then(setJob) }, [jobId])
-  if (!job) return <p className="card p-6 text-sm text-slate-500">Memuat Job…</p>
+  const router = useRouter(); const [job, setJob] = useState<LocalJob | null>(null); const [saving, setSaving] = useState(false); const [error, setError] = useState(''); const [loading, setLoading] = useState(true); const loadingStartedAt = useRef(Date.now())
+  useEffect(() => { loadingStartedAt.current = Date.now(); setLoading(true); getJob(jobId).then((loadedJob) => { setJob(loadedJob); finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false)) }) }, [jobId])
+  if (loading || !job) return <FormSkeleton fields={8} />
   const loadedJob = job
   const operational = getOperationalDetails(loadedJob)
   async function submit(event: FormEvent<HTMLFormElement>) {

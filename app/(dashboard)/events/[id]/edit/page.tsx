@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, LoaderCircle } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
 import { EventForm } from '@/components/event-form'
+import { finishLoadingAfterMinimum, FormSkeleton } from '@/components/loading-skeletons'
 import { listEvents, type LocalEvent } from '@/lib/data-client'
 
 export default function EditEventPage() {
@@ -12,20 +13,18 @@ export default function EditEventPage() {
   const router = useRouter()
   const [event, setEvent] = useState<LocalEvent | null>(null)
   const [loading, setLoading] = useState(true)
+  const loadingStartedAt = useRef(Date.now())
 
   useEffect(() => {
+    loadingStartedAt.current = Date.now()
     listEvents().then((events) => {
       setEvent(events.find((item) => item.id === params.id) ?? null)
-      setLoading(false)
+      finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
     })
   }, [params.id])
 
   if (loading) {
-    return (
-      <div className="flex min-h-[50vh] items-center justify-center text-slate-500">
-        <LoaderCircle className="mr-2 animate-spin" size={18} /> Memuat event...
-      </div>
-    )
+    return <FormSkeleton />
   }
 
   if (!event) {

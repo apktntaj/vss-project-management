@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   listEos,
   listEventExhibitors,
@@ -12,6 +12,7 @@ import {
   type LocalEvent,
   type LocalVenue,
 } from '@/lib/data-client'
+import { finishLoadingAfterMinimum, FormSkeleton } from '@/components/loading-skeletons'
 
 function text(value: FormDataEntryValue | null) {
   return String(value || '')
@@ -49,6 +50,16 @@ function parseDateInput(value: string) {
   return date
 }
 
+function formatDateInput(value: string | Date) {
+  const date = typeof value === 'string' ? parseDateInput(value) : value
+  if (!date) return ''
+  return [
+    String(date.getUTCDate()).padStart(2, '0'),
+    String(date.getUTCMonth() + 1).padStart(2, '0'),
+    date.getUTCFullYear(),
+  ].join('/')
+}
+
 function RelationPicker({
   label,
   placeholder,
@@ -57,6 +68,7 @@ function RelationPicker({
   onQueryChange,
   onSelect,
   selected,
+  required = false,
 }: {
   label: string
   placeholder: string
@@ -65,6 +77,7 @@ function RelationPicker({
   onQueryChange: (value: string) => void
   onSelect: (item: LocalVenue | LocalEo) => void
   selected: LocalVenue | LocalEo | null
+  required?: boolean
 }) {
   const matches = items
     .filter((item) => {
@@ -77,7 +90,7 @@ function RelationPicker({
   return (
     <div>
       <label className="label">
-        {label}
+        {label}{required && <span aria-hidden="true" className="text-destructive"> *</span>}
         <span className="relative block">
           <input
             value={query}
@@ -85,6 +98,8 @@ function RelationPicker({
             placeholder={placeholder}
             className="input w-full uppercase"
             autoComplete="off"
+            required={required}
+            aria-required={required}
           />
         </span>
       </label>
@@ -140,8 +155,12 @@ export function EventForm({
   const [endsAt, setEndsAt] = useState('')
   const [endDateEdited, setEndDateEdited] = useState(false)
   const [exhibitors, setExhibitors] = useState<EventExhibitorInput[]>([])
+  const [loading, setLoading] = useState(true)
+  const loadingStartedAt = useRef(Date.now())
 
   useEffect(() => {
+    loadingStartedAt.current = Date.now()
+    setLoading(true)
     Promise.all([
       listVenues(),
       listEos(),
@@ -161,10 +180,11 @@ export function EventForm({
         setSelectedVenue(venue)
         setEoQuery(eo?.legalName ?? '')
         setSelectedEo(eo)
-        setStartsAt(event.startsOn)
-        setEndsAt(event.endsOn)
+        setStartsAt(formatDateInput(event.startsOn))
+        setEndsAt(formatDateInput(event.endsOn))
         setEndDateEdited(true)
       }
+      finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
     })
   }, [enableExhibitors, event])
 
@@ -222,7 +242,7 @@ export function EventForm({
       const savedEvent = await saveEvent(
         {
           officialName: text(form.get('officialName')),
-          alias: optional(form.get('alias')),
+          alias: event?.alias ?? null,
           startsOn: startDate.toISOString().slice(0, 10),
           endsOn: endDate.toISOString().slice(0, 10),
           venue: {
@@ -252,6 +272,8 @@ export function EventForm({
     }
   }
 
+  if (loading) return <FormSkeleton fields={8} />
+
   return (
     <form action={submit} className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 space-y-8 overflow-y-auto p-6 sm:p-8">
@@ -271,6 +293,7 @@ export function EventForm({
                 setEoQuery((item as LocalEo).legalName)
               }}
               selected={selectedEo}
+              required
             />
             <RelationPicker
               label="Venue"
@@ -286,13 +309,14 @@ export function EventForm({
                 setVenueQuery((item as LocalVenue).officialName)
               }}
               selected={selectedVenue}
+              required
             />
           </div>
         </section>
 
         <section>
           <div className="mt-4 grid gap-5 sm:grid-cols-2">
-            <label className="label">
+            <label className="label sm:col-span-2">
               Pameran
               <input
                 required
@@ -303,28 +327,21 @@ export function EventForm({
               />
             </label>
             <label className="label">
-              Alias
-              <input
-                name="alias"
-                defaultValue={event?.alias ?? ''}
-                onInput={normalizeInput}
-                className="input uppercase"
-              />
-            </label>
-            <label className="label">
               Tanggal mulai
               <input
                 required
-                type="date"
                 name="startsAt"
                 value={startsAt}
+                inputMode="numeric"
+                placeholder="dd/mm/yyyy"
+                pattern="\\d{2}/\\d{2}/\\d{4}"
                 onChange={(event) => {
                   setStartsAt(event.target.value)
                   if (!endDateEdited) {
                     const start = parseDateInput(event.target.value)
                     if (start) {
                       start.setUTCDate(start.getUTCDate() + 3)
-                      setEndsAt(start.toISOString().slice(0, 10))
+                      setEndsAt(formatDateInput(start))
                     }
                   }
                 }}
@@ -335,9 +352,11 @@ export function EventForm({
               Tanggal selesai
               <input
                 required
-                type="date"
                 name="endsAt"
                 value={endsAt}
+                inputMode="numeric"
+                placeholder="dd/mm/yyyy"
+                pattern="\\d{2}/\\d{2}/\\d{4}"
                 onChange={(event) => {
                   setEndsAt(event.target.value)
                   setEndDateEdited(true)
