@@ -1,20 +1,16 @@
-Agents tidak perlu membaca ini. Ini adalah catatan internal untuk pengembang.
-
-Ya. Untuk domain ini, state machine sebaiknya dipusatkan pada `CustomsJob`, sedangkan CIPL dan Shipment menjadi prasyarat/guard—bukan status yang dicampur ke lifecycle Job.
-
-```text
 DRAFT
-  → PREPARING
-  → SUBMITTED
-  → REGISTERED
-  → RELEASED
-  → COMPLETED
+→ PREPARING
+→ SUBMITTED
+→ REGISTERED
+→ RELEASED
+→ COMPLETED
 
 Status pengecualian:
 DRAFT | PREPARING | SUBMITTED | REGISTERED | RELEASED
-  → ON_HOLD → kembali ke state sebelumnya
-  → CANCELLED (terminal)
-```
+→ ON_HOLD → kembali ke state sebelumnya
+→ CANCELLED (terminal)
+
+````
 
 Maknanya:
 
@@ -40,7 +36,7 @@ completeJob(jobId)
 holdJob(jobId, reason)
 resumeJob(jobId, reason)
 cancelJob(jobId, reason)
-```
+````
 
 Setiap command memeriksa guard yang relevan. Misalnya `submitCustoms` menolak bila CIPL belum `READY`, alokasi Shipment tidak valid, atau evidence belum ada.
 
