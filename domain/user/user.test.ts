@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict'
+import { describe, expect, test } from 'bun:test'
 import { authenticateUser, createUser, toPublicUser, type Users } from './user'
 import type { User } from './types'
 
@@ -11,34 +11,46 @@ const admin: User = {
 
 const users: Users = [admin]
 
-const createdUsers = createUser(users, {
-  nama: 'Operator',
-  email: ' OPERATOR@VSS.DEMO ',
-  password: 'operator-secret',
-  isAdmin: false,
+describe('user domain logic', () => {
+  test('creates a user with a normalized email without mutating the collection', () => {
+    const createdUsers = createUser(users, {
+      nama: 'Operator',
+      email: ' OPERATOR@VSS.DEMO ',
+      password: 'operator-secret',
+      isAdmin: false,
+    })
+
+    expect(createdUsers).toHaveLength(2)
+    expect(createdUsers[1]?.email).toBe('operator@vss.demo')
+    expect(users).toHaveLength(1)
+  })
+
+  test('rejects duplicate emails after normalization', () => {
+    expect(() => createUser(users, { ...admin, email: ' ADMIN@VSS.DEMO ' })).toThrow(
+      'Email sudah digunakan.',
+    )
+  })
+
+  test('authenticates credentials and returns a public user without password', () => {
+    const authenticated = authenticateUser(users, ' ADMIN@VSS.DEMO ', admin.password)
+
+    expect(authenticated).toEqual({
+      nama: admin.nama,
+      email: admin.email,
+      isAdmin: true,
+    })
+    expect(authenticated).not.toHaveProperty('password')
+  })
+
+  test('returns null for an incorrect password', () => {
+    expect(authenticateUser(users, admin.email, 'wrong-password')).toBeNull()
+  })
+
+  test('projects a user to its public representation', () => {
+    expect(toPublicUser(admin)).toEqual({
+      nama: admin.nama,
+      email: admin.email,
+      isAdmin: true,
+    })
+  })
 })
-
-assert.equal(createdUsers.length, 2)
-assert.equal(createdUsers[1]?.email, 'operator@vss.demo')
-assert.equal(users.length, 1)
-
-assert.throws(
-  () => createUser(users, { ...admin, email: ' ADMIN@VSS.DEMO ' }),
-  { message: 'Email sudah digunakan.' },
-)
-
-const authenticated = authenticateUser(users, ' ADMIN@VSS.DEMO ', admin.password)
-assert.deepEqual(authenticated, {
-  nama: admin.nama,
-  email: admin.email,
-  isAdmin: true,
-})
-assert.equal(authenticated && 'password' in authenticated, false)
-assert.equal(authenticateUser(users, admin.email, 'wrong-password'), null)
-assert.deepEqual(toPublicUser(admin), {
-  nama: admin.nama,
-  email: admin.email,
-  isAdmin: true,
-})
-
-console.log('user domain logic passed')
