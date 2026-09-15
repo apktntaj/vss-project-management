@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { authenticateUser, createUser, toPublicUser, type Users } from './user'
+import { authenticateUser, createUser, isEmailExist, toPublicUser, type Users } from './user'
 import type { User } from './types'
 
 const admin: User = {
@@ -17,10 +17,10 @@ describe('user domain logic', () => {
     expect(createUser(emptyUsers, admin)).toEqual([admin])
   })
 
-  test('creates a user with a normalized email without mutating the collection', () => {
+  test('creates a user without mutating the collection', () => {
     const createdUsers = createUser(users, {
       nama: 'Operator',
-      email: ' OPERATOR@VSS.DEMO ',
+      email: 'operator@vss.demo',
       password: 'operator-secret',
       isAdmin: false,
     })
@@ -30,8 +30,13 @@ describe('user domain logic', () => {
     expect(users).toHaveLength(1)
   })
 
-  test('rejects duplicate emails after normalization', () => {
-    expect(() => createUser(users, { ...admin, email: ' ADMIN@VSS.DEMO ' })).toThrow(
+  test('checks whether a canonical email exists', () => {
+    expect(isEmailExist(users, 'admin@vss.demo')).toBe(true)
+    expect(isEmailExist(users, 'missing@vss.demo')).toBe(false)
+  })
+
+  test('rejects duplicate emails', () => {
+    expect(() => createUser(users, { ...admin })).toThrow(
       'Email sudah digunakan.',
     )
   })
@@ -41,7 +46,7 @@ describe('user domain logic', () => {
   })
 
   test('authenticates credentials and returns a public user without password', () => {
-    const authenticated = authenticateUser(users, ' ADMIN@VSS.DEMO ', admin.password)
+    const authenticated = authenticateUser(users, 'admin@vss.demo', admin.password)
 
     expect(authenticated).toEqual({
       nama: admin.nama,
