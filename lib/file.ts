@@ -385,6 +385,72 @@ const runtimeStore: RuntimeStore = {
   preferences: [],
 }
 
+type PersistedRuntimeStore = Omit<RuntimeStore, 'files'> & {
+  files: Array<Omit<StoredFile, 'content'>>
+}
+
+let workspaceId: string | null = null
+let workspaceRevision = 0
+let workspacePersistenceAvailable: boolean | null = null
+let workspacePersisting = Promise.resolve()
+
+function snapshotRuntimeStore(): PersistedRuntimeStore {
+  return {
+    ...runtimeStore,
+    files: runtimeStore.files.map(({ content: _content, ...file }) => file),
+  }
+}
+
+function hydrateRuntimeStore(value: unknown) {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<PersistedRuntimeStore>
+  const collections: Array<keyof RuntimeStore> = ['jobs', 'stages', 'users', 'events', 'venues', 'eos', 'exhibitors', 'jobDocuments', 'coordinationAgents', 'cipls', 'ciplVersions', 'shipmentsV2', 'customsJobs', 'counters', 'migrationReviewItems', 'tickets', 'preferences']
+  if (!collections.every((collection) => Array.isArray(candidate[collection]))) return false
+  for (const collection of collections) runtimeStore[collection] = candidate[collection] as never
+  runtimeStore.files = Array.isArray(candidate.files)
+    ? candidate.files.map((file) => ({ ...file, content: new Blob() } as StoredFile))
+    : []
+  return true
+}
+
+async function loadWorkspaceState() {
+  try {
+    const response = await fetch('/api/workspace-state', { cache: 'no-store' })
+    if (!response.ok) {
+      workspacePersistenceAvailable = false
+      return
+    }
+    const payload = await response.json() as { id?: unknown; revision?: unknown; state?: unknown }
+    if (typeof payload.id !== 'string' || typeof payload.revision !== 'number' || !Number.isSafeInteger(payload.revision)) throw new Error('Respons workspace tidak valid.')
+    workspaceId = payload.id
+    workspaceRevision = payload.revision
+    workspacePersistenceAvailable = true
+    hydrateRuntimeStore(payload.state)
+  } catch {
+    // Local demo remains usable when Supabase is intentionally not configured.
+    workspacePersistenceAvailable = false
+  }
+}
+
+function persistWorkspaceSoon() {
+  if (!workspacePersistenceAvailable || !workspaceId) return Promise.resolve()
+  workspacePersisting = workspacePersisting.then(async () => {
+    const response = await fetch('/api/workspace-state', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: workspaceId, revision: workspaceRevision, state: snapshotRuntimeStore() }),
+    })
+    const payload = await response.json().catch(() => null) as { revision?: unknown; error?: unknown } | null
+    if (!response.ok || !payload || typeof payload.revision !== 'number' || !Number.isSafeInteger(payload.revision)) {
+      throw new Error(typeof payload?.error === 'string' ? payload.error : 'Workspace tidak dapat disimpan.')
+    }
+    workspaceRevision = payload.revision
+  }).catch((error) => {
+    console.error('Supabase workspace persistence failed:', error)
+  })
+  return workspacePersisting
+}
+
 function readAll<T>(storeName: StoreName): Promise<T[]> {
   return Promise.resolve([...runtimeStore[storeName]] as T[])
 }
@@ -394,13 +460,14 @@ function put<T extends StoredRecord>(storeName: StoreName, value: T): Promise<T>
   const index = records.findIndex((record) => record.id === value.id)
   if (index === -1) records.push(value)
   else records[index] = value
-  return Promise.resolve(value)
+  return persistWorkspaceSoon().then(() => value)
 }
 
 function remove(storeName: StoreName, recordId: string) {
   const records = runtimeStore[storeName] as StoredRecord[]
   const index = records.findIndex((record) => record.id === recordId)
   if (index !== -1) records.splice(index, 1)
+  void persistWorkspaceSoon()
 }
 
 function now() {
@@ -556,6 +623,7 @@ async function ensureDemoEvents() {
   if (runtimeInitialized) return
   runtimeInitialized = true
   replaceRuntimeData(demoDataMode)
+  await loadWorkspaceState()
 }
 
 export async function getDemoDataMode(): Promise<DemoDataMode> {
@@ -569,6 +637,7 @@ export async function setDemoDataMode(mode: DemoDataMode): Promise<DemoDataMode>
   demoDataMode = mode
   if (typeof window !== 'undefined') window.sessionStorage.setItem(demoDataModeStorageKey, mode)
   replaceRuntimeData(mode)
+  await persistWorkspaceSoon()
   return demoDataMode
 }
 
