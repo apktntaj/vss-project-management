@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronDown,
   ChevronRight,
+  CheckCircle2,
   CircleAlert,
   FileWarning,
   FileText,
@@ -31,6 +32,13 @@ import { JobDocumentEditorDialog, type EditableJobDocument } from '@/components/
 import { Button } from '@/components/ui/button'
 import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
 import { Skeleton } from '@/components/ui/skeleton'
+import { getNextEventJobView, type EventJobViews } from '@/lib/event-job-view'
+import {
+  getJobOperationalPhase,
+  jobOperationalPhases,
+  type JobOperationalPhase,
+} from '@/lib/job-operational-phase'
+import { compareInvoiceWithTransport } from '@/lib/document-comparison'
 
 type Scope = 'active' | 'all'
 
@@ -46,6 +54,7 @@ type DocumentClassification = {
   rationale: string | null
 }
 const spreadsheetExtensions = ['xls', 'xlsx', 'xlsm', 'xlsb', 'xltx', 'xltm']
+const jobDocumentAccept = 'application/pdf,.pdf,application/vnd.ms-excel,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/vnd.ms-excel.sheet.macroEnabled.12,.xlsm,application/vnd.ms-excel.sheet.binary.macroEnabled.12,.xlsb,application/vnd.openxmlformats-officedocument.spreadsheetml.template,.xltx,application/vnd.ms-excel.template.macroEnabled.12,.xltm'
 const fileExtension = (file: File) => file.name.split('.').pop()?.toLowerCase()
 const isPdf = (file: File) => file.type === 'application/pdf' || fileExtension(file) === 'pdf'
 const isAcceptedJobDocument = (file: File) => isPdf(file) || spreadsheetExtensions.includes(fileExtension(file) || '')
@@ -147,6 +156,11 @@ function JobRow({
   const [uploading, setUploading] = useState(false)
   const operational = getOperationalDetails(job)
   const inbound = operational.inbound
+  const documentComparison = operational.invoice && operational.inboundDocument
+    ? compareInvoiceWithTransport(operational.invoice, operational.inboundDocument)
+    : null
+  const comparisonDifferences = documentComparison?.filter((item) => item.status === 'DIFFERENT') ?? []
+  const hasComparableDocumentValues = documentComparison?.some((item) => item.status !== 'UNAVAILABLE') ?? false
   const exhibitorName = job.exhibitor?.legalName || job.clientName
   const shipperName = operational.inboundDocument?.shipper?.name || job.shipper
   const jobInitiator = job.createdBy ?? job.assignedTo
@@ -270,7 +284,7 @@ function JobRow({
             ref={fileInputRef}
             type="file"
             multiple
-            accept="application/pdf,.pdf,application/vnd.ms-excel,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/vnd.ms-excel.sheet.macroEnabled.12,.xlsm,application/vnd.ms-excel.sheet.binary.macroEnabled.12,.xlsb,application/vnd.openxmlformats-officedocument.spreadsheetml.template,.xltx,application/vnd.ms-excel.template.macroEnabled.12,.xltm"
+            accept={jobDocumentAccept}
             onChange={uploadShipmentDocument}
             className="sr-only"
             tabIndex={-1}
@@ -284,6 +298,24 @@ function JobRow({
                 <FileText data-icon="inline-start" />Invoice: {operational.invoiceNumber || 'Belum ada dokumen'}
               </Button>
             </p>
+            {documentComparison && hasComparableDocumentValues && (
+              comparisonDifferences.length ? (
+                <p className="group relative mt-1 flex w-fit cursor-help items-center gap-1 text-xs font-medium text-amber-700" aria-describedby={`document-differences-${job.id}`}>
+                  <CircleAlert size={14} aria-hidden="true" />
+                  {comparisonDifferences.length} data berbeda
+                  <span id={`document-differences-${job.id}`} role="tooltip" className="pointer-events-none absolute left-0 top-full z-20 mt-1 w-64 translate-y-1 rounded-md bg-slate-900 px-2.5 py-2 text-xs font-normal leading-5 text-white opacity-0 shadow-lg transition-all duration-75 group-hover:translate-y-0 group-hover:opacity-100">
+                    Field yang berbeda: {comparisonDifferences.map((item) => item.label).join(', ')}.
+                  </span>
+                </p>
+              ) : (
+                <Link href={`/jobs/${job.id}#pemeriksaan-dokumen`} className="mt-1 flex items-center gap-1 text-xs font-medium text-emerald-700 hover:text-emerald-900" title="Buka ringkasan pemeriksaan dokumen">
+                  <CheckCircle2 size={14} aria-hidden="true" />Dokumen sesuai
+                </Link>
+              )
+            )}
+            {!documentComparison && (
+              <p className="mt-1 text-xs text-slate-500">Menunggu Invoice dan B/L/AWB</p>
+            )}
           </div>
         </div>
       </td>
@@ -315,12 +347,148 @@ function JobRow({
   )
 }
 
+function operationalPhaseFor(job: LocalJob) {
+  const operational = getOperationalDetails(job)
+  return getJobOperationalPhase({
+    status: job.status,
+    hasInboundDocument: Boolean(operational.inbound.documentNumber),
+    hasInvoice: Boolean(operational.invoiceNumber),
+    ciplStatus: operational.cipl.status,
+    customsDocuments: Object.values(operational.customs),
+  })
+}
+
+const exceptionalJobPhases: ReadonlyArray<JobOperationalPhase> = [
+  { id: 'ON_HOLD', label: 'Perlu perhatian', description: 'Job yang sedang ditahan', nextAction: 'Buka job' },
+  { id: 'CANCELLED', label: 'Dibatalkan', description: 'Job yang tidak dilanjutkan', nextAction: 'Buka job' },
+]
+
+function JobPhaseCard({
+  job,
+  phase,
+  onDocumentUploaded,
+  onToast,
+  onEditDocument,
+}: {
+  job: LocalJob
+  phase: JobOperationalPhase
+  onDocumentUploaded: (jobId: string, document: LocalJobDocument, extraction?: { invoice?: JobInvoiceExtraction | null; transport?: JobTransportExtraction | null }) => void
+  onToast: (message: string, tone?: 'info' | 'error') => void
+  onEditDocument: (job: LocalJob, kind: EditableJobDocument) => void
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const operational = getOperationalDetails(job)
+  const documentComparison = operational.invoice && operational.inboundDocument
+    ? compareInvoiceWithTransport(operational.invoice, operational.inboundDocument)
+    : null
+  const differences = documentComparison?.filter((item) => item.status === 'DIFFERENT') ?? []
+  const documentSummary = [
+    operational.inbound.documentNumber
+      ? `${operational.inbound.documentType || 'Dokumen'} ${operational.inbound.documentNumber}`
+      : null,
+    operational.invoiceNumber ? `Invoice ${operational.invoiceNumber}` : null,
+  ].filter(Boolean).join(' · ')
+
+  async function uploadShipmentDocument(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files || [])
+    event.target.value = ''
+    const acceptedFiles = files.filter(isAcceptedJobDocument)
+    if (acceptedFiles.length !== files.length) onToast('File harus berupa PDF atau Excel.', 'error')
+    if (!acceptedFiles.length) return
+    setUploading(true)
+    try {
+      for (const file of acceptedFiles) {
+        try {
+          const formData = new FormData()
+          formData.set('file', file)
+          const response = await fetch('/api/classify-job-document', { method: 'POST', body: formData })
+          const payload = await response.json() as { classification?: DocumentClassification; invoice?: JobInvoiceExtraction | null; transport?: JobTransportExtraction | null; error?: string }
+          if (!response.ok || !payload.classification) throw new Error(payload.error || 'Dokumen tidak dapat diperiksa.')
+          const kind = payload.classification.documentType === 'UNREADABLE' ? 'OTHER' : payload.classification.documentType
+          const document = await saveJobDocument(job.id, file, kind, payload.invoice, payload.transport)
+          onDocumentUploaded(job.id, document, { invoice: payload.invoice, transport: payload.transport })
+        } catch (caught) {
+          const document = await saveJobDocument(job.id, file, 'OTHER')
+          onDocumentUploaded(job.id, document)
+          onToast(`Dokumen disimpan sebagai dokumen lain. ${caught instanceof Error ? caught.message : ''}`)
+        }
+      }
+      onToast('Dokumen berhasil diunggah. Status job diperbarui berdasarkan kelengkapan dokumen.')
+    } catch (caught) {
+      onToast(caught instanceof Error ? caught.message : 'Dokumen tidak dapat disimpan.', 'error')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <article className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="min-w-0">
+        <Link href={`/jobs/${job.id}`} className="block truncate font-semibold text-slate-900 hover:text-orange-700">
+          {job.jobNumber}
+        </Link>
+        <p className="mt-1 truncate text-sm text-slate-600">{job.exhibitor?.legalName || job.clientName}</p>
+      </div>
+      <p className="mt-3 truncate text-xs text-slate-500" title={documentSummary || undefined}>
+        {documentSummary || 'Dokumen belum lengkap'}
+      </p>
+      <p className="mt-2 text-xs text-slate-500">ETA: {date(operational.inbound.scheduleAt)}</p>
+      <div className="mt-3 rounded-md bg-orange-50 px-2.5 py-2 text-xs font-medium text-orange-900">
+        {phase.nextAction}
+      </div>
+      {phase.id === 'DRAFT' && <>
+        <input ref={fileInputRef} type="file" multiple accept={jobDocumentAccept} onChange={uploadShipmentDocument} className="sr-only" tabIndex={-1} />
+        <Button type="button" size="sm" className="mt-3 w-full" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+          <Upload data-icon="inline-start" />{uploading ? 'Mengunggah dokumen…' : 'Upload dokumen'}
+        </Button>
+        <p className="mt-2 text-xs text-slate-500">Upload B/L atau AWB dan Invoice untuk melanjutkan ke Prepare.</p>
+      </>}
+      {phase.id === 'PREPARE' && differences.length > 0 && <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2.5">
+        <p className="flex items-start gap-1.5 text-xs font-medium text-amber-900"><CircleAlert className="mt-0.5 shrink-0" size={14} aria-hidden="true" />{differences.length} data berbeda pada Invoice dan B/L/AWB.</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="xs" onClick={() => onEditDocument(job, 'INVOICE')}>Ubah Invoice</Button>
+          <Button type="button" variant="outline" size="xs" onClick={() => onEditDocument(job, 'TRANSPORT')}>Ubah B/L/AWB</Button>
+        </div>
+      </div>}
+      <Link href={`/jobs/${job.id}`} className="mt-3 inline-flex text-xs font-semibold text-orange-700 hover:text-orange-800">
+        Buka job →
+      </Link>
+    </article>
+  )
+}
+
+function JobPhaseChunk({ phase, jobs, onDocumentUploaded, onToast, onEditDocument }: {
+  phase: JobOperationalPhase
+  jobs: LocalJob[]
+  onDocumentUploaded: (jobId: string, document: LocalJobDocument, extraction?: { invoice?: JobInvoiceExtraction | null; transport?: JobTransportExtraction | null }) => void
+  onToast: (message: string, tone?: 'info' | 'error') => void
+  onEditDocument: (job: LocalJob, kind: EditableJobDocument) => void
+}) {
+  return (
+    <section className="flex min-h-[250px] flex-col rounded-xl border border-slate-200 bg-slate-50" aria-label={phase.label}>
+      <header className="border-b border-slate-200 px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-semibold text-slate-900">{phase.label}</h2>
+          <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-600">{jobs.length}</span>
+        </div>
+        <p className="mt-1 text-xs text-slate-500">{phase.description}</p>
+      </header>
+      <div className="flex flex-1 flex-col gap-3 p-3">
+        {jobs.map((job) => <JobPhaseCard key={job.id} job={job} phase={phase} onDocumentUploaded={onDocumentUploaded} onToast={onToast} onEditDocument={onEditDocument} />)}
+        {!jobs.length && <p className="py-6 text-center text-xs text-slate-400">Tidak ada job</p>}
+      </div>
+    </section>
+  )
+}
+
 export default function JobsPage() {
   const [jobs, setJobs] = useState<LocalJob[]>([])
   const [events, setEvents] = useState<LocalEvent[]>([])
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [scope, setScope] = useState<Scope>('active')
+  const [eventJobViews, setEventJobViews] = useState<EventJobViews>({})
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [toast, setToast] = useState<{ message: string; tone: 'info' | 'error' } | null>(null)
   const [editingDocument, setEditingDocument] = useState<{ job: LocalJob; kind: EditableJobDocument } | null>(null)
@@ -580,30 +748,47 @@ export default function JobsPage() {
       {Object.entries(grouped).map(([eventId, eventJobs]) => {
         const event = eventById.get(eventId)
         const isOpen = open[eventId] ?? true
+        const showsCards = eventJobViews[eventId] ?? false
+        const phasedJobs = eventJobs.map((job) => ({ job, phase: operationalPhaseFor(job) }))
         return (
           <section key={eventId} className="card overflow-hidden">
-            <button
-              onClick={() => setOpen((value) => ({ ...value, [eventId]: !isOpen }))}
-              className="flex w-full items-center gap-3 border-b bg-slate-50 px-5 py-4 text-left hover:bg-slate-100"
-            >
-              <span className="text-slate-400">
-                {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-semibold text-slate-900">
-                  {event?.officialName || 'Job tanpa event'}
+            <div className="flex items-center gap-3 border-b bg-slate-50 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setOpen((value) => ({ ...value, [eventId]: !isOpen }))}
+                className="flex min-w-0 flex-1 items-center gap-3 text-left hover:text-orange-700"
+                aria-expanded={isOpen}
+              >
+                <span className="text-slate-400">
+                  {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                 </span>
-                <span className="mt-0.5 block text-xs text-slate-500">
-                  {event
-                    ? `${date(event.startsAt)} – ${date(event.endsAt)}`
-                    : 'Perlu ditautkan ke event'}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold text-slate-900">
+                    {event?.officialName || 'Job tanpa event'}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    {event
+                      ? `${date(event.startsAt)} – ${date(event.endsAt)}`
+                      : 'Perlu ditautkan ke event'}
+                  </span>
                 </span>
-              </span>
+              </button>
               <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600">
                 {eventJobs.length} Job
               </span>
-            </button>
-            {isOpen && (
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showsCards}
+                aria-label={`Tampilkan ${event?.officialName || 'job tanpa event'} sebagai kartu`}
+                title={showsCards ? 'Tampilkan sebagai baris' : 'Tampilkan sebagai kartu'}
+                onClick={() => setEventJobViews((views) => getNextEventJobView(views, eventId))}
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-600 focus-visible:ring-offset-2 ${showsCards ? 'bg-orange-600' : 'bg-slate-300'}`}
+              >
+                <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${showsCards ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </div>
+            {isOpen && !showsCards && (
               <div className="overflow-x-auto">
                 <table className="min-w-[900px] w-full table-fixed text-left text-sm">
                   <colgroup>
@@ -630,6 +815,26 @@ export default function JobsPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {isOpen && showsCards && (
+              <div className="overflow-x-auto">
+                <div className="grid min-w-max grid-flow-col auto-cols-[260px] gap-4 p-5">
+                  {exceptionalJobPhases.map((phase) => {
+                    const jobs = phasedJobs.filter((item) => item.phase.id === phase.id).map((item) => item.job)
+                    return jobs.length ? <JobPhaseChunk key={phase.id} phase={phase} jobs={jobs} onDocumentUploaded={handleDocumentUploaded} onToast={showToast} onEditDocument={(selectedJob, kind) => setEditingDocument({ job: selectedJob, kind })} /> : null
+                  })}
+                  {jobOperationalPhases.map((phase) => (
+                    <JobPhaseChunk
+                      key={phase.id}
+                      phase={phase}
+                      jobs={phasedJobs.filter((item) => item.phase.id === phase.id).map((item) => item.job)}
+                      onDocumentUploaded={handleDocumentUploaded}
+                      onToast={showToast}
+                      onEditDocument={(selectedJob, kind) => setEditingDocument({ job: selectedJob, kind })}
+                    />
+                  ))}
+                </div>
               </div>
             )}
           </section>

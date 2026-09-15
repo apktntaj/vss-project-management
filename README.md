@@ -22,6 +22,10 @@ Data browser tidak tersimpan di server dan tidak otomatis terbagi antar perangka
 Untuk deployment Vercel, deploy project tanpa `DATABASE_URL`, Prisma, atau
 konfigurasi PostgreSQL. `GEMINI_API_KEY` hanya diperlukan untuk fitur parsing PDF.
 
+## Cek LARTAS INSW
+
+Menu **Cek LARTAS** memeriksa maksimal 20 HS code 8 digit melalui route server-side `/api/lartas`. Isi `LARTAS_TOKEN` (atau `LARTAS_TOKEN_FILE_PATH`) di `.env` untuk hasil CMS dengan status LARTAS terverifikasi; contoh konfigurasi tersedia di `.env.example`. Tanpa token, aplikasi hanya mencoba sumber publik untuk tarif dan hasil `unverified` tidak boleh diartikan sebagai LARTAS tidak ada.
+
 ## Verifikasi
 
 ```bash

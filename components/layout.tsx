@@ -13,6 +13,7 @@ import {
   LogOut,
   Package,
   Settings,
+  ShieldCheck,
 } from 'lucide-react'
 import { logoutAction } from '@/app/(dashboard)/actions'
 import { getDemoDataMode, setDemoDataMode } from '@/lib/data-client'
@@ -21,6 +22,7 @@ const links = [
   { href: '/events', label: 'Events', icon: CalendarDays },
   { href: '/jobs', label: 'Jobs', icon: BriefcaseBusiness },
   { href: '/kanban', label: 'Ticket Saya', icon: FolderKanban },
+  { href: '/lartas', label: 'Cek LARTAS', icon: ShieldCheck },
   { href: '/general-cargo', label: 'General Cargo', icon: Package, available: false },
   { href: '/projects', label: 'Projects', icon: FolderKanban, available: false },
 ]
