@@ -9,9 +9,14 @@ const admin: User = {
   isAdmin: true,
 }
 
+const emptyUsers: Users = []
 const users: Users = [admin]
 
 describe('user domain logic', () => {
+  test('creates the first user from an empty collection', () => {
+    expect(createUser(emptyUsers, admin)).toEqual([admin])
+  })
+
   test('creates a user with a normalized email without mutating the collection', () => {
     const createdUsers = createUser(users, {
       nama: 'Operator',
@@ -29,6 +34,10 @@ describe('user domain logic', () => {
     expect(() => createUser(users, { ...admin, email: ' ADMIN@VSS.DEMO ' })).toThrow(
       'Email sudah digunakan.',
     )
+  })
+
+  test('returns null when no user matches the credentials', () => {
+    expect(authenticateUser(emptyUsers, admin.email, admin.password)).toBeNull()
   })
 
   test('authenticates credentials and returns a public user without password', () => {
