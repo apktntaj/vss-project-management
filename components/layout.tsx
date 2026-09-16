@@ -8,15 +8,25 @@ import {
   CalendarDays,
   ChevronsLeft,
   ChevronsRight,
-  Database,
   FolderKanban,
   LogOut,
   Package,
   Settings,
   ShieldCheck,
+  Menu,
+  ChevronRight,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import { logoutAction } from '@/app/(dashboard)/actions'
-import { getDemoDataMode, setDemoDataMode } from '@/lib/data-client'
 const links = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/events', label: 'Events', icon: CalendarDays },
@@ -35,17 +45,31 @@ export function AppShell({
 }) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
-  const [demoMode, setDemoMode] = useState<'EMPTY' | 'MOCK'>('EMPTY')
-  const [changingDemoMode, setChangingDemoMode] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' } | null>(null)
 
   useEffect(() => {
-    getDemoDataMode().then(setDemoMode)
-    const pendingToast = window.sessionStorage.getItem('vss-demo-data-toast')
-    if (!pendingToast) return
-    window.sessionStorage.removeItem('vss-demo-data-toast')
-    setToast({ message: pendingToast, tone: 'success' })
+    try {
+      setCollapsed(window.localStorage.getItem('vss-sidebar-collapsed') === 'true')
+    } catch {
+      /* Storage may be unavailable. */
+    }
   }, [])
+
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [pathname])
+
+  function toggleSidebar() {
+    setCollapsed((value) => {
+      try {
+        window.localStorage.setItem('vss-sidebar-collapsed', String(!value))
+      } catch {
+        /* Keep navigation usable without storage. */
+      }
+      return !value
+    })
+  }
 
   useEffect(() => {
     if (!toast) return
@@ -53,25 +77,17 @@ export function AppShell({
     return () => window.clearTimeout(timeout)
   }, [toast])
 
-  async function toggleDemoMode() {
-    const nextMode = demoMode === 'MOCK' ? 'EMPTY' : 'MOCK'
-    setChangingDemoMode(true)
-    try {
-      await setDemoDataMode(nextMode)
-      window.sessionStorage.setItem(
-        'vss-demo-data-toast',
-        nextMode === 'MOCK' ? 'Data mock dimuat.' : 'Data demo dikosongkan.',
-      )
-      window.location.reload()
-    } catch {
-      setToast({ message: 'Mode data tidak dapat diubah.', tone: 'error' })
-      setChangingDemoMode(false)
-    }
-  }
   return (
     <div className="min-h-screen md:flex">
+      <a href="#main-content" className="skip-link">
+        Lewati ke konten utama
+      </a>
       <aside
-        className={`flex w-full flex-col bg-slate-800 text-white/70 transition-[width] duration-200 md:fixed md:inset-y-0 md:z-20 ${collapsed ? 'md:w-20' : 'md:w-64'}`}
+        aria-label="Navigasi utama"
+        className={cn(
+          'hidden flex-col overflow-y-auto bg-slate-900 text-white/70 transition-[width] duration-200 md:fixed md:inset-y-0 md:z-20 md:flex',
+          collapsed ? 'md:w-20' : 'md:w-64',
+        )}
       >
         <div
           className={`flex items-start gap-3 py-6 ${collapsed ? 'justify-center px-4' : 'justify-between px-6'}`}
@@ -84,7 +100,7 @@ export function AppShell({
           </div>
           <button
             type="button"
-            onClick={() => setCollapsed((value) => !value)}
+            onClick={toggleSidebar}
             aria-label={collapsed ? 'Kembangkan sidebar' : 'Ciutkan sidebar'}
             aria-expanded={!collapsed}
             className="hidden shrink-0 rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white md:inline-flex"
@@ -92,7 +108,12 @@ export function AppShell({
             {collapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
           </button>
         </div>
-        <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:block md:space-y-1">
+        {!collapsed && (
+          <p className="px-6 pb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/40">
+            Workspace
+          </p>
+        )}
+        <nav className="flex flex-col gap-1 px-3 pb-3">
           {links.map(({ href, label, icon: Icon, available = true }) => {
             const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
             const content = (
@@ -124,6 +145,7 @@ export function AppShell({
               <Link
                 key={href}
                 href={href}
+                aria-current={active ? 'page' : undefined}
                 title={collapsed ? label : undefined}
                 className={`flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${collapsed ? 'md:justify-center' : ''} ${active ? 'bg-orange-600 text-white shadow-lg shadow-orange-950/40' : 'hover:bg-slate-700 hover:text-white'}`}
               >
@@ -135,32 +157,6 @@ export function AppShell({
         <div
           className={`mt-auto border-t border-white/10 p-3 ${collapsed ? 'md:text-center' : ''}`}
         >
-          <button
-            type="button"
-            role="switch"
-            aria-checked={demoMode === 'MOCK'}
-            aria-label="Ganti mode data demo"
-            title={collapsed ? `Data ${demoMode === 'MOCK' ? 'mock' : 'kosong'}` : undefined}
-            disabled={changingDemoMode}
-            onClick={toggleDemoMode}
-            className={`mb-3 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition hover:bg-slate-700 hover:text-white disabled:cursor-wait disabled:opacity-60 ${collapsed ? 'md:justify-center' : ''}`}
-          >
-            <Database size={18} />
-            <span className={`flex min-w-0 flex-1 items-center justify-between gap-2 ${collapsed ? 'md:hidden' : ''}`}>
-              <span>
-                <span className="block text-white">Data demo</span>
-                <span className="block text-xs text-white/45">{demoMode === 'MOCK' ? 'Mock lengkap' : 'Kosong'}</span>
-              </span>
-              <span
-                aria-hidden="true"
-                className={`relative h-5 w-9 rounded-full transition ${demoMode === 'MOCK' ? 'bg-orange-500' : 'bg-white/20'}`}
-              >
-                <span
-                  className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition ${demoMode === 'MOCK' ? 'left-[18px]' : 'left-0.5'}`}
-                />
-              </span>
-            </span>
-          </button>
           {user.isAdmin && (
             <Link
               href="/settings"
@@ -173,7 +169,7 @@ export function AppShell({
           )}
           <div className={`mb-3 min-w-0 px-3 ${collapsed ? 'md:hidden' : ''}`}>
             <p className="truncate text-sm font-semibold text-white">
-              {user.name ?? 'Pengguna demo'}
+              {user.name ?? 'Pengguna'}
             </p>
           </div>
           <form action={logoutAction}>
@@ -189,9 +185,93 @@ export function AppShell({
         </div>
       </aside>
       <main
+        id="main-content"
+        tabIndex={-1}
         className={`min-w-0 flex-1 transition-[margin] duration-200 ${collapsed ? 'md:ml-20' : 'md:ml-64'}`}
       >
-        <div className="mx-auto max-w-[1440px] p-5 md:p-8">{children}</div>
+        <header className="flex h-16 items-center justify-between gap-3 border-b border-border bg-white px-4 sm:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
+              <DialogTrigger
+                render={<Button variant="outline" size="icon" className="md:hidden" />}
+                aria-label="Buka menu navigasi"
+              >
+                <Menu />
+              </DialogTrigger>
+              <DialogContent className="max-h-[85dvh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>VSS Projects</DialogTitle>
+                  <DialogDescription>Navigasi workspace operasional</DialogDescription>
+                </DialogHeader>
+                <nav aria-label="Navigasi mobile" className="flex flex-col gap-1">
+                  {links
+                    .filter((link) => link.available !== false)
+                    .map(({ href, label, icon: Icon }) => {
+                      const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
+                      return (
+                        <Link
+                          key={href}
+                          href={href}
+                          onClick={() => setMobileOpen(false)}
+                          aria-current={active ? 'page' : undefined}
+                          className={cn(
+                            'workspace-nav',
+                            active ? 'workspace-nav-active' : 'workspace-nav-idle',
+                          )}
+                        >
+                          <Icon size={18} />
+                          {label}
+                        </Link>
+                      )
+                    })}
+                  {user.isAdmin && (
+                    <Link
+                      href="/settings"
+                      onClick={() => setMobileOpen(false)}
+                      className="workspace-nav workspace-nav-idle"
+                    >
+                      <Settings size={18} />
+                      Settings
+                    </Link>
+                  )}
+                </nav>
+                <p className="truncate text-sm text-muted-foreground">
+                  {user.name ?? 'Pengguna'}
+                </p>
+                <form action={logoutAction}>
+                  <Button type="submit" variant="ghost">
+                    <LogOut data-icon="inline-start" />
+                    Keluar
+                  </Button>
+                </form>
+              </DialogContent>
+            </Dialog>
+            <span className="hidden text-sm text-muted-foreground sm:inline">Workspace</span>
+            <ChevronRight size={14} className="hidden text-muted-foreground sm:block" />
+            <span className="truncate text-sm font-semibold">
+              {links.find((link) =>
+                link.href === '/' ? pathname === '/' : pathname.startsWith(link.href),
+              )?.label ?? (pathname.startsWith('/settings') ? 'Settings' : 'Detail operasional')}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="hidden text-xs text-muted-foreground lg:inline">
+              Operasional · Vissasa Parama Nati
+            </span>
+            <span
+              title={user.name ?? 'Pengguna'}
+              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-primary"
+            >
+              {(user.name ?? 'VSS')
+                .split(' ')
+                .map((part) => part[0])
+                .slice(0, 2)
+                .join('')
+                .toUpperCase()}
+            </span>
+          </div>
+        </header>
+        <div className="mx-auto max-w-[1440px] p-4 py-7 sm:p-6 md:p-8 lg:p-10">{children}</div>
       </main>
       {toast && (
         <div

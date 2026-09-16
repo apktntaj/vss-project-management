@@ -28,7 +28,7 @@ import {
   listTicketsForUser,
   listUsers,
   moveAndReorderMyTickets,
-  setActiveDemoUser,
+  setActiveWorkspaceUser,
   updateTicket,
   type LocalEvent,
   type LocalJob,
@@ -410,7 +410,7 @@ export function TicketBoard({
       const nextUsers = await listUsers()
       const user = nextUsers.find((item) => item.email === userEmail && item.isActive) ?? null
       if (!user) throw new Error('Akun login tidak tersedia sebagai assignee.')
-      await setActiveDemoUser(user.id)
+      await setActiveWorkspaceUser(user.id)
       const [nextTickets, nextEvents, nextJobs] = await Promise.all([
         listTicketsForUser(user.id),
         listEvents(),
