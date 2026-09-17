@@ -16,6 +16,14 @@ import type {
   Shipment,
   ShipmentAllocation,
 } from '@/domain/exhibition/types'
+import type {
+  Contact,
+  Event as EventRecord,
+  EventOrganizer,
+  Exhibitor,
+  ExhibitorContact,
+  Venue,
+} from '@/domain/event/types'
 import {
   validateCiplVersionReady,
   validateJobAllocation,
@@ -31,8 +39,11 @@ export type LocalUser = {
   id: string
   name: string
   email: string
-  role: 'STAFF' | 'SUPERVISOR' | 'CUSTOMER_SERVICE' | 'DOCUMENT_ASSISTANT'
+  jobRole: 'STAFF' | 'SUPERVISOR' | 'CUSTOMER_SERVICE' | 'DOCUMENT_ASSISTANT'
+  accessLevel: 'ADMIN' | 'MEMBER'
   isActive: boolean
+  createdAt: string
+  updatedAt: string
 }
 
 export type LocalStage = {
@@ -260,60 +271,43 @@ type StoredFile = {
   createdAt: string
 }
 
-export type LocalVenue = {
-  id: string
+/** Display adapter for legacy non-event pages; persistence uses `Venue`. */
+export type LocalVenue = Venue & {
   officialName: string
   aliasName: string | null
-  address: string | null
   latitude: number | null
   longitude: number | null
   contactInfo: string | null
-  createdAt: string
-  updatedAt: string
 }
-
-export type LocalEo = {
-  id: string
+/** Display adapter for legacy non-event pages; persistence uses `EventOrganizer`. */
+export type LocalEo = EventOrganizer & {
   legalName: string
   aliasName: string | null
   contactInfo: string | null
-  createdAt: string
-  updatedAt: string
 }
-
-export type LocalEvent = {
-  id: string
+/** Display adapter; Event itself remains immutable and status is cancellation-derived. */
+export type LocalEvent = Omit<EventRecord, 'venue' | 'eventOrganizer'> & {
   officialName: string
   alias: string | null
   startsAt: string
   endsAt: string
-  /** Canonical show-period; date-only so calendar dates do not shift by timezone. */
-  startsOn: string
-  endsOn: string
-  createdAt: string
-  updatedAt: string
   status: 'ACTIVE' | 'CANCELLED'
   cancellationReason: string | null
   cancelledAt: string | null
-  venueId: string
   eoId: string
   venue?: LocalVenue
   eventOrganizer?: LocalEo
 }
-
-export type LocalExhibitor = {
-  id: string
-  eventId: string
+/** Display adapter; the domain form remains a discriminated union on `kind`. */
+export type LocalExhibitor = Exhibitor & {
   legalName: string
   aliasName: string | null
   type: 'LOCAL' | 'INTERNATIONAL'
   email: string | null
   phone: string | null
-  agent?: string | null
+  agent: string | null
   address: string | null
   countryCode: string | null
-  createdAt: string
-  updatedAt: string
 }
 
 type StoreName =
@@ -821,214 +815,134 @@ export async function listEventJobs(eventId: string) {
   return jobs.filter((job) => job.eventId === eventId)
 }
 
-export async function listEvents() {
-  const [events, venues, eos] = await Promise.all([
-    readAll<LocalEvent>('events'),
-    readAll<LocalVenue>('venues'),
-    readAll<LocalEo>('eos'),
-  ])
-  return events
-    .map((storedEvent) => {
-      const startsOn = storedEvent.startsOn ?? toDateOnly(storedEvent.startsAt)
-      const endsOn = storedEvent.endsOn ?? toDateOnly(storedEvent.endsAt)
-      const event = {
-        ...storedEvent,
-        startsOn,
-        endsOn,
-        startsAt: localMidnight(startsOn),
-        endsAt: localMidnight(endsOn),
-        status: storedEvent.status ?? 'ACTIVE',
-        cancellationReason: storedEvent.cancellationReason ?? null,
-        cancelledAt: storedEvent.cancelledAt ?? null,
-      }
-      return {
-        ...event,
-        venue: venues.find((venue) => venue.id === event.venueId),
-        eventOrganizer: eos.find((eo) => eo.id === event.eoId),
-      }
-    })
-    .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
+type EventResource = 'venues' | 'event-organizers' | 'events' | 'exhibitors'
+
+async function eventRecords<T>(
+  resource: EventResource,
+  init?: RequestInit,
+  search?: URLSearchParams,
+): Promise<T> {
+  const response = await fetch(`/api/event-records?${new URLSearchParams({ resource, ...Object.fromEntries(search ?? []) })}`, {
+    cache: 'no-store',
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+  })
+  const data = await response.json().catch(() => null) as T | { error?: string } | null
+  if (!response.ok) throw new Error(data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' ? data.error : 'Data event tidak dapat diproses.')
+  return data as T
 }
 
-export async function listVenues() {
-  return readAll<LocalVenue>('venues')
+function contactFromRow(value: Record<string, unknown>): Contact {
+  return {
+    name: typeof value.name === 'string' ? value.name : '',
+    role: typeof value.role === 'string' ? value.role : null,
+    email: typeof value.email === 'string' ? value.email : null,
+    phone: typeof value.phone === 'string' ? value.phone : null,
+    isPrimary: Boolean(value.isPrimary),
+  }
 }
 
-export async function listEos() {
-  return readAll<LocalEo>('eos')
+export async function listEvents(): Promise<LocalEvent[]> {
+  const rows = await eventRecords<Array<Record<string, unknown>>>('events')
+  return rows.map((row) => {
+    const venueRow = Array.isArray(row.venues) ? row.venues[0] : row.venues
+    const organizerRow = Array.isArray(row.event_organizers) ? row.event_organizers[0] : row.event_organizers
+    const cancellationRow = Array.isArray(row.event_cancellations) ? row.event_cancellations[0] : row.event_cancellations
+    const cancellation = cancellationRow && typeof cancellationRow === 'object'
+      ? { eventId: String(row.id), reason: String((cancellationRow as Record<string, unknown>).reason), cancelledAt: String((cancellationRow as Record<string, unknown>).cancelled_at), cancelledById: String((cancellationRow as Record<string, unknown>).cancelled_by_id) }
+      : null
+    const venue = venueRow && typeof venueRow === 'object'
+      ? { id: String(row.venue_id), name: String((venueRow as Record<string, unknown>).name), officialName: String((venueRow as Record<string, unknown>).name), aliasName: null, contacts: Array.isArray((venueRow as Record<string, unknown>).contacts) ? ((venueRow as Record<string, unknown>).contacts as Record<string, unknown>[]).map(contactFromRow) : [], address: ((venueRow as Record<string, unknown>).address as string | null) ?? null, website: ((venueRow as Record<string, unknown>).website as string | null) ?? null, loadingAccessNotes: ((venueRow as Record<string, unknown>).loading_access_notes as string | null) ?? null, latitude: null, longitude: null, contactInfo: null, createdAt: String((venueRow as Record<string, unknown>).created_at), updatedAt: String((venueRow as Record<string, unknown>).updated_at) }
+      : undefined
+    const eventOrganizer = organizerRow && typeof organizerRow === 'object'
+      ? { id: String(row.event_organizer_id), name: String((organizerRow as Record<string, unknown>).name), legalName: String((organizerRow as Record<string, unknown>).name), aliasName: null, contactInfo: null, npwp: ((organizerRow as Record<string, unknown>).npwp as string | null) ?? null, contacts: Array.isArray((organizerRow as Record<string, unknown>).contacts) ? ((organizerRow as Record<string, unknown>).contacts as Record<string, unknown>[]).map(contactFromRow) : [], address: ((organizerRow as Record<string, unknown>).address as string | null) ?? null, website: ((organizerRow as Record<string, unknown>).website as string | null) ?? null, createdAt: String((organizerRow as Record<string, unknown>).created_at), updatedAt: String((organizerRow as Record<string, unknown>).updated_at) }
+      : undefined
+    return { id: String(row.id), name: String(row.name), officialName: String(row.name), alias: null, venueId: String(row.venue_id), eventOrganizerId: String(row.event_organizer_id), eoId: String(row.event_organizer_id), startsOn: String(row.starts_on), endsOn: String(row.ends_on), startsAt: `${String(row.starts_on)}T00:00:00`, endsAt: `${String(row.ends_on)}T00:00:00`, createdAt: String(row.created_at), createdById: String(row.created_by_id), status: cancellation ? 'CANCELLED' as const : 'ACTIVE' as const, cancellationReason: cancellation?.reason ?? null, cancelledAt: cancellation?.cancelledAt ?? null, cancellation, venue, eventOrganizer }
+  })
 }
 
-export async function listEventExhibitors(eventId: string) {
-  const exhibitors = await readAll<LocalExhibitor>('exhibitors')
-  return exhibitors.filter((exhibitor) => exhibitor.eventId === eventId)
+export async function listVenues(): Promise<LocalVenue[]> {
+  const rows = await eventRecords<Array<Record<string, unknown>>>('venues')
+  return rows.map((row) => ({ id: String(row.id), name: String(row.name), officialName: String(row.name), aliasName: null, contacts: Array.isArray(row.contacts) ? (row.contacts as Record<string, unknown>[]).map(contactFromRow) : [], address: (row.address as string | null) ?? null, website: (row.website as string | null) ?? null, loadingAccessNotes: (row.loading_access_notes as string | null) ?? null, latitude: null, longitude: null, contactInfo: null, createdAt: String(row.created_at), updatedAt: String(row.updated_at) }))
 }
 
-export type EventExhibitorInput = Omit<
-  LocalExhibitor,
-  'id' | 'eventId' | 'createdAt' | 'updatedAt'
-> & { id?: string }
+export async function listEos(): Promise<LocalEo[]> {
+  const rows = await eventRecords<Array<Record<string, unknown>>>('event-organizers')
+  return rows.map((row) => ({ id: String(row.id), name: String(row.name), legalName: String(row.name), aliasName: null, contactInfo: null, npwp: (row.npwp as string | null) ?? null, contacts: Array.isArray(row.contacts) ? (row.contacts as Record<string, unknown>[]).map(contactFromRow) : [], address: (row.address as string | null) ?? null, website: (row.website as string | null) ?? null, createdAt: String(row.created_at), updatedAt: String(row.updated_at) }))
+}
+export async function listEventExhibitors(eventId: string): Promise<LocalExhibitor[]> {
+  const rows = await eventRecords<Array<Record<string, unknown>>>(
+    'exhibitors',
+    undefined,
+    new URLSearchParams({ eventId }),
+  )
+  return rows.map((row) => {
+    const contact = contactFromRow((row.contact as Record<string, unknown>) ?? {})
+    const shared = {
+      id: String(row.id),
+      eventId: String(row.event_id),
+      name: String(row.name),
+      legalName: String(row.name),
+      aliasName: null,
+      type: row.kind === 'LOCAL' ? 'LOCAL' as const : 'INTERNATIONAL' as const,
+      contact,
+      email: contact.email,
+      phone: contact.phone,
+      agentId: (row.agent_id as string | null) ?? null,
+      agent: null,
+      address: null,
+      countryCode: null,
+      createdAt: String(row.created_at),
+      createdById: String(row.created_by_id),
+      updatedAt: String(row.updated_at),
+    }
+    return row.kind === 'LOCAL'
+      ? { ...shared, kind: 'LOCAL' as const, npwp: (row.npwp as string | null) ?? null }
+      : { ...shared, kind: 'INTERNATIONAL' as const }
+  })
+}
+
+export type EventExhibitorInput =
+  | {
+      kind: 'LOCAL'
+      name: string
+      contact: ExhibitorContact
+      agentId: string | null
+      npwp: string | null
+    }
+  | {
+      kind: 'INTERNATIONAL'
+      name: string
+      contact: ExhibitorContact
+      agentId: string | null
+    }
+export type VenueInput = Pick<Venue, 'name' | 'contacts' | 'address' | 'website' | 'loadingAccessNotes'>
+export type EoInput = Pick<EventOrganizer, 'name' | 'npwp' | 'contacts' | 'address' | 'website'>
+export type EventInput = Pick<EventRecord, 'name' | 'venueId' | 'eventOrganizerId' | 'startsOn' | 'endsOn'>
 
 export async function saveEventExhibitors(eventId: string, inputs: EventExhibitorInput[]) {
-  const [existing, existingJobs, cipls] = await Promise.all([
-    listEventExhibitors(eventId),
-    readAll<LocalJob>('jobs'),
-    readAll<Cipl>('cipls'),
-  ])
-  const timestamp = now()
-  const existingById = new Map(existing.map((exhibitor) => [exhibitor.id, exhibitor]))
-  const jobsByExhibitor = new Map(
-    existingJobs.flatMap((job) => (job.exhibitorId ? [[job.exhibitorId, job] as const] : [])),
-  )
-  const submittedIds = new Set(inputs.flatMap((input) => (input.id ? [input.id] : [])))
-  const exhibitors = inputs.map((input) => {
-    const previous = input.id ? existingById.get(input.id) : undefined
-    if (input.id && !previous) throw new Error('Exhibitor tidak ditemukan dalam event ini.')
-    return {
-      ...input,
-      agent: input.type === 'LOCAL' ? null : (input.agent ?? null),
-      id: previous?.id ?? id(),
-      eventId,
-      createdAt: previous?.createdAt ?? timestamp,
-      updatedAt: timestamp,
-    }
-  })
-
-  const removed = existing.filter((exhibitor) => !submittedIds.has(exhibitor.id))
-  if (
-    removed.some(
-      (exhibitor) =>
-        jobsByExhibitor.has(exhibitor.id) ||
-        cipls.some((cipl) => cipl.eventExhibitorId === exhibitor.id),
-    )
-  ) {
-    throw new Error(
-      'Exhibitor yang sudah memiliki Job atau CIPL tidak dapat dihapus dari form ini.',
-    )
-  }
-
-  const usedJobNumbers = new Set(existingJobs.map((job) => job.jobNumber))
-  let sequence = existingJobs.length + 1
-  const nextJobNumber = () => {
-    let value = `VSS-${String(sequence++).padStart(4, '0')}`
-    while (usedJobNumbers.has(value)) value = `VSS-${String(sequence++).padStart(4, '0')}`
-    usedJobNumbers.add(value)
-    return value
-  }
-
-  removed.forEach((exhibitor) => remove('exhibitors', exhibitor.id))
-  await Promise.all(
-    exhibitors.flatMap((exhibitor) => {
-      const existingJob = jobsByExhibitor.get(exhibitor.id)
-      const job = existingJob
-        ? {
-            ...existingJob,
-            eventId,
-            exhibitorId: exhibitor.id,
-            clientName: exhibitor.legalName,
-            shipper: exhibitor.legalName,
-            agent: exhibitor.agent ?? null,
-            updatedAt: timestamp,
-          }
-        : initializeJobForExhibitor(exhibitor, nextJobNumber(), timestamp)
-      return [put('exhibitors', exhibitor), put('jobs', job)]
-    }),
-  )
-  return exhibitors
+  return Promise.all(inputs.map((input) => eventRecords<LocalExhibitor>('exhibitors', { method: 'POST', body: JSON.stringify({ ...input, eventId }) })))
 }
 
-export type EventInput = Pick<LocalEvent, 'officialName' | 'alias' | 'startsOn' | 'endsOn'> & {
-  venue: Omit<LocalVenue, 'id' | 'createdAt' | 'updatedAt'>
-  venueId?: string
-  eventOrganizer: Omit<LocalEo, 'id' | 'createdAt' | 'updatedAt'>
-  eoId?: string
+export async function saveVenue(input: VenueInput) {
+  return eventRecords<LocalVenue>('venues', { method: 'POST', body: JSON.stringify(input) })
 }
 
-export async function saveEvent(input: EventInput, existingId?: string) {
-  const [previous, venues, eos] = await Promise.all([
-    existingId
-      ? readAll<LocalEvent>('events').then((events) =>
-          events.find((event) => event.id === existingId),
-        )
-      : Promise.resolve(null),
-    readAll<LocalVenue>('venues'),
-    readAll<LocalEo>('eos'),
-  ])
-  const timestamp = now()
-  const selectedVenue = input.venueId ? venues.find((venue) => venue.id === input.venueId) : null
-  const selectedEo = input.eoId ? eos.find((eo) => eo.id === input.eoId) : null
-  const venue: LocalVenue = selectedVenue ?? {
-    ...input.venue,
-    id: id(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  }
-  const eventOrganizer: LocalEo = selectedEo ?? {
-    ...input.eventOrganizer,
-    id: id(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  }
-  const event: LocalEvent = {
-    id: existingId ?? id(),
-    officialName: input.officialName,
-    alias: input.alias,
-    startsOn: input.startsOn,
-    endsOn: input.endsOn,
-    startsAt: localMidnight(input.startsOn),
-    endsAt: localMidnight(input.endsOn),
-    venueId: venue.id,
-    eoId: eventOrganizer.id,
-    createdAt: previous?.createdAt ?? timestamp,
-    updatedAt: timestamp,
-    status: previous?.status ?? 'ACTIVE',
-    cancellationReason: previous?.cancellationReason ?? null,
-    cancelledAt: previous?.cancelledAt ?? null,
-  }
-  await Promise.all([put('venues', venue), put('eos', eventOrganizer), put('events', event)])
-  return event
+export async function saveEo(input: EoInput) {
+  return eventRecords<LocalEo>('event-organizers', { method: 'POST', body: JSON.stringify(input) })
+}
+
+export async function saveEvent(input: EventInput) {
+  return eventRecords<LocalEvent>('events', { method: 'POST', body: JSON.stringify(input) })
 }
 
 export async function cancelEvent(eventId: string, reason: string) {
-  const cancellationReason = reason.trim()
-  if (!cancellationReason) throw new Error('Alasan pembatalan wajib diisi.')
-
-  const event = (await readAll<LocalEvent>('events')).find((item) => item.id === eventId)
-  if (!event) throw new Error('Event tidak ditemukan.')
-  const timestamp = now()
-  return put('events', {
-    ...event,
-    status: 'CANCELLED' as const,
-    cancellationReason,
-    cancelledAt: timestamp,
-    updatedAt: timestamp,
-  })
+  await eventRecords<void>('events', { method: 'DELETE' }, new URLSearchParams({ eventId, reason }))
+  return (await listEvents()).find((event) => event.id === eventId) ?? null
 }
 
-export async function deleteEvent(eventId: string) {
-  const [exhibitors, cipls, shipments, customsJobs, legacyJobs] = await Promise.all([
-    listEventExhibitors(eventId),
-    readAll<Cipl>('cipls'),
-    readAll<Shipment>('shipmentsV2'),
-    readAll<CustomsJob>('customsJobs'),
-    readAll<LocalJob>('jobs'),
-  ])
-  const eventExhibitorIds = new Set(exhibitors.map((exhibitor) => exhibitor.id))
-  const ciplIds = new Set(
-    cipls.filter((cipl) => eventExhibitorIds.has(cipl.eventExhibitorId)).map((cipl) => cipl.id),
-  )
-  const shipmentIds = new Set(
-    shipments.filter((shipment) => ciplIds.has(shipment.ciplId)).map((shipment) => shipment.id),
-  )
-  if (
-    exhibitors.length ||
-    ciplIds.size ||
-    shipmentIds.size ||
-    customsJobs.some((job) => shipmentIds.has(job.shipmentId)) ||
-    legacyJobs.some((job) => job.eventId === eventId)
-  ) {
-    throw new Error('Event tidak dapat dihapus karena masih mempunyai data turunan.')
-  }
-  remove('events', eventId)
+export async function deleteEvent() {
+  throw new Error('Event bersifat immutable dan tidak dapat dihapus.')
 }
 
 export type JobInput = Pick<

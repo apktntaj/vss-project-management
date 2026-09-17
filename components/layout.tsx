@@ -59,6 +59,22 @@ export function AppShell({
   useEffect(() => {
     setMobileOpen(false)
   }, [pathname])
+  useEffect(() => {
+    const receiveToast = (event: Event) => {
+      const detail = (event as CustomEvent<{ message?: unknown; tone?: unknown }>).detail
+      if (
+        !detail ||
+        typeof detail.message !== 'string' ||
+        (detail.tone !== 'success' && detail.tone !== 'error')
+      ) {
+        return
+      }
+      setToast({ message: detail.message, tone: detail.tone })
+    }
+    window.addEventListener('vss:toast', receiveToast)
+    return () => window.removeEventListener('vss:toast', receiveToast)
+  }, [])
+
 
   function toggleSidebar() {
     setCollapsed((value) => {

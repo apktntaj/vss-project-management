@@ -29,15 +29,18 @@ export async function listRecords<T>(table: OperationalTable): Promise<T[]> {
   if (table === 'operational_users') {
     const { data, error } = await getSupabaseAdmin()
       .from('app_users')
-      .select('id, full_name, email, role, is_active')
+      .select('id, full_name, email, job_role, access_level, is_active, created_at, updated_at')
       .order('full_name')
     if (error) throw new Error(`Pengguna tidak dapat dimuat: ${error.message}`)
     return (data ?? []).map((user) => ({
       id: user.id,
       name: user.full_name,
       email: user.email,
-      role: user.role,
+      jobRole: user.job_role,
+      accessLevel: user.access_level,
       isActive: user.is_active,
+      createdAt: user.created_at,
+      updatedAt: user.updated_at,
     }) as T)
   }
   const id = await workspaceId()
@@ -54,7 +57,7 @@ export async function getRecord<T>(table: OperationalTable, recordId: string): P
   if (table === 'operational_users') {
     const { data, error } = await getSupabaseAdmin()
       .from('app_users')
-      .select('id, full_name, email, role, is_active')
+      .select('id, full_name, email, job_role, access_level, is_active, created_at, updated_at')
       .eq('id', recordId)
       .maybeSingle()
     if (error) throw new Error(`Pengguna tidak dapat dimuat: ${error.message}`)
@@ -62,8 +65,11 @@ export async function getRecord<T>(table: OperationalTable, recordId: string): P
       id: data.id,
       name: data.full_name,
       email: data.email,
-      role: data.role,
+      jobRole: data.job_role,
+      accessLevel: data.access_level,
       isActive: data.is_active,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
     } as T : null
   }
   const id = await workspaceId()
