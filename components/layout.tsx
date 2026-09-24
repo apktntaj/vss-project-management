@@ -12,7 +12,6 @@ import {
   LogOut,
   Package,
   Settings,
-  ShieldCheck,
   Menu,
   ChevronRight,
 } from 'lucide-react'
@@ -32,7 +31,6 @@ const links = [
   { href: '/events', label: 'Events', icon: CalendarDays },
   { href: '/jobs', label: 'Jobs', icon: BriefcaseBusiness },
   { href: '/kanban', label: 'Ticket Saya', icon: FolderKanban },
-  { href: '/lartas', label: 'Cek LARTAS', icon: ShieldCheck },
   { href: '/general-cargo', label: 'General Cargo', icon: Package, available: false },
   { href: '/projects', label: 'Projects', icon: FolderKanban, available: false },
 ]
@@ -74,7 +72,6 @@ export function AppShell({
     window.addEventListener('vss:toast', receiveToast)
     return () => window.removeEventListener('vss:toast', receiveToast)
   }, [])
-
 
   function toggleSidebar() {
     setCollapsed((value) => {
@@ -183,11 +180,6 @@ export function AppShell({
               <span className={collapsed ? 'md:hidden' : ''}>Settings</span>
             </Link>
           )}
-          <div className={`mb-3 min-w-0 px-3 ${collapsed ? 'md:hidden' : ''}`}>
-            <p className="truncate text-sm font-semibold text-white">
-              {user.name ?? 'Pengguna'}
-            </p>
-          </div>
           <form action={logoutAction}>
             <button
               type="submit"
@@ -251,9 +243,7 @@ export function AppShell({
                     </Link>
                   )}
                 </nav>
-                <p className="truncate text-sm text-muted-foreground">
-                  {user.name ?? 'Pengguna'}
-                </p>
+                <p className="truncate text-sm text-muted-foreground">{user.name ?? 'Pengguna'}</p>
                 <form action={logoutAction}>
                   <Button type="submit" variant="ghost">
                     <LogOut data-icon="inline-start" />
@@ -271,12 +261,12 @@ export function AppShell({
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="hidden text-xs text-muted-foreground lg:inline">
-              Operasional · Vissasa Parama Nati
+            <span className="hidden text-sm font-medium text-slate-700 lg:inline">
+              {user.name ?? 'Pengguna'}
             </span>
             <span
               title={user.name ?? 'Pengguna'}
-              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-primary"
+              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-orange-600 text-xs font-semibold text-white"
             >
               {(user.name ?? 'VSS')
                 .split(' ')

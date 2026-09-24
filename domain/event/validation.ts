@@ -29,8 +29,8 @@ export const venueInputSchema = z.object({
 
 export const eventInputSchema = z.object({
   name: z.string().trim().min(1, 'Nama event wajib diisi.'),
-  venueId: z.string().uuid(),
-  eventOrganizerId: z.string().uuid(),
+  venueId: z.string().trim().min(1, 'Venue wajib dipilih.'),
+  eventOrganizerId: z.string().trim().min(1, 'Event organizer wajib dipilih.'),
   startsOn: dateOnly,
   endsOn: dateOnly,
 }).superRefine((value, context) => {

@@ -932,6 +932,43 @@ export async function saveEo(input: EoInput) {
   return eventRecords<LocalEo>('event-organizers', { method: 'POST', body: JSON.stringify(input) })
 }
 
+export type SettingsUser = {
+  id: string
+  nama: string
+  email: string
+  jobRole?: string
+  isAdmin: boolean
+  isActive?: boolean
+}
+export type SettingsVenue = Pick<LocalVenue, 'id' | 'name' | 'address' | 'website' | 'loadingAccessNotes'>
+export type SettingsOrganizer = Pick<LocalEo, 'id' | 'name' | 'npwp' | 'address' | 'website'>
+export type SettingsData = { users: SettingsUser[]; venues: SettingsVenue[]; organizers: SettingsOrganizer[] }
+
+async function settingsRequest<T>(method: 'GET' | 'POST' | 'PATCH', body?: unknown): Promise<T> {
+  const response = await fetch('/api/settings', {
+    method,
+    cache: 'no-store',
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  const data = await response.json().catch(() => null) as T | { error?: string } | null
+  if (!response.ok) throw new Error(data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' ? data.error : 'Pengaturan tidak dapat diproses.')
+  return data as T
+}
+
+/** Reads administrator-managed users, venues, and event organizers. */
+export function getSettingsData() {
+  return settingsRequest<SettingsData>('GET')
+}
+
+export function createSettingsRecord<T>(resource: 'users' | 'venues' | 'organizers', input: unknown) {
+  return settingsRequest<T>('POST', { resource, input })
+}
+
+export function updateSettingsRecord<T>(resource: 'users' | 'venues' | 'organizers', id: string, input: unknown) {
+  return settingsRequest<T>('PATCH', { resource, id, input })
+}
+
 export async function saveEvent(input: EventInput) {
   return eventRecords<LocalEvent>('events', { method: 'POST', body: JSON.stringify(input) })
 }
