@@ -6,4 +6,5 @@ node_modules
 supabase/.temp/
 public/uploads/*
 !public/uploads/.gitkeep
+*.tsbuildinfo
 .env.example
