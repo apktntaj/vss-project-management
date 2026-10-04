@@ -15,10 +15,9 @@ import {
 } from 'lucide-react'
 import { EventForm } from '@/components/event-form'
 import {
-  listEventExhibitors,
   listCipls,
   listCiplVersions,
-  listEvents,
+  listEventsWithExhibitors,
   type LocalEvent,
   type LocalExhibitor,
 } from '@/lib/data-client'
@@ -168,35 +167,34 @@ export default function EventsPage() {
   const [status, setStatus] = useState<EventFilter>('all')
   const [loading, setLoading] = useState(true)
   const loadingStartedAt = useRef(Date.now())
+  const initialLoadStarted = useRef(false)
 
   const reloadEvents = () => {
     loadingStartedAt.current = Date.now()
     setLoading(true)
-    listEvents().then((loadedEvents) => {
+    listEventsWithExhibitors().then(async ({ events: loadedEvents, exhibitorsByEvent }) => {
       setEvents(loadedEvents)
-      Promise.all(
-        loadedEvents.map(async (event) => [event.id, await listEventExhibitors(event.id)] as const),
-      ).then(async (eventExhibitors) => {
-        setExhibitorsByEvent(Object.fromEntries(eventExhibitors))
-        const loadedCipls = await Promise.all(
-          eventExhibitors
-            .flatMap(([, exhibitors]) => exhibitors)
-            .map(async (exhibitor) => {
-              const exhibitorCipls = await listCipls(exhibitor.id)
-              return Promise.all(
-                exhibitorCipls.map(async (cipl) => ({
-                  cipl,
-                  versions: await listCiplVersions(cipl.id),
-                })),
-              )
-            }),
-        )
-        setCipls(loadedCipls.flat())
-        finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
-      })
+      setExhibitorsByEvent(exhibitorsByEvent)
+      const loadedCipls = await Promise.all(
+        Object.values(exhibitorsByEvent)
+          .flat()
+          .map(async (exhibitor) => {
+            const exhibitorCipls = await listCipls(exhibitor.id)
+            return Promise.all(
+              exhibitorCipls.map(async (cipl) => ({
+                cipl,
+                versions: await listCiplVersions(cipl.id),
+              })),
+            )
+          }),
+      )
+      setCipls(loadedCipls.flat())
+      finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
     })
   }
   useEffect(() => {
+    if (initialLoadStarted.current) return
+    initialLoadStarted.current = true
     reloadEvents()
   }, [])
 

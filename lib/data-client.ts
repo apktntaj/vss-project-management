@@ -815,7 +815,7 @@ export async function listEventJobs(eventId: string) {
   return jobs.filter((job) => job.eventId === eventId)
 }
 
-type EventResource = 'venues' | 'event-organizers' | 'events' | 'exhibitors'
+type EventResource = 'venues' | 'event-organizers'
 
 async function eventRecords<T>(
   resource: EventResource,
@@ -831,6 +831,26 @@ async function eventRecords<T>(
   if (!response.ok) throw new Error(data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' ? data.error : 'Data event tidak dapat diproses.')
   return data as T
 }
+async function eventsRequest<T>(path = '/api/events', init?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    cache: 'no-store',
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+  })
+  const data = await response.json().catch(() => null) as T | { error?: string } | null
+  if (!response.ok) {
+    throw new Error(
+      data &&
+        typeof data === 'object' &&
+        'error' in data &&
+        typeof data.error === 'string'
+        ? data.error
+        : 'Data event tidak dapat diproses.',
+    )
+  }
+  return data as T
+}
+
 
 function contactFromRow(value: Record<string, unknown>): Contact {
   return {
@@ -842,24 +862,134 @@ function contactFromRow(value: Record<string, unknown>): Contact {
   }
 }
 
-export async function listEvents(): Promise<LocalEvent[]> {
-  const rows = await eventRecords<Array<Record<string, unknown>>>('events')
-  return rows.map((row) => {
-    const venueRow = Array.isArray(row.venues) ? row.venues[0] : row.venues
-    const organizerRow = Array.isArray(row.event_organizers) ? row.event_organizers[0] : row.event_organizers
-    const cancellationRow = Array.isArray(row.event_cancellations) ? row.event_cancellations[0] : row.event_cancellations
-    const cancellation = cancellationRow && typeof cancellationRow === 'object'
-      ? { eventId: String(row.id), reason: String((cancellationRow as Record<string, unknown>).reason), cancelledAt: String((cancellationRow as Record<string, unknown>).cancelled_at), cancelledById: String((cancellationRow as Record<string, unknown>).cancelled_by_id) }
+function eventFromRow(row: Record<string, unknown>): LocalEvent {
+  const venueRow = Array.isArray(row.venues) ? row.venues[0] : row.venues
+  const organizerRow = Array.isArray(row.event_organizers)
+    ? row.event_organizers[0]
+    : row.event_organizers
+  const cancellationRow = Array.isArray(row.event_cancellations)
+    ? row.event_cancellations[0]
+    : row.event_cancellations
+  const cancellation =
+    cancellationRow && typeof cancellationRow === 'object'
+      ? {
+          eventId: String(row.id),
+          reason: String((cancellationRow as Record<string, unknown>).reason),
+          cancelledAt: String((cancellationRow as Record<string, unknown>).cancelled_at),
+          cancelledById: String((cancellationRow as Record<string, unknown>).cancelled_by_id),
+        }
       : null
-    const venue = venueRow && typeof venueRow === 'object'
-      ? { id: String(row.venue_id), name: String((venueRow as Record<string, unknown>).name), officialName: String((venueRow as Record<string, unknown>).name), aliasName: null, contacts: Array.isArray((venueRow as Record<string, unknown>).contacts) ? ((venueRow as Record<string, unknown>).contacts as Record<string, unknown>[]).map(contactFromRow) : [], address: ((venueRow as Record<string, unknown>).address as string | null) ?? null, website: ((venueRow as Record<string, unknown>).website as string | null) ?? null, loadingAccessNotes: ((venueRow as Record<string, unknown>).loading_access_notes as string | null) ?? null, latitude: null, longitude: null, contactInfo: null, createdAt: String((venueRow as Record<string, unknown>).created_at), updatedAt: String((venueRow as Record<string, unknown>).updated_at) }
+  const venue =
+    venueRow && typeof venueRow === 'object'
+      ? {
+          id: String(row.venue_id),
+          name: String((venueRow as Record<string, unknown>).name),
+          officialName: String((venueRow as Record<string, unknown>).name),
+          aliasName: null,
+          contacts: Array.isArray((venueRow as Record<string, unknown>).contacts)
+            ? ((venueRow as Record<string, unknown>).contacts as Record<string, unknown>[]).map(
+                contactFromRow,
+              )
+            : [],
+          address: ((venueRow as Record<string, unknown>).address as string | null) ?? null,
+          website: ((venueRow as Record<string, unknown>).website as string | null) ?? null,
+          loadingAccessNotes:
+            ((venueRow as Record<string, unknown>).loading_access_notes as string | null) ?? null,
+          latitude: null,
+          longitude: null,
+          contactInfo: null,
+          createdAt: String((venueRow as Record<string, unknown>).created_at),
+          updatedAt: String((venueRow as Record<string, unknown>).updated_at),
+        }
       : undefined
-    const eventOrganizer = organizerRow && typeof organizerRow === 'object'
-      ? { id: String(row.event_organizer_id), name: String((organizerRow as Record<string, unknown>).name), legalName: String((organizerRow as Record<string, unknown>).name), aliasName: null, contactInfo: null, npwp: ((organizerRow as Record<string, unknown>).npwp as string | null) ?? null, contacts: Array.isArray((organizerRow as Record<string, unknown>).contacts) ? ((organizerRow as Record<string, unknown>).contacts as Record<string, unknown>[]).map(contactFromRow) : [], address: ((organizerRow as Record<string, unknown>).address as string | null) ?? null, website: ((organizerRow as Record<string, unknown>).website as string | null) ?? null, createdAt: String((organizerRow as Record<string, unknown>).created_at), updatedAt: String((organizerRow as Record<string, unknown>).updated_at) }
+  const eventOrganizer =
+    organizerRow && typeof organizerRow === 'object'
+      ? {
+          id: String(row.event_organizer_id),
+          name: String((organizerRow as Record<string, unknown>).name),
+          legalName: String((organizerRow as Record<string, unknown>).name),
+          aliasName: null,
+          contactInfo: null,
+          npwp: ((organizerRow as Record<string, unknown>).npwp as string | null) ?? null,
+          contacts: Array.isArray((organizerRow as Record<string, unknown>).contacts)
+            ? (
+                (organizerRow as Record<string, unknown>).contacts as Record<string, unknown>[]
+              ).map(contactFromRow)
+            : [],
+          address: ((organizerRow as Record<string, unknown>).address as string | null) ?? null,
+          website: ((organizerRow as Record<string, unknown>).website as string | null) ?? null,
+          createdAt: String((organizerRow as Record<string, unknown>).created_at),
+          updatedAt: String((organizerRow as Record<string, unknown>).updated_at),
+        }
       : undefined
-    return { id: String(row.id), name: String(row.name), officialName: String(row.name), alias: null, venueId: String(row.venue_id), eventOrganizerId: String(row.event_organizer_id), eoId: String(row.event_organizer_id), startsOn: String(row.starts_on), endsOn: String(row.ends_on), startsAt: `${String(row.starts_on)}T00:00:00`, endsAt: `${String(row.ends_on)}T00:00:00`, createdAt: String(row.created_at), createdById: String(row.created_by_id), status: cancellation ? 'CANCELLED' as const : 'ACTIVE' as const, cancellationReason: cancellation?.reason ?? null, cancelledAt: cancellation?.cancelledAt ?? null, cancellation, venue, eventOrganizer }
-  })
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    officialName: String(row.name),
+    alias: null,
+    venueId: String(row.venue_id),
+    eventOrganizerId: String(row.event_organizer_id),
+    eoId: String(row.event_organizer_id),
+    startsOn: String(row.starts_on),
+    endsOn: String(row.ends_on),
+    startsAt: `${String(row.starts_on)}T00:00:00`,
+    endsAt: `${String(row.ends_on)}T00:00:00`,
+    createdAt: String(row.created_at),
+    createdById: String(row.created_by_id),
+    status: cancellation ? 'CANCELLED' : 'ACTIVE',
+    cancellationReason: cancellation?.reason ?? null,
+    cancelledAt: cancellation?.cancelledAt ?? null,
+    cancellation,
+    venue,
+    eventOrganizer,
+  }
 }
+
+function exhibitorFromRow(row: Record<string, unknown>): LocalExhibitor {
+  const contact = contactFromRow((row.contact as Record<string, unknown>) ?? {})
+  const shared = {
+    id: String(row.id),
+    eventId: String(row.event_id),
+    name: String(row.name),
+    legalName: String(row.name),
+    aliasName: null,
+    type: row.kind === 'LOCAL' ? 'LOCAL' as const : 'INTERNATIONAL' as const,
+    contact,
+    email: contact.email,
+    phone: contact.phone,
+    agentId: (row.agent_id as string | null) ?? null,
+    agent: null,
+    address: null,
+    countryCode: null,
+    createdAt: String(row.created_at),
+    createdById: String(row.created_by_id),
+    updatedAt: String(row.updated_at),
+  }
+  return row.kind === 'LOCAL'
+    ? { ...shared, kind: 'LOCAL', npwp: (row.npwp as string | null) ?? null }
+    : { ...shared, kind: 'INTERNATIONAL' }
+}
+
+export async function listEvents(): Promise<LocalEvent[]> {
+  const rows = await eventsRequest<Array<Record<string, unknown>>>()
+  return rows.map(eventFromRow)
+}
+
+export async function listEventsWithExhibitors() {
+  const rows = await eventsRequest<Array<Record<string, unknown>>>()
+  return {
+    events: rows.map(eventFromRow),
+    exhibitorsByEvent: Object.fromEntries(
+      rows.map((row) => [
+        String(row.id),
+        Array.isArray(row.exhibitors)
+          ? (row.exhibitors as Record<string, unknown>[]).map(exhibitorFromRow)
+          : [],
+      ]),
+    ) as Record<string, LocalExhibitor[]>,
+  }
+}
+
 
 export async function listVenues(): Promise<LocalVenue[]> {
   const rows = await eventRecords<Array<Record<string, unknown>>>('venues')
@@ -869,37 +999,6 @@ export async function listVenues(): Promise<LocalVenue[]> {
 export async function listEos(): Promise<LocalEo[]> {
   const rows = await eventRecords<Array<Record<string, unknown>>>('event-organizers')
   return rows.map((row) => ({ id: String(row.id), name: String(row.name), legalName: String(row.name), aliasName: null, contactInfo: null, npwp: (row.npwp as string | null) ?? null, contacts: Array.isArray(row.contacts) ? (row.contacts as Record<string, unknown>[]).map(contactFromRow) : [], address: (row.address as string | null) ?? null, website: (row.website as string | null) ?? null, createdAt: String(row.created_at), updatedAt: String(row.updated_at) }))
-}
-export async function listEventExhibitors(eventId: string): Promise<LocalExhibitor[]> {
-  const rows = await eventRecords<Array<Record<string, unknown>>>(
-    'exhibitors',
-    undefined,
-    new URLSearchParams({ eventId }),
-  )
-  return rows.map((row) => {
-    const contact = contactFromRow((row.contact as Record<string, unknown>) ?? {})
-    const shared = {
-      id: String(row.id),
-      eventId: String(row.event_id),
-      name: String(row.name),
-      legalName: String(row.name),
-      aliasName: null,
-      type: row.kind === 'LOCAL' ? 'LOCAL' as const : 'INTERNATIONAL' as const,
-      contact,
-      email: contact.email,
-      phone: contact.phone,
-      agentId: (row.agent_id as string | null) ?? null,
-      agent: null,
-      address: null,
-      countryCode: null,
-      createdAt: String(row.created_at),
-      createdById: String(row.created_by_id),
-      updatedAt: String(row.updated_at),
-    }
-    return row.kind === 'LOCAL'
-      ? { ...shared, kind: 'LOCAL' as const, npwp: (row.npwp as string | null) ?? null }
-      : { ...shared, kind: 'INTERNATIONAL' as const }
-  })
 }
 
 export type EventExhibitorInput =
@@ -921,7 +1020,10 @@ export type EoInput = Pick<EventOrganizer, 'name' | 'npwp' | 'contacts' | 'addre
 export type EventInput = Pick<EventRecord, 'name' | 'venueId' | 'eventOrganizerId' | 'startsOn' | 'endsOn'>
 
 export async function saveEventExhibitors(eventId: string, inputs: EventExhibitorInput[]) {
-  return Promise.all(inputs.map((input) => eventRecords<LocalExhibitor>('exhibitors', { method: 'POST', body: JSON.stringify({ ...input, eventId }) })))
+  return eventsRequest<LocalExhibitor[]>(
+    `/api/events/${encodeURIComponent(eventId)}/exhibitors`,
+    { method: 'POST', body: JSON.stringify(inputs) },
+  )
 }
 
 export async function saveVenue(input: VenueInput) {
@@ -970,11 +1072,17 @@ export function updateSettingsRecord<T>(resource: 'users' | 'venues' | 'organize
 }
 
 export async function saveEvent(input: EventInput) {
-  return eventRecords<LocalEvent>('events', { method: 'POST', body: JSON.stringify(input) })
+  return eventsRequest<LocalEvent>('/api/events', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
 }
 
 export async function cancelEvent(eventId: string, reason: string) {
-  await eventRecords<void>('events', { method: 'DELETE' }, new URLSearchParams({ eventId, reason }))
+  await eventsRequest<void>(`/api/events/${encodeURIComponent(eventId)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ reason }),
+  })
   return (await listEvents()).find((event) => event.id === eventId) ?? null
 }
 

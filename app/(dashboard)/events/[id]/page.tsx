@@ -16,9 +16,8 @@ import { useParams } from 'next/navigation'
 import {
   cancelEvent,
   listCipls,
-  listEventExhibitors,
   listEventJobs,
-  listEvents,
+  listEventsWithExhibitors,
   type LocalEvent,
   type LocalExhibitor,
   type LocalJob,
@@ -49,8 +48,9 @@ export default function EventDetailPage() {
 
   useEffect(() => {
     loadingStartedAt.current = Date.now()
-    Promise.all([listEvents(), listEventExhibitors(params.id), listEventJobs(params.id)]).then(
-      ([events, eventExhibitors, eventJobs]) => {
+    Promise.all([listEventsWithExhibitors(), listEventJobs(params.id)]).then(
+      ([{ events, exhibitorsByEvent }, eventJobs]) => {
+        const eventExhibitors = exhibitorsByEvent[params.id] ?? []
         setEvent(events.find((item) => item.id === params.id) ?? null)
         setExhibitors(eventExhibitors)
         setJobs(eventJobs)

@@ -10,7 +10,7 @@ import {
   listCiplVersions,
   listShipments,
   type LocalExhibitor,
-  listEventExhibitors,
+  listEventsWithExhibitors,
 } from '@/lib/data-client'
 import type { Attachment, Cipl, CiplVersion, Shipment } from '@/domain/exhibition/types'
 import { StatusBadge } from '@/components/status-badge'
@@ -84,8 +84,8 @@ function OpenAttachment({ attachment }: { attachment: Attachment }) {
 }
 
 async function listEventExhibitorsForCipl(exhibitorId: string) {
-  // Exhibition membership is scoped to an event; no global exhibitor lookup is allowed.
-  const events = await (await import('@/lib/data-client')).listEvents()
-  const groups = await Promise.all(events.map((event) => listEventExhibitors(event.id)))
-  return groups.flat().filter((exhibitor) => exhibitor.id === exhibitorId)
+  const { exhibitorsByEvent } = await listEventsWithExhibitors()
+  return Object.values(exhibitorsByEvent)
+    .flat()
+    .filter((exhibitor) => exhibitor.id === exhibitorId)
 }
