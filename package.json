@@ -9,7 +9,9 @@
     "lint": "next lint",
     "data:build": "node scripts/build-discovery-dataset.mjs",
     "domain:demo": "tsx domain/v2/demo.ts",
-    "domain:test": "tsx domain/v2/validation.test.ts && tsx domain/exhibition/validation.test.ts && tsx domain/user/validation.test.ts && tsx domain/ticket/validation.test.ts",
+    "domain:test": "bun test domain/v2/validation.test.ts domain/event/validation.test.ts domain/exhibition/validation.test.ts domain/user/validation.test.ts domain/user/user.test.ts domain/ticket/validation.test.ts lib/document-comparison.test.ts",
+    "supabase:create-user": "tsx scripts/create-supabase-user.ts",
+    "supabase:seed-reference": "tsx scripts/seed-exhibition-reference.ts",
     "domain:validate-samples": "tsx domain/v2/validate-samples.mts"
   },
   "dependencies": {
@@ -17,7 +19,8 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@supabase/supabase-js": "^2.117.2",
+    "@supabase/ssr": "0.12.7",
+    "@supabase/supabase-js": "2.116.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "2.1.1",
     "cn": "^0.2.6",
@@ -36,6 +39,7 @@
     "@types/react": "18.3.18",
     "@types/react-dom": "18.3.5",
     "autoprefixer": "10.4.20",
+    "bun-types": "^1.4.2",
     "eslint": "^8.57.1",
     "eslint-config-next": "^14.2.33",
     "postcss": "8.4.49",

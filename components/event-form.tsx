@@ -1,522 +1,112 @@
 'use client'
 
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import {
   listEos,
-  listEventExhibitors,
   listVenues,
+  saveEo,
   saveEvent,
-  saveEventExhibitors,
-  type EventExhibitorInput,
+  saveVenue,
+  type EoInput,
   type LocalEo,
-  type LocalEvent,
   type LocalVenue,
+  type VenueInput,
 } from '@/lib/data-client'
-import { finishLoadingAfterMinimum, FormSkeleton } from '@/components/loading-skeletons'
+import { FormSkeleton } from '@/components/loading-skeletons'
 
-function text(value: FormDataEntryValue | null) {
-  return String(value || '')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
+const noContacts = [] as const
 
 function optional(value: FormDataEntryValue | null) {
-  return text(value) || null
+  const text = String(value ?? '').trim()
+  return text || null
 }
 
-function normalizeInput(event: FormEvent<HTMLInputElement | HTMLTextAreaElement>) {
-  event.currentTarget.value = event.currentTarget.value.replace(/\s{2,}/g, ' ').toUpperCase()
+function toast(message: string, tone: 'success' | 'error') {
+  window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
 }
 
-function parseDateInput(value: string) {
-  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
-  const displayMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value)
-  if (!isoMatch && !displayMatch) return null
-
-  const [, isoYear, isoMonth, isoDay] = isoMatch ?? []
-  const [, displayDay, displayMonth, displayYear] = displayMatch ?? []
-  const year = isoYear || displayYear
-  const month = isoMonth || displayMonth
-  const day = isoDay || displayDay
-  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
-  if (
-    date.getUTCFullYear() !== Number(year) ||
-    date.getUTCMonth() !== Number(month) - 1 ||
-    date.getUTCDate() !== Number(day)
-  ) {
-    return null
-  }
-
-  return date
-}
-
-function formatDateInput(value: string | Date) {
-  const date = typeof value === 'string' ? parseDateInput(value) : value
-  if (!date) return ''
-  return date.toISOString().slice(0, 10)
-}
-
-function RelationPicker({
-  label,
-  placeholder,
-  items,
-  query,
-  onQueryChange,
-  onSelect,
-  selected,
-  required = false,
-}: {
-  label: string
-  placeholder: string
-  items: Array<LocalVenue | LocalEo>
-  query: string
-  onQueryChange: (value: string) => void
-  onSelect: (item: LocalVenue | LocalEo) => void
-  selected: LocalVenue | LocalEo | null
-  required?: boolean
-}) {
-  const matches = items
-    .filter((item) => {
-      const name = 'officialName' in item ? item.officialName : item.legalName
-      const alias = 'officialName' in item ? item.aliasName : item.aliasName
-      return `${name} ${alias || ''}`.toLowerCase().includes(query.toLowerCase())
-    })
-    .slice(0, 6)
-
-  return (
-    <div>
-      <label className="label">
-        {label}{required && <span aria-hidden="true" className="text-destructive"> *</span>}
-        <span className="relative block">
-          <input
-            value={query}
-            onChange={(event) => onQueryChange(event.target.value.toUpperCase())}
-            placeholder={placeholder}
-            className="input w-full uppercase"
-            autoComplete="off"
-            required={required}
-            aria-required={required}
-          />
-        </span>
-      </label>
-      {selected && (
-        <p className="mt-2 text-xs text-emerald-700">
-          Terpilih: {'officialName' in selected ? selected.officialName : selected.legalName}
-        </p>
-      )}
-      {query && !selected && (
-        <div className="mt-1 overflow-hidden rounded-lg border bg-white shadow-sm">
-          {matches.map((item) => (
-            <button
-              type="button"
-              key={item.id}
-              onClick={() => onSelect(item)}
-              className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
-            >
-              {'officialName' in item ? item.officialName : item.legalName}
-              <span className="ml-2 text-xs text-slate-500">
-                {'aliasName' in item && item.aliasName ? item.aliasName : ''}
-              </span>
-            </button>
-          ))}
-          {!matches.length && (
-            <p className="px-3 py-2 text-sm text-slate-500">Belum ada data yang cocok.</p>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-export function EventForm({
-  event,
-  enableExhibitors = false,
-  onSaved,
-  onCancel,
-}: {
-  event?: LocalEvent
-  enableExhibitors?: boolean
-  onSaved: () => void
-  onCancel: () => void
-}) {
-  const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
+export function EventForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
   const [venues, setVenues] = useState<LocalVenue[]>([])
-  const [eos, setEos] = useState<LocalEo[]>([])
-  const [venueQuery, setVenueQuery] = useState('')
-  const [eoQuery, setEoQuery] = useState('')
-  const [selectedVenue, setSelectedVenue] = useState<LocalVenue | null>(null)
-  const [selectedEo, setSelectedEo] = useState<LocalEo | null>(null)
-  const [startsAt, setStartsAt] = useState('')
-  const [endsAt, setEndsAt] = useState('')
-  const [endDateEdited, setEndDateEdited] = useState(false)
-  const [exhibitors, setExhibitors] = useState<EventExhibitorInput[]>([])
+  const [organizers, setOrganizers] = useState<LocalEo[]>([])
+  const [venueId, setVenueId] = useState('')
+  const [organizerId, setOrganizerId] = useState('')
+  const [createVenue, setCreateVenue] = useState(false)
+  const [createOrganizer, setCreateOrganizer] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
-  const loadingStartedAt = useRef(Date.now())
+  const [error, setError] = useState('')
 
   useEffect(() => {
-    loadingStartedAt.current = Date.now()
-    setLoading(true)
-    Promise.all([
-      listVenues(),
-      listEos(),
-      enableExhibitors && event ? listEventExhibitors(event.id) : Promise.resolve([]),
-    ]).then(([loadedVenues, loadedEos, loadedExhibitors]) => {
-      setVenues(loadedVenues)
-      setEos(loadedEos)
-      if (enableExhibitors) {
-        setExhibitors(
-          loadedExhibitors.map(({ eventId, createdAt, updatedAt, ...exhibitor }) => exhibitor),
-        )
-      }
-      if (event) {
-        const venue = loadedVenues.find((item) => item.id === event.venueId) ?? null
-        const eo = loadedEos.find((item) => item.id === event.eoId) ?? null
-        setVenueQuery(venue?.officialName ?? '')
-        setSelectedVenue(venue)
-        setEoQuery(eo?.legalName ?? '')
-        setSelectedEo(eo)
-        setStartsAt(formatDateInput(event.startsOn))
-        setEndsAt(formatDateInput(event.endsOn))
-        setEndDateEdited(true)
-      }
-      finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
-    })
-  }, [enableExhibitors, event])
+    Promise.all([listVenues(), listEos()])
+      .then(([loadedVenues, loadedOrganizers]) => {
+        setVenues(loadedVenues)
+        setOrganizers(loadedOrganizers)
+      })
+      .catch((caught) => {
+        const message = caught instanceof Error ? caught.message : 'Data EO dan venue tidak dapat dimuat.'
+        setError(message)
+        toast(message, 'error')
+      })
+      .finally(() => setLoading(false))
+  }, [])
 
-  function updateExhibitor(index: number, field: keyof EventExhibitorInput, value: string) {
-    setExhibitors((current) =>
-      current.map((exhibitor, currentIndex) =>
-        currentIndex === index
-          ? {
-              ...exhibitor,
-              [field]: value || null,
-              ...(field === 'type' && value === 'LOCAL' ? { agent: null } : {}),
-            }
-          : exhibitor,
-      ),
-    )
-  }
-
-  async function submit(form: FormData) {
-    const startDate = parseDateInput(startsAt)
-    const endDate = parseDateInput(endsAt)
-    if (!startDate || !endDate || endDate < startDate) {
-      setError('Tanggal selesai harus sama dengan atau setelah tanggal mulai.')
-      return
-    }
-    if (!selectedVenue) {
-      setError('Pilih venue yang sudah ada.')
-      return
-    }
-    if (!selectedEo) {
-      setError('Pilih EO yang sudah ada.')
-      return
-    }
-    if (enableExhibitors && exhibitors.some((exhibitor) => !exhibitor.legalName?.trim())) {
-      setError('Nama legal setiap exhibitor wajib diisi atau barisnya dihapus.')
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const startsOn = String(form.get('startsOn') ?? '')
+    const endsOn = String(form.get('endsOn') ?? '')
+    if (endsOn < startsOn) {
+      setError('Tanggal akhir harus sama dengan atau setelah tanggal mulai.')
       return
     }
 
     setSaving(true)
     setError('')
     try {
-      const number = (name: string) => {
-        const value = optional(form.get(name))
-        return value === null ? null : Number(value)
+      const newVenue: VenueInput = {
+        name: String(form.get('venueName') ?? '').trim(), contacts: noContacts.slice(), address: optional(form.get('venueAddress')), website: optional(form.get('venueWebsite')), loadingAccessNotes: optional(form.get('loadingAccessNotes')),
       }
-      const latitude = number('latitude')
-      const longitude = number('longitude')
-      if (
-        (latitude !== null && Number.isNaN(latitude)) ||
-        (longitude !== null && Number.isNaN(longitude))
-      ) {
-        setError('Latitude dan longitude harus berupa angka.')
-        return
+      const newOrganizer: EoInput = {
+        name: String(form.get('organizerName') ?? '').trim(), npwp: optional(form.get('organizerNpwp')), contacts: noContacts.slice(), address: optional(form.get('organizerAddress')), website: optional(form.get('organizerWebsite')),
       }
-
-      const savedEvent = await saveEvent(
-        {
-          officialName: text(form.get('officialName')),
-          alias: event?.alias ?? null,
-          startsOn: startDate.toISOString().slice(0, 10),
-          endsOn: endDate.toISOString().slice(0, 10),
-          venue: {
-            officialName: selectedVenue.officialName,
-            aliasName: selectedVenue.aliasName,
-            address: selectedVenue.address,
-            latitude: selectedVenue.latitude ?? latitude,
-            longitude: selectedVenue.longitude ?? longitude,
-            contactInfo: selectedVenue.contactInfo,
-          },
-          venueId: selectedVenue?.id,
-          eventOrganizer: {
-            legalName: selectedEo.legalName,
-            aliasName: selectedEo.aliasName,
-            contactInfo: selectedEo.contactInfo,
-          },
-          eoId: selectedEo?.id,
-        },
-        event?.id,
-      )
-      if (enableExhibitors) await saveEventExhibitors(savedEvent.id, exhibitors)
+      const selectedVenueId = createVenue ? (await saveVenue(newVenue)).id : venueId
+      const selectedOrganizerId = createOrganizer ? (await saveEo(newOrganizer)).id : organizerId
+      if (!selectedVenueId || !selectedOrganizerId) throw new Error('Pilih atau buat EO dan venue terlebih dahulu.')
+      await saveEvent({ name: String(form.get('name') ?? '').trim(), venueId: selectedVenueId, eventOrganizerId: selectedOrganizerId, startsOn, endsOn })
+      toast('Event berhasil dibuat.', 'success')
       onSaved()
-    } catch {
-      setError('Tidak dapat menyimpan event di IndexedDB.')
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : 'Event tidak dapat dibuat.'
+      setError(message)
+      toast(message, 'error')
     } finally {
       setSaving(false)
     }
   }
 
-  if (loading) return <FormSkeleton fields={8} />
+  if (loading) return <FormSkeleton fields={6} />
 
   return (
-    <form action={submit} className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 space-y-8 overflow-y-auto p-6 sm:p-8">
-        <section>
-          <div className="mt-4 grid gap-5 sm:grid-cols-2">
-            <RelationPicker
-              label="Event Organizer"
-              placeholder="Ketik untuk mencari EO"
-              items={eos}
-              query={eoQuery}
-              onQueryChange={(value) => {
-                setEoQuery(value)
-                setSelectedEo(null)
-              }}
-              onSelect={(item) => {
-                setSelectedEo(item as LocalEo)
-                setEoQuery((item as LocalEo).legalName)
-              }}
-              selected={selectedEo}
-              required
-            />
-            <RelationPicker
-              label="Venue"
-              placeholder="Ketik untuk mencari venue"
-              items={venues}
-              query={venueQuery}
-              onQueryChange={(value) => {
-                setVenueQuery(value)
-                setSelectedVenue(null)
-              }}
-              onSelect={(item) => {
-                setSelectedVenue(item as LocalVenue)
-                setVenueQuery((item as LocalVenue).officialName)
-              }}
-              selected={selectedVenue}
-              required
-            />
-          </div>
-        </section>
-
-        <section>
-          <div className="mt-4 grid gap-5 sm:grid-cols-2">
-            <label className="label sm:col-span-2">
-              Pameran
-              <input
-                required
-                name="officialName"
-                defaultValue={event?.officialName ?? ''}
-                onInput={normalizeInput}
-                className="input uppercase"
-              />
-            </label>
-            <label className="label">
-              Tanggal mulai
-              <input
-                required
-                type="date"
-                name="startsAt"
-                value={startsAt}
-                onChange={(event) => {
-                  setStartsAt(event.target.value)
-                  if (!endDateEdited) {
-                    const start = parseDateInput(event.target.value)
-                    if (start) {
-                      start.setUTCDate(start.getUTCDate() + 3)
-                      setEndsAt(formatDateInput(start))
-                    }
-                  }
-                }}
-                className="input"
-              />
-            </label>
-            <label className="label">
-              Tanggal selesai
-              <input
-                required
-                type="date"
-                name="endsAt"
-                value={endsAt}
-                min={startsAt || undefined}
-                onChange={(event) => {
-                  setEndsAt(event.target.value)
-                  setEndDateEdited(true)
-                }}
-                className="input"
-              />
-            </label>
-          </div>
-        </section>
-
-        {enableExhibitors && (
-          <section className="border-t pt-8">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">List of exhibitor</h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Tambahkan perusahaan exhibitor yang terlibat dalam event ini.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() =>
-                  setExhibitors((current) => [
-                    ...current,
-                    {
-                      legalName: '',
-                      aliasName: null,
-                      type: 'LOCAL',
-                      email: null,
-                      phone: null,
-                      agent: null,
-                      address: null,
-                      countryCode: null,
-                    },
-                  ])
-                }
-                className="btn-secondary shrink-0"
-              >
-                + Tambah exhibitor
-              </button>
-            </div>
-            <div className="mt-5 space-y-5">
-              {exhibitors.map((exhibitor, index) => (
-                <div
-                  key={index}
-                  className="rounded-xl border border-black/10 bg-slate-50 p-4 sm:p-5"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <p className="text-sm font-semibold text-slate-800">Exhibitor {index + 1}</p>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setExhibitors((current) =>
-                          current.filter((_, currentIndex) => currentIndex !== index),
-                        )
-                      }
-                      className="text-sm font-semibold text-rose-700 hover:text-rose-800"
-                    >
-                      Hapus
-                    </button>
-                  </div>
-                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                    <label className="label">
-                      Nama legal
-                      <input
-                        required
-                        value={exhibitor.legalName}
-                        onChange={(input) =>
-                          updateExhibitor(index, 'legalName', input.target.value.toUpperCase())
-                        }
-                        className="input uppercase"
-                      />
-                    </label>
-                    <label className="label">
-                      Nama alias
-                      <input
-                        value={exhibitor.aliasName ?? ''}
-                        onChange={(input) =>
-                          updateExhibitor(index, 'aliasName', input.target.value.toUpperCase())
-                        }
-                        className="input uppercase"
-                      />
-                    </label>
-                    <label className="label">
-                      Tipe exhibitor
-                      <select
-                        value={exhibitor.type}
-                        onChange={(input) => updateExhibitor(index, 'type', input.target.value)}
-                        className="input"
-                      >
-                        <option value="LOCAL">Local</option>
-                        <option value="INTERNATIONAL">International</option>
-                      </select>
-                    </label>
-                    <label className="label">
-                      Country code
-                      <input
-                        value={exhibitor.countryCode ?? ''}
-                        onChange={(input) =>
-                          updateExhibitor(index, 'countryCode', input.target.value.toUpperCase())
-                        }
-                        placeholder="Contoh: ID"
-                        maxLength={2}
-                        className="input uppercase"
-                      />
-                    </label>
-                    <label className="label">
-                      Email
-                      <input
-                        type="email"
-                        value={exhibitor.email ?? ''}
-                        onChange={(input) => updateExhibitor(index, 'email', input.target.value)}
-                        className="input"
-                      />
-                    </label>
-                    <label className="label">
-                      Contact
-                      <input
-                        value={exhibitor.phone ?? ''}
-                        onChange={(input) => updateExhibitor(index, 'phone', input.target.value)}
-                        placeholder="Nomor telepon atau email"
-                        className="input"
-                      />
-                    </label>
-                    {exhibitor.type === 'INTERNATIONAL' && (
-                      <label className="label">
-                        Agent
-                        <input
-                          value={exhibitor.agent ?? ''}
-                          onChange={(input) => updateExhibitor(index, 'agent', input.target.value)}
-                          className="input"
-                        />
-                      </label>
-                    )}
-                    <label className="label sm:col-span-2">
-                      Alamat
-                      <textarea
-                        value={exhibitor.address ?? ''}
-                        onChange={(input) =>
-                          updateExhibitor(index, 'address', input.target.value.toUpperCase())
-                        }
-                        className="input min-h-20 uppercase"
-                      />
-                    </label>
-                  </div>
-                </div>
-              ))}
-              {!exhibitors.length && (
-                <p className="rounded-xl border border-dashed border-black/15 px-4 py-6 text-center text-sm text-slate-500">
-                  Belum ada exhibitor. Tambahkan exhibitor untuk mulai mengisi daftar.
-                </p>
-              )}
-            </div>
-          </section>
-        )}
-      </div>
-      <div className="shrink-0 px-6 py-4 sm:px-8">
-        {error && <p className="mb-4 text-sm text-rose-700">{error}</p>}
-        <div className="flex justify-end gap-3">
-          <button disabled={saving} className="btn-primary">
-            {saving ? 'Menyimpan...' : 'Simpan'}
-          </button>
-          <button type="button" onClick={onCancel} className="btn-secondary">
-            Batal
-          </button>
+    <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 space-y-7 overflow-y-auto p-6 sm:p-8">
+        <label className="label">
+          Nama event
+          <input required name="name" className="input" />
+        </label>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <label className="label">Tanggal mulai<input required type="date" name="startsOn" className="input" /></label>
+          <label className="label">Tanggal selesai<input required type="date" name="endsOn" className="input" /></label>
         </div>
+        <section className="space-y-4 border-t pt-6">
+          <div className="flex items-center justify-between gap-3"><h2 className="font-semibold">Venue</h2><button type="button" className="text-sm font-semibold text-orange-700" onClick={() => setCreateVenue((value) => !value)}>{createVenue ? 'Pilih venue tersedia' : 'Buat venue'}</button></div>
+          {createVenue ? <div className="grid gap-4"><label className="label">Nama venue<input required name="venueName" className="input" /></label><label className="label">Alamat<textarea name="venueAddress" className="input min-h-20" /></label><label className="label">Website<input name="venueWebsite" type="url" className="input" /></label><label className="label">Catatan akses loading<textarea name="loadingAccessNotes" className="input min-h-20" /></label></div> : <label className="label">Venue<select required value={venueId} onChange={(event) => setVenueId(event.target.value)} className="input"><option value="">Pilih venue</option>{venues.map((venue) => <option key={venue.id} value={venue.id}>{venue.name}</option>)}</select></label>}
+        </section>
+        <section className="space-y-4 border-t pt-6">
+          <div className="flex items-center justify-between gap-3"><h2 className="font-semibold">Event organizer</h2><button type="button" className="text-sm font-semibold text-orange-700" onClick={() => setCreateOrganizer((value) => !value)}>{createOrganizer ? 'Pilih EO tersedia' : 'Buat EO'}</button></div>
+          {createOrganizer ? <div className="grid gap-4"><label className="label">Nama EO<input required name="organizerName" className="input" /></label><label className="label">NPWP<input name="organizerNpwp" className="input" /></label><label className="label">Alamat<textarea name="organizerAddress" className="input min-h-20" /></label><label className="label">Website<input name="organizerWebsite" type="url" className="input" /></label></div> : <label className="label">Event organizer<select required value={organizerId} onChange={(event) => setOrganizerId(event.target.value)} className="input"><option value="">Pilih event organizer</option>{organizers.map((organizer) => <option key={organizer.id} value={organizer.id}>{organizer.name}</option>)}</select></label>}
+        </section>
       </div>
+      <div className="shrink-0 border-t px-6 py-4 sm:px-8">{error && <p className="mb-3 text-sm text-rose-700">{error}</p>}<div className="flex justify-end gap-3"><button disabled={saving} className="btn-primary">{saving ? 'Menyimpan...' : 'Buat event'}</button><button type="button" onClick={onCancel} className="btn-secondary">Batal</button></div></div>
     </form>
   )
 }

@@ -19,7 +19,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Building2, CalendarDays, EllipsisVertical, GripVertical, Plus } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
 import {
   createTicket,
@@ -28,7 +28,7 @@ import {
   listTicketsForUser,
   listUsers,
   moveAndReorderMyTickets,
-  setActiveDemoUser,
+  setActiveWorkspaceUser,
   updateTicket,
   type LocalEvent,
   type LocalJob,
@@ -403,14 +403,14 @@ export function TicketBoard({
   const [toast, setToast] = useState('')
   const [loading, setLoading] = useState(true)
   const loadingStartedAt = useRef(Date.now())
-  const load = async () => {
+  const load = useCallback(async () => {
     loadingStartedAt.current = Date.now()
     setLoading(true)
     try {
       const nextUsers = await listUsers()
       const user = nextUsers.find((item) => item.email === userEmail && item.isActive) ?? null
       if (!user) throw new Error('Akun login tidak tersedia sebagai assignee.')
-      await setActiveDemoUser(user.id)
+      await setActiveWorkspaceUser(user.id)
       const [nextTickets, nextEvents, nextJobs] = await Promise.all([
         listTicketsForUser(user.id),
         listEvents(),
@@ -424,10 +424,10 @@ export function TicketBoard({
     } finally {
       finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
     }
-  }
+  }, [userEmail])
   useEffect(() => {
     load()
-  }, [])
+  }, [load])
   const eventNames = useMemo(
     () => new Map(events.map((item) => [item.id, item.officialName])),
     [events],

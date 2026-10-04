@@ -3,7 +3,7 @@ import path from 'node:path'
 import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
 import { auth } from '@/auth'
-import type { LocalJob } from '@/lib/file'
+import type { LocalJob } from '@/lib/data-client'
 
 export const runtime = 'nodejs'
 

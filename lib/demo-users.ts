@@ -57,3 +57,23 @@ export function addDemoUser(
   users.push(parsed.data)
   return { ok: true, user: withoutPassword(parsed.data) }
 }
+
+export function updateDemoUser(
+  email: string,
+  input: unknown,
+): { ok: true; user: PublicUser } | { ok: false; error: string } {
+  const candidate = users.find((user) => user.email === email)
+  if (!candidate) return { ok: false, error: 'User tidak ditemukan.' }
+  const parsed = UserSchema.extend({ password: UserSchema.shape.password.optional() }).safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Data user tidak valid.' }
+  }
+  if (parsed.data.email !== email && users.some((user) => user.email === parsed.data.email)) {
+    return { ok: false, error: 'Email sudah digunakan.' }
+  }
+  candidate.nama = parsed.data.nama
+  candidate.email = parsed.data.email
+  candidate.isAdmin = parsed.data.isAdmin
+  if (parsed.data.password) candidate.password = parsed.data.password
+  return { ok: true, user: withoutPassword(candidate) }
+}

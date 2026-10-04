@@ -9,7 +9,6 @@ import {
   Globe2,
   MapPin,
   FileStack,
-  Pencil,
   Plus,
   Users,
 } from 'lucide-react'
@@ -106,9 +105,6 @@ export default function EventDetailPage() {
         <div className="flex items-center gap-2">
           <Link href={`/kanban?event=${event.id}&new=1`} className="btn-secondary shrink-0">
             <Plus size={16} /> <span className="ml-2">Tambah ticket</span>
-          </Link>
-          <Link href={`/events/${event.id}/edit`} className="btn-primary shrink-0">
-            <Pencil size={16} /> <span className="ml-2">Edit</span>
           </Link>
           {event.status !== 'CANCELLED' && (
             <button

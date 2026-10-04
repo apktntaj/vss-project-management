@@ -1,6 +1,9 @@
 node_modules
 .next
 .env
+.env.local
+.env.*.local
+supabase/.temp/
 public/uploads/*
 !public/uploads/.gitkeep
 .env.example

@@ -9,6 +9,7 @@ import {
   MapPin,
   Plus,
   Search,
+  UserPlus,
   Users,
   X,
 } from 'lucide-react'
@@ -143,7 +144,11 @@ function overlapsThisWeek(event: LocalEvent, other: LocalEvent, today = new Date
     calendarDay(new Date(other.endsAt)),
   )
 
-  return overlapStartsAt <= overlapEndsAt && overlapEndsAt >= weekStartsAt && overlapStartsAt <= weekEndsAt
+  return (
+    overlapStartsAt <= overlapEndsAt &&
+    overlapEndsAt >= weekStartsAt &&
+    overlapStartsAt <= weekEndsAt
+  )
 }
 
 type CiplWithVersions = {
@@ -435,7 +440,7 @@ export default function EventsPage() {
                               : 'hover:bg-orange-50 hover:text-orange-700'
                           }`}
                         >
-                          <Users size={16} />
+                          <UserPlus size={22} />
                         </button>
                       </div>
                     </div>

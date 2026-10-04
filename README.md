@@ -1,26 +1,40 @@
 # VSS Project Management
 
-Website operasional untuk mengelola event dan shipment dengan penyimpanan persisten di Supabase.
+Website operasional untuk mengelola event dan shipment.
 
 ## Fitur utama
 
 - Dashboard event dan timeline operasional.
 - CRUD event, venue, organizer, exhibitor, dan shipment/job.
-- Data operasional, ticket, dan metadata dokumen disimpan di PostgreSQL Supabase.
-- File PDF/Excel disimpan di bucket Supabase Storage privat `attachments`.
-- Browser mengakses data melalui `/api/data`; service-role key hanya digunakan di server dan setiap request memerlukan sesi NextAuth.
-- User, venue, dan event organizer awal dibuat oleh migration Supabase.
+- Tanpa konfigurasi Supabase pada development, aplikasi menjalankan data demo di memori agar UI dapat dievaluasi tanpa layanan eksternal.
+- Dengan Supabase terkonfigurasi, state operasional bersama dipersistenkan per workspace; tanpa itu, seed dan model runtime dalam `lib/mock-data.ts` dan `lib/file.ts` tetap menjadi fallback development.
+- Ticket untuk koordinasi, administratif, dan operasional, dengan assignment, board, komentar, dan riwayat activity.
+- Data demo dibuat otomatis pada awal setiap runtime browser.
 
 ## Menjalankan lokal
 
-Prasyarat: Node.js dan project Supabase.
+Prasyarat hanya Node.js.
 
 1. Install dependency dengan `npm install`.
-2. Jalankan migration `supabase/migrations/20261004000000_initial_persistence.sql` pada project Supabase (Supabase CLI atau SQL Editor).
-3. Salin `.env.example` ke `.env.local`, lalu isi `AUTH_SECRET`, `SUPABASE_URL`, dan `SUPABASE_SERVICE_ROLE_KEY`.
-4. Jalankan website dengan `npm run dev`.
+2. Jalankan website dengan `npm run dev`.
 
-`SUPABASE_SERVICE_ROLE_KEY` tidak boleh diberi prefix `NEXT_PUBLIC_` atau dikirim ke browser. Tabel memakai RLS tanpa policy publik; akses aplikasi dilakukan oleh route server yang memvalidasi sesi.
+## Supabase dan autentikasi
+
+NextAuth mengelola sesi aplikasi; Supabase menyediakan database dan Storage privat. Terapkan migrasi dalam `supabase/migrations/`, lalu isi `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, dan `AUTH_SECRET` berdasarkan `.env.example`. Service-role key hanya dipakai dari server dan tidak boleh memakai awalan `NEXT_PUBLIC_`.
+
+State operasional terstruktur dipersistenkan ke workspace Supabase. Bucket `attachments` juga sudah diproteksi dan siap dipakai; pemindahan byte PDF dari adapter runtime ke bucket dilakukan sebagai tahap migrasi attachment tersendiri agar unggahan dan perubahan agregat dapat dibuat atomik.
+
+Buat akun pertama setelah migrasi dengan:
+
+```bash
+VSS_USER_PASSWORD='password-panjang-unik' npm run supabase:create-user -- admin@contoh.co.id 'Administrator' SUPERVISOR true
+```
+
+Di production, login demo dinonaktifkan otomatis jika kredensial Supabase belum tersedia. `GEMINI_API_KEY` hanya diperlukan untuk fitur parsing PDF.
+
+## Cek LARTAS INSW
+
+Menu **Cek LARTAS** memeriksa maksimal 20 HS code 8 digit melalui route server-side `/api/lartas`. Isi `LARTAS_TOKEN` (atau `LARTAS_TOKEN_FILE_PATH`) di `.env` untuk hasil CMS dengan status LARTAS terverifikasi; contoh konfigurasi tersedia di `.env.example`. Tanpa token, aplikasi hanya mencoba sumber publik untuk tarif dan hasil `unverified` tidak boleh diartikan sebagai LARTAS tidak ada.
 
 ## Verifikasi
 

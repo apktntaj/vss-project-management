@@ -2,18 +2,16 @@ import NextAuth from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
 import { z } from 'zod'
 import { authenticateDemoUser } from '@/lib/demo-users'
+import { isSupabaseConfigured } from '@/lib/supabase/admin'
+import { authenticateDatabaseUser } from '@/lib/supabase/users'
 
 const credentialsSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
   password: z.string().min(1),
 })
 
-const authSecret =
-  process.env.AUTH_SECRET ??
-  (process.env.NODE_ENV === 'development' ? 'vss-demo-only-secret-change-before-production' : undefined)
-
 export const { auth, handlers, signIn, signOut } = NextAuth({
-  secret: authSecret,
+  secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
   trustHost: true,
   session: { strategy: 'jwt' },
   pages: { signIn: '/login' },
@@ -23,16 +21,20 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
       },
-      authorize(credentials) {
+      async authorize(credentials) {
         const parsed = credentialsSchema.safeParse(credentials)
         if (!parsed.success) return null
 
-        const user = authenticateDemoUser(parsed.data.email, parsed.data.password)
+        const user = isSupabaseConfigured()
+          ? await authenticateDatabaseUser(parsed.data.email, parsed.data.password)
+          : process.env.NODE_ENV === 'production'
+            ? null
+            : authenticateDemoUser(parsed.data.email, parsed.data.password)
         if (!user) return null
 
         return {
-          id: user.email,
-          name: user.nama,
+          id: 'id' in user ? user.id : user.email,
+          name: 'name' in user ? user.name : user.nama,
           email: user.email,
           isAdmin: user.isAdmin,
         }
