@@ -1,9 +1,4 @@
-/**
- * Public data-access boundary for UI code.
- *
- * A file-defined, runtime-only store is the active adapter during the prototype. A server-backed adapter
- * can replace these exports without requiring UI modules to know its storage API.
- */
+/** Public data-access boundary backed by the authenticated Supabase persistence API. */
 export {
   addCiplVersion,
   addStage,
@@ -16,7 +11,6 @@ export {
   deleteEvent,
   getAttachmentContent,
   getActiveDemoUser,
-  getDemoDataMode,
   getCipl,
   getCustomsJob,
   getJob,
@@ -44,7 +38,6 @@ export {
   saveJobTransportExtraction,
   saveJobWithDocument,
   setActiveDemoUser,
-  setDemoDataMode,
   moveTicket,
   moveAndReorderMyTickets,
   reorderMyTickets,
@@ -81,6 +74,5 @@ export type {
   TicketInput,
   TicketPriority,
   TicketStatus,
-  DemoDataMode,
   ShipmentInput,
 } from '@/lib/file'

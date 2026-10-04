@@ -1,26 +1,26 @@
 # VSS Project Management
 
-Website operasional untuk mengelola event dan shipment secara lokal di browser.
+Website operasional untuk mengelola event dan shipment dengan penyimpanan persisten di Supabase.
 
 ## Fitur utama
 
 - Dashboard event dan timeline operasional.
 - CRUD event, venue, organizer, exhibitor, dan shipment/job.
-- Data demo, perubahan CRUD, serta dokumen PDF disimpan hanya di memori selama runtime browser.
-- Seed dan model penyimpanan runtime didefinisikan di `lib/mock-data.ts` dan `lib/file.ts`; reload atau koneksi ulang mengembalikan data ke kondisi awal.
-- Ticket untuk koordinasi, administratif, dan operasional, dengan assignment, board, komentar, dan riwayat activity. Data Ticket sengaja hanya in-memory dan hilang saat halaman di-refresh.
-- Data demo dibuat otomatis pada awal setiap runtime browser.
+- Data operasional, ticket, dan metadata dokumen disimpan di PostgreSQL Supabase.
+- File PDF/Excel disimpan di bucket Supabase Storage privat `attachments`.
+- Browser mengakses data melalui `/api/data`; service-role key hanya digunakan di server dan setiap request memerlukan sesi NextAuth.
+- User, venue, dan event organizer awal dibuat oleh migration Supabase.
 
 ## Menjalankan lokal
 
-Prasyarat hanya Node.js.
+Prasyarat: Node.js dan project Supabase.
 
 1. Install dependency dengan `npm install`.
-2. Jalankan website dengan `npm run dev`.
+2. Jalankan migration `supabase/migrations/20261004000000_initial_persistence.sql` pada project Supabase (Supabase CLI atau SQL Editor).
+3. Salin `.env.example` ke `.env.local`, lalu isi `AUTH_SECRET`, `SUPABASE_URL`, dan `SUPABASE_SERVICE_ROLE_KEY`.
+4. Jalankan website dengan `npm run dev`.
 
-Data browser tidak tersimpan di server dan tidak otomatis terbagi antar perangkat.
-Untuk deployment Vercel, deploy project tanpa `DATABASE_URL`, Prisma, atau
-konfigurasi PostgreSQL. `GEMINI_API_KEY` hanya diperlukan untuk fitur parsing PDF.
+`SUPABASE_SERVICE_ROLE_KEY` tidak boleh diberi prefix `NEXT_PUBLIC_` atau dikirim ke browser. Tabel memakai RLS tanpa policy publik; akses aplikasi dilakukan oleh route server yang memvalidasi sesi.
 
 ## Verifikasi
 

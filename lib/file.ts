@@ -6,11 +6,9 @@ import type {
   CiplItem,
   CiplStatus,
   CiplVersion,
-  CoordinationAgent,
   CustomsJob,
   CustomsJobStatus,
   JobAllocation,
-  MigrationReviewItem,
   Shipment,
   ShipmentAllocation,
 } from '@/domain/exhibition/types'
@@ -20,12 +18,10 @@ import {
   validateJobTransition,
   validateShipmentAllocation,
 } from '@/domain/exhibition/validation'
-import { createMockData, type DemoDataMode } from '@/lib/mock-data'
 import type { Ticket, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
 import { validateStatusTransition, validateTicket } from '@/domain/ticket/validation'
 
 export type { Ticket, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
-export type { DemoDataMode } from '@/lib/mock-data'
 
 export type LocalUser = {
   id: string
@@ -337,70 +333,46 @@ type StoreName =
   | 'preferences'
 
 type StoredRecord = { id: string }
-type RuntimeCounter = { id: string; value: number }
 
-/**
- * Runtime-only tables. These explicit collections are the storage model to map
- * to real database tables/repositories later.
- */
-type RuntimeStore = {
-  jobs: LocalJob[]
-  stages: LocalStage[]
-  users: LocalUser[]
-  events: LocalEvent[]
-  venues: LocalVenue[]
-  eos: LocalEo[]
-  exhibitors: LocalExhibitor[]
-  jobDocuments: LocalJobDocument[]
-  coordinationAgents: CoordinationAgent[]
-  cipls: Cipl[]
-  ciplVersions: CiplVersion[]
-  shipmentsV2: Shipment[]
-  customsJobs: CustomsJob[]
-  counters: RuntimeCounter[]
-  migrationReviewItems: MigrationReviewItem[]
-  files: StoredFile[]
-  tickets: StoredTicket[]
-  preferences: Preference[]
+async function responseError(response: Response) {
+  const body = (await response.json().catch(() => null)) as { error?: string } | null
+  return body?.error ?? `Permintaan penyimpanan gagal (${response.status}).`
 }
 
-const runtimeStore: RuntimeStore = {
-  jobs: [],
-  stages: [],
-  users: [],
-  events: [],
-  venues: [],
-  eos: [],
-  exhibitors: [],
-  jobDocuments: [],
-  coordinationAgents: [],
-  cipls: [],
-  ciplVersions: [],
-  shipmentsV2: [],
-  customsJobs: [],
-  counters: [],
-  migrationReviewItems: [],
-  files: [],
-  tickets: [],
-  preferences: [],
+async function readAll<T>(storeName: StoreName): Promise<T[]> {
+  const response = await fetch(`/api/data?store=${encodeURIComponent(storeName)}`, {
+    cache: 'no-store',
+  })
+  if (!response.ok) throw new Error(await responseError(response))
+  return response.json() as Promise<T[]>
 }
 
-function readAll<T>(storeName: StoreName): Promise<T[]> {
-  return Promise.resolve([...runtimeStore[storeName]] as T[])
+async function put<T extends StoredRecord>(storeName: StoreName, value: T): Promise<T> {
+  let body: BodyInit
+  let headers: HeadersInit | undefined
+
+  if (storeName === 'files') {
+    const storedFile = value as T & StoredFile
+    const { content, ...metadata } = storedFile
+    const form = new FormData()
+    form.set('store', storeName)
+    form.set('record', JSON.stringify(metadata))
+    form.set('file', content)
+    body = form
+  } else {
+    body = JSON.stringify({ store: storeName, record: value })
+    headers = { 'Content-Type': 'application/json' }
+  }
+
+  const response = await fetch('/api/data', { method: 'POST', headers, body })
+  if (!response.ok) throw new Error(await responseError(response))
+  return value
 }
 
-function put<T extends StoredRecord>(storeName: StoreName, value: T): Promise<T> {
-  const records = runtimeStore[storeName] as StoredRecord[]
-  const index = records.findIndex((record) => record.id === value.id)
-  if (index === -1) records.push(value)
-  else records[index] = value
-  return Promise.resolve(value)
-}
-
-function remove(storeName: StoreName, recordId: string) {
-  const records = runtimeStore[storeName] as StoredRecord[]
-  const index = records.findIndex((record) => record.id === recordId)
-  if (index !== -1) records.splice(index, 1)
+async function remove(storeName: StoreName, recordId: string) {
+  const search = new URLSearchParams({ store: storeName, id: recordId })
+  const response = await fetch(`/api/data?${search}`, { method: 'DELETE' })
+  if (!response.ok) throw new Error(await responseError(response))
 }
 
 function now() {
@@ -519,66 +491,19 @@ function toStoredFile(
 
 /** Returns attachment bytes without leaking the active storage implementation to UI code. */
 export async function getAttachmentContent(attachmentId: string): Promise<Blob | null> {
-  const file = (await readAll<StoredFile>('files')).find((item) => item.id === attachmentId)
-  return file?.content ?? null
-}
-
-let runtimeInitialized = false
-const demoDataModeStorageKey = 'vss-demo-data-mode'
-let demoDataMode: DemoDataMode =
-  typeof window !== 'undefined' && window.sessionStorage.getItem(demoDataModeStorageKey) === 'MOCK'
-    ? 'MOCK'
-    : 'EMPTY'
-
-function replaceRuntimeData(mode: DemoDataMode) {
-  const mockData = createMockData(mode)
-  runtimeStore.jobs = mockData.jobs
-  runtimeStore.stages = mockData.stages
-  runtimeStore.users = mockData.users
-  runtimeStore.events = mockData.events
-  runtimeStore.venues = mockData.venues
-  runtimeStore.eos = mockData.eventOrganizers
-  runtimeStore.exhibitors = mockData.exhibitors
-  runtimeStore.jobDocuments = []
-  runtimeStore.coordinationAgents = []
-  runtimeStore.cipls = mockData.cipls
-  runtimeStore.ciplVersions = mockData.ciplVersions
-  runtimeStore.shipmentsV2 = []
-  runtimeStore.customsJobs = []
-  runtimeStore.counters = []
-  runtimeStore.migrationReviewItems = []
-  runtimeStore.files = []
-  runtimeStore.tickets = []
-  runtimeStore.preferences = []
-}
-
-async function ensureDemoEvents() {
-  if (runtimeInitialized) return
-  runtimeInitialized = true
-  replaceRuntimeData(demoDataMode)
-}
-
-export async function getDemoDataMode(): Promise<DemoDataMode> {
-  await ensureDemoEvents()
-  return demoDataMode
-}
-
-/** Replaces the runtime-only demo store. This is intended for local UI demonstrations only. */
-export async function setDemoDataMode(mode: DemoDataMode): Promise<DemoDataMode> {
-  await ensureDemoEvents()
-  demoDataMode = mode
-  if (typeof window !== 'undefined') window.sessionStorage.setItem(demoDataModeStorageKey, mode)
-  replaceRuntimeData(mode)
-  return demoDataMode
+  const response = await fetch(`/api/data?attachmentId=${encodeURIComponent(attachmentId)}`, {
+    cache: 'no-store',
+  })
+  if (response.status === 404) return null
+  if (!response.ok) throw new Error(await responseError(response))
+  return response.blob()
 }
 
 async function ensureSeeded() {
-  await ensureDemoEvents()
   return readAll<LocalUser>('users')
 }
 
 export async function listUsers() {
-  await ensureDemoEvents()
   return ensureSeeded()
 }
 
@@ -830,7 +755,6 @@ export async function moveAndReorderMyTickets(
 }
 
 export async function listJobs(filters: { search?: string; status?: string } = {}) {
-  await ensureDemoEvents()
   const [jobs, stages, users, documents, exhibitors] = await Promise.all([
     readAll<LocalJob>('jobs'),
     readAll<LocalStage>('stages'),
@@ -890,7 +814,6 @@ export async function listEventJobs(eventId: string) {
 }
 
 export async function listEvents() {
-  await ensureDemoEvents()
   const [events, venues, eos] = await Promise.all([
     readAll<LocalEvent>('events'),
     readAll<LocalVenue>('venues'),
@@ -984,9 +907,9 @@ export async function saveEventExhibitors(eventId: string, inputs: EventExhibito
     return value
   }
 
-  removed.forEach((exhibitor) => remove('exhibitors', exhibitor.id))
-  await Promise.all(
-    exhibitors.flatMap((exhibitor) => {
+  await Promise.all([
+    ...removed.map((exhibitor) => remove('exhibitors', exhibitor.id)),
+    ...exhibitors.flatMap((exhibitor) => {
       const existingJob = jobsByExhibitor.get(exhibitor.id)
       const job = existingJob
         ? {
@@ -1001,7 +924,7 @@ export async function saveEventExhibitors(eventId: string, inputs: EventExhibito
         : initializeJobForExhibitor(exhibitor, nextJobNumber(), timestamp)
       return [put('exhibitors', exhibitor), put('jobs', job)]
     }),
-  )
+  ])
   return exhibitors
 }
 
@@ -1097,7 +1020,7 @@ export async function deleteEvent(eventId: string) {
   ) {
     throw new Error('Event tidak dapat dihapus karena masih mempunyai data turunan.')
   }
-  remove('events', eventId)
+  await remove('events', eventId)
 }
 
 export type JobInput = Pick<
@@ -1176,20 +1099,22 @@ export async function saveJobDocument(
   const transport = transportExtraction ?? null
   const isTransportDocument = kind === 'BILL_OF_LADING' || kind === 'AIR_WAYBILL'
   const previous = invoice || (isTransportDocument && transport) ? await getJob(jobId) : null
-  if ((invoice || (isTransportDocument && transport)) && !previous) throw new Error('Job tidak ditemukan.')
+  if ((invoice || (isTransportDocument && transport)) && !previous)
+    throw new Error('Job tidak ditemukan.')
   const updatedJob = previous
     ? (() => {
         const operational = getOperationalDetails(previous)
-        const inbound = isTransportDocument && transport
-          ? {
-              ...operational.inbound,
-              mode: kind === 'BILL_OF_LADING' ? 'SEA' as const : 'AIR' as const,
-              documentType: kind === 'BILL_OF_LADING' ? 'BL' as const : 'AWB' as const,
-              documentNumber: transport.documentNumber,
-              carrier: transport.carrier,
-              scheduleAt: transport.eta ?? operational.inbound.scheduleAt,
-            }
-          : operational.inbound
+        const inbound =
+          isTransportDocument && transport
+            ? {
+                ...operational.inbound,
+                mode: kind === 'BILL_OF_LADING' ? ('SEA' as const) : ('AIR' as const),
+                documentType: kind === 'BILL_OF_LADING' ? ('BL' as const) : ('AWB' as const),
+                documentNumber: transport.documentNumber,
+                carrier: transport.carrier,
+                scheduleAt: transport.eta ?? operational.inbound.scheduleAt,
+              }
+            : operational.inbound
         return {
           ...previous,
           ...(isTransportDocument && transport
@@ -1198,9 +1123,15 @@ export async function saveJobDocument(
               : { awbNumber: transport.documentNumber }
             : {}),
           ...(isTransportDocument && transport ? { shippingLine: transport.carrier } : {}),
-          ...(isTransportDocument && transport?.shipper?.name ? { shipper: transport.shipper.name } : {}),
-          ...(isTransportDocument && transport?.consignee?.name ? { consignee: transport.consignee.name } : {}),
-          ...(isTransportDocument && transport?.notifyParty?.name ? { notifyParty: transport.notifyParty.name } : {}),
+          ...(isTransportDocument && transport?.shipper?.name
+            ? { shipper: transport.shipper.name }
+            : {}),
+          ...(isTransportDocument && transport?.consignee?.name
+            ? { consignee: transport.consignee.name }
+            : {}),
+          ...(isTransportDocument && transport?.notifyParty?.name
+            ? { notifyParty: transport.notifyParty.name }
+            : {}),
           operational: {
             ...operational,
             inbound,
@@ -1247,10 +1178,14 @@ export async function saveJobTransportExtraction(jobId: string, transport: JobTr
   const previous = await getJob(jobId)
   if (!previous) throw new Error('Job tidak ditemukan.')
   const operational = getOperationalDetails(previous)
-  const documentType = operational.inbound.documentType ?? (previous.blNumber ? 'BL' : previous.awbNumber ? 'AWB' : 'BL')
+  const documentType =
+    operational.inbound.documentType ??
+    (previous.blNumber ? 'BL' : previous.awbNumber ? 'AWB' : 'BL')
   const updated: LocalJob = {
     ...previous,
-    ...(documentType === 'BL' ? { blNumber: transport.documentNumber } : { awbNumber: transport.documentNumber }),
+    ...(documentType === 'BL'
+      ? { blNumber: transport.documentNumber }
+      : { awbNumber: transport.documentNumber }),
     shippingLine: transport.carrier,
     ...(transport.shipper?.name ? { shipper: transport.shipper.name } : {}),
     ...(transport.consignee?.name ? { consignee: transport.consignee.name } : {}),
@@ -1338,7 +1273,7 @@ export async function saveJobOperationalDetails(
 export async function saveJob(input: JobInput, existingId?: string) {
   const previous = existingId ? await getJob(existingId) : null
   const timestamp = now()
-  const createdById = previous ? previous.createdById ?? null : (await activeTicketUser()).id
+  const createdById = previous ? (previous.createdById ?? null) : (await activeTicketUser()).id
   const job: LocalJob = {
     ...previous,
     id: existingId ?? id(),
@@ -1360,7 +1295,7 @@ export async function saveJob(input: JobInput, existingId?: string) {
 export async function saveJobWithDocument(input: JobInput, file: File, existingId?: string) {
   const previous = existingId ? await getJob(existingId) : null
   const timestamp = now()
-  const createdById = previous ? previous.createdById ?? null : (await activeTicketUser()).id
+  const createdById = previous ? (previous.createdById ?? null) : (await activeTicketUser()).id
   const job: LocalJob = {
     ...previous,
     id: existingId ?? id(),
