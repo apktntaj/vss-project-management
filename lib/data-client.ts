@@ -432,42 +432,6 @@ export function getOperationalDetails(
   }
 }
 
-function initializeJobForExhibitor(
-  exhibitor: LocalExhibitor,
-  jobNumber: string,
-  timestamp = now(),
-): LocalJob {
-  return {
-    id: id(),
-    jobNumber,
-    awbNumber: null,
-    blNumber: null,
-    shipper: exhibitor.legalName,
-    consignee: null,
-    notifyParty: null,
-    agent: exhibitor.agent ?? null,
-    shippingLine: null,
-    cargoDescription: null,
-    shipmentMode: null,
-    cargoDetails: null,
-    journeyDetails: null,
-    type: 'IMPORT',
-    clientName: exhibitor.legalName,
-    clientInfo: null,
-    status: 'DRAFT',
-    notes: null,
-    trackingToken: id(),
-    assignedToId: null,
-    createdById: null,
-    eventId: exhibitor.eventId,
-    exhibitorId: exhibitor.id,
-    sourceDocumentName: null,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    stages: [],
-    documents: [],
-  }
-}
 
 function attachmentMetadata(upload: AttachmentUpload): Attachment {
   const { content: _content, ...attachment } = upload
@@ -756,54 +720,59 @@ export async function moveAndReorderMyTickets(
   )
 }
 
-export async function listJobs(filters: { search?: string; status?: string } = {}) {
-  const [jobs, stages, users, documents, exhibitors] = await Promise.all([
-    readAll<LocalJob>('jobs'),
-    readAll<LocalStage>('stages'),
-    ensureSeeded(),
-    readAll<LocalJobDocument>('jobDocuments'),
-    readAll<LocalExhibitor>('exhibitors'),
-  ])
-  const linkedExhibitorIds = new Set(
-    jobs.flatMap((job) => (job.exhibitorId ? [job.exhibitorId] : [])),
-  )
-  const missingJobs = exhibitors.filter((exhibitor) => !linkedExhibitorIds.has(exhibitor.id))
-  if (missingJobs.length) {
-    const usedNumbers = new Set(jobs.map((job) => job.jobNumber))
-    let sequence = jobs.length + 1
-    const nextNumber = () => {
-      let value = `VSS-${String(sequence++).padStart(4, '0')}`
-      while (usedNumbers.has(value)) value = `VSS-${String(sequence++).padStart(4, '0')}`
-      usedNumbers.add(value)
-      return value
-    }
-    await Promise.all(
-      missingJobs.map((exhibitor) =>
-        put('jobs', initializeJobForExhibitor(exhibitor, nextNumber())),
-      ),
+type JobsApiPayload = {
+  jobs: LocalJob[]
+  stages: LocalStage[]
+  users: LocalUser[]
+  documents: LocalJobDocument[]
+  exhibitors: Record<string, unknown>[]
+  events: Record<string, unknown>[]
+}
+
+export async function listJobsWithEvents() {
+  const response = await fetch('/api/jobs', { cache: 'no-store' })
+  const data = await response.json().catch(() => null) as
+    | JobsApiPayload
+    | { error?: string }
+    | null
+  if (!response.ok || !data || ('error' in data && typeof data.error === 'string')) {
+    throw new Error(
+      data && 'error' in data && typeof data.error === 'string'
+        ? data.error
+        : 'Data jobs tidak dapat dimuat.',
     )
-    return listJobs(filters)
   }
-  const search = filters.search?.toLowerCase() ?? ''
-  return jobs
-    .filter(
-      (job) =>
-        (!filters.status || job.status === filters.status) &&
-        (!search ||
-          [job.jobNumber, job.clientName, job.awbNumber, job.blNumber].some((value) =>
-            value?.toLowerCase().includes(search),
-          )),
-    )
+
+  const payload = data as JobsApiPayload
+  const exhibitors = payload.exhibitors.map(exhibitorFromRow)
+  const jobs = payload.jobs
     .map((job) => ({
       ...job,
       operational: getOperationalDetails(job),
-      assignedTo: users.find((user) => user.id === job.assignedToId) ?? null,
-      createdBy: users.find((user) => user.id === job.createdById) ?? null,
+      assignedTo: payload.users.find((user) => user.id === job.assignedToId) ?? null,
+      createdBy: payload.users.find((user) => user.id === job.createdById) ?? null,
       exhibitor: exhibitors.find((exhibitor) => exhibitor.id === job.exhibitorId) ?? null,
-      stages: stages.filter((stage) => stage.jobId === job.id).sort((a, b) => a.order - b.order),
-      documents: documents.filter((document) => document.jobId === job.id),
+      stages: payload.stages
+        .filter((stage) => stage.jobId === job.id)
+        .sort((left, right) => left.order - right.order),
+      documents: payload.documents.filter((document) => document.jobId === job.id),
     }))
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+
+  return { jobs, events: payload.events.map(eventFromRow) }
+}
+
+export async function listJobs(filters: { search?: string; status?: string } = {}) {
+  const { jobs } = await listJobsWithEvents()
+  const search = filters.search?.toLowerCase() ?? ''
+  return jobs.filter(
+    (job) =>
+      (!filters.status || job.status === filters.status) &&
+      (!search ||
+        [job.jobNumber, job.clientName, job.awbNumber, job.blNumber].some((value) =>
+          value?.toLowerCase().includes(search),
+        )),
+  )
 }
 
 export async function getJob(jobId: string) {

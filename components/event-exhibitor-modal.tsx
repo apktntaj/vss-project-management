@@ -21,7 +21,15 @@ export function EventExhibitorModal({ event, onSaved, onCancel }: { event: Local
   const [error, setError] = useState('')
 
   function update(index: number, change: Partial<EventExhibitorInput>) {
-    setExhibitors((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...change } as EventExhibitorInput : item))
+    const normalizedChange =
+      change.name === undefined
+        ? change
+        : { ...change, name: change.name.toLocaleUpperCase('id-ID') }
+    setExhibitors((current) =>
+      current.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, ...normalizedChange } as EventExhibitorInput : item,
+      ),
+    )
   }
   function setKind(index: number, kind: EventExhibitorInput['kind']) {
     setExhibitors((current) =>

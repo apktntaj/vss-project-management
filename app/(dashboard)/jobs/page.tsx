@@ -18,8 +18,7 @@ import {
 } from 'lucide-react'
 import {
   getOperationalDetails,
-  listEvents,
-  listJobs,
+  listJobsWithEvents,
   saveJobDocument,
   type LocalEvent,
   type LocalJob,
@@ -494,8 +493,11 @@ export default function JobsPage() {
   const [editingDocument, setEditingDocument] = useState<{ job: LocalJob; kind: EditableJobDocument } | null>(null)
   const [loading, setLoading] = useState(true)
   const loadingStartedAt = useRef(Date.now())
+  const initialLoadStarted = useRef(false)
   useEffect(() => {
-    Promise.all([listJobs(), listEvents()]).then(([loadedJobs, loadedEvents]) => {
+    if (initialLoadStarted.current) return
+    initialLoadStarted.current = true
+    listJobsWithEvents().then(({ jobs: loadedJobs, events: loadedEvents }) => {
       setJobs(loadedJobs)
       setEvents(loadedEvents)
       setOpen(Object.fromEntries(loadedEvents.map((event) => [event.id, true])))
