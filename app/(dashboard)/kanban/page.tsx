@@ -1,7 +1,16 @@
 import { TicketBoard } from '@/components/ticket-board'
-import { auth } from '@/auth'
+import type { TicketContext } from '@/domain/ticket/types'
 
-export default async function KanbanPage({ searchParams }: { searchParams: { event?: string; new?: string } }) {
-  const session = await auth()
-  return <TicketBoard userEmail={session?.user?.email ?? ''} initialEventId={searchParams.event} openNew={searchParams.new === '1'} />
+export default function KanbanPage({
+  searchParams,
+}: {
+  searchParams: { new?: string; contextKind?: string; contextId?: string }
+}) {
+  const initialContext: TicketContext | undefined =
+    searchParams.contextKind === 'EVENT' && searchParams.contextId
+      ? { kind: 'EVENT', id: searchParams.contextId }
+      : searchParams.contextKind === 'JOB' && searchParams.contextId
+        ? { kind: 'JOB', id: searchParams.contextId }
+        : undefined
+  return <TicketBoard initialContext={initialContext} openNew={searchParams.new === '1'} />
 }

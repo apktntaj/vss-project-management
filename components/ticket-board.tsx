@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import {
   DndContext,
   KeyboardSensor,
@@ -11,571 +12,90 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Building2, CalendarDays, EllipsisVertical, GripVertical, Plus } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { GripVertical, Plus } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
-import {
-  createTicket,
-  listEvents,
-  listJobs,
-  listTicketsForUser,
-  listUsers,
-  moveAndReorderMyTickets,
-  setActiveWorkspaceUser,
-  updateTicket,
-  type LocalEvent,
-  type LocalJob,
-  type LocalUser,
-  type Ticket,
-  type TicketContext,
-  type TicketStatus,
-} from '@/lib/data-client'
+import { createTicket, listEvents, listJobs, listTickets, listUsers, moveAndReorderTickets, type LocalEvent, type LocalJob, type LocalUser, type Ticket, type TicketContext, type TicketStatus } from '@/lib/data-client'
 
 const columns: Array<{ status: TicketStatus; label: string }> = [
   { status: 'TODO', label: 'To Do' },
   { status: 'PROGRESS', label: 'In Progress' },
   { status: 'DONE', label: 'Done' },
 ]
-const contextLabel = (
-  context: TicketContext,
-  events: Map<string, string>,
-  jobs: Map<string, string>,
-) =>
-  `${context.kind === 'EVENT' ? 'Event' : 'Job'} · ${context.kind === 'EVENT' ? events.get(context.id) : (jobs.get(context.id) ?? 'Tidak ditemukan')}`
-const formatCompactDate = (date: string) =>
-  new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short' }).format(new Date(date))
-const initials = (name: string) =>
-  name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase() || '?'
 
-function TicketCard({
-  ticket,
-  label,
-  date,
-  assignee,
-  onEdit,
-}: {
-  ticket: Ticket
-  label: string
-  date: string
-  assignee: string
-  onEdit: (ticket: Ticket) => void
-}) {
-  const sortable = useSortable({ id: ticket.id, data: { status: ticket.status } })
-  return (
-    <article
-      ref={sortable.setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(sortable.transform),
-        transition: sortable.transition,
-      }}
-      {...sortable.attributes}
-      className="group rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-    >
-      <div className="flex items-start gap-2">
-        <button
-          type="button"
-          {...sortable.listeners}
-          aria-label={`Pindahkan ${ticket.title}`}
-          className="mt-0.5 cursor-grab touch-none text-slate-300 transition hover:text-slate-500"
-        >
-          <GripVertical size={15} />
-        </button>
-        <button type="button" onClick={() => onEdit(ticket)} className="min-w-0 flex-1 text-left">
-          <p className="text-[11px] font-bold text-slate-500">#{ticket.ticketNumber}</p>
-          <p className="mt-0.5 line-clamp-2 text-sm font-bold leading-5 text-slate-800">
-            {ticket.title}
-          </p>
-        </button>
-        <button
-          type="button"
-          onClick={() => onEdit(ticket)}
-          aria-label={`Edit ${ticket.title}`}
-          className="-mr-1 -mt-1 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-        >
-          <EllipsisVertical size={17} />
-        </button>
-      </div>
-      <div className="mt-3">
-        <span
-          className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-bold ${ticket.priority === 'URGENT' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}
-        >
-          {ticket.priority === 'URGENT' ? 'Urgent' : 'Normal'}
-        </span>
-      </div>
-      <div className="mt-3 space-y-1.5 text-[11px] font-medium text-slate-500">
-        <p className="flex items-center gap-1.5 truncate">
-          <Building2 size={13} className="shrink-0 text-slate-400" />
-          {label}
-        </p>
-        <p className="flex items-center gap-1.5 text-slate-500">
-          <CalendarDays size={13} className="shrink-0 text-slate-400" />
-          <span>{date}</span>
-        </p>
-      </div>
-      <div className="mt-3 flex items-center gap-2">
-        <span
-          title={assignee}
-          className="inline-flex size-5 items-center justify-center rounded-full bg-indigo-600 text-[8px] font-bold text-white"
-        >
-          {initials(assignee)}
-        </span>
-        <span className="truncate text-[11px] font-semibold text-slate-600">{assignee}</span>
-      </div>
-    </article>
-  )
+type Scope = 'mine' | 'unassigned' | 'all'
+
+function toast(message: string, tone: 'success' | 'error') {
+  window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
 }
 
-function Column({
-  status,
-  label,
-  cards,
-  events,
-  jobs,
-  users,
-  onEdit,
-}: {
-  status: TicketStatus
-  label: string
-  cards: Ticket[]
-  events: Map<string, LocalEvent>
-  jobs: Map<string, string>
-  users: Map<string, string>
-  onEdit: (ticket: Ticket) => void
-}) {
-  const { setNodeRef } = useDroppable({ id: status })
-  return (
-    <section ref={setNodeRef} className="w-[min(88vw,23rem)] shrink-0 rounded-xl bg-slate-100/90 p-3">
-      <div className="mb-3 flex items-center justify-between px-1">
-        <h2 className="text-sm font-bold text-slate-700">
-          {label}{' '}
-          <span className="ml-1 rounded-md bg-slate-200 px-1.5 py-0.5 text-[11px] font-bold text-slate-500">
-            {cards.length}
-          </span>
-        </h2>
-        <EllipsisVertical size={17} className="text-slate-400" />
-      </div>
-      <SortableContext
-        items={cards.map((ticket) => ticket.id)}
-        strategy={verticalListSortingStrategy}
-      >
-        <div className="min-h-32 space-y-3">
-          {cards.length ? (
-            cards.map((ticket) => {
-              const event =
-                ticket.context.kind === 'EVENT' ? events.get(ticket.context.id) : undefined
-              return (
-                <TicketCard
-                  key={ticket.id}
-                  ticket={ticket}
-                  label={
-                    event?.officialName ??
-                    contextLabel(
-                      ticket.context,
-                      new Map([...events].map(([id, item]) => [id, item.officialName])),
-                      jobs,
-                    )
-                  }
-                  date={
-                    event
-                      ? formatCompactDate(event.startsAt)
-                      : `Dibuat ${formatCompactDate(ticket.createdAt)}`
-                  }
-                  assignee={users.get(ticket.assigneeId) ?? 'Unassigned'}
-                  onEdit={onEdit}
-                />
-              )
-            })
-          ) : (
-            <p className="rounded-lg border border-dashed border-slate-300 bg-white/50 p-5 text-center text-xs font-medium text-slate-400">
-              Belum ada ticket.
-            </p>
-          )}
-        </div>
-      </SortableContext>
-    </section>
-  )
+function contextLabel(context: TicketContext, events: Map<string, string>, jobs: Map<string, string>) {
+  if (context.kind === 'GENERAL') return 'General'
+  const name = context.kind === 'EVENT' ? events.get(context.id) : jobs.get(context.id)
+  return `${context.kind === 'EVENT' ? 'Event' : 'Job'} · ${name ?? 'Tidak tersedia'}`
 }
 
-function TicketForm({
-  ticket,
-  events,
-  jobs,
-  users,
-  currentUserId,
-  initialEventId,
-  onClose,
-  onSaved,
-}: {
-  ticket: Ticket | null
-  events: LocalEvent[]
-  jobs: LocalJob[]
-  users: LocalUser[]
-  currentUserId: string
-  initialEventId?: string
-  onClose: () => void
-  onSaved: (message: string) => void
-}) {
-  const initial = ticket?.context ?? (initialEventId ? { kind: 'EVENT', id: initialEventId } : null)
-  const [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<TicketContext | null>(initial)
+function TicketCard({ ticket, context, assignee, sortable }: { ticket: Ticket; context: string; assignee: string; sortable: boolean }) {
+  const item = useSortable({ id: ticket.id, disabled: !sortable })
+  return <article ref={item.setNodeRef} style={sortable ? { transform: CSS.Transform.toString(item.transform), transition: item.transition } : undefined} {...(sortable ? item.attributes : {})} className="rounded-xl border bg-card p-3 shadow-sm">
+    <div className="flex items-start gap-2">
+      {sortable && <button type="button" {...item.listeners} aria-label={`Pindahkan ${ticket.title}`} className="mt-0.5 cursor-grab touch-none text-muted-foreground"><GripVertical /></button>}
+      <Link href={`/tickets/${ticket.id}`} className="min-w-0 flex-1">
+        <p className="text-xs font-semibold text-muted-foreground">#{ticket.ticketNumber}</p>
+        <p className="mt-1 line-clamp-2 text-sm font-semibold">{ticket.title}</p>
+      </Link>
+    </div>
+    <div className="mt-3 flex flex-col gap-1 text-xs text-muted-foreground">
+      <span className="truncate">{context}</span><span className="truncate">PIC: {assignee}</span>
+      <span>{ticket.priority === 'URGENT' ? 'Urgent' : 'Normal'} · {new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short' }).format(new Date(ticket.lastActivityAt))}</span>
+    </div>
+  </article>
+}
+
+function Column({ column, tickets, events, jobs, users, sortable }: { column: typeof columns[number]; tickets: Ticket[]; events: Map<string, string>; jobs: Map<string, string>; users: Map<string, string>; sortable: boolean }) {
+  const drop = useDroppable({ id: column.status, disabled: !sortable })
+  return <section ref={drop.setNodeRef} className="w-[min(86vw,22rem)] shrink-0 rounded-xl bg-muted p-3">
+    <h2 className="mb-3 flex items-center justify-between text-sm font-semibold">{column.label}<span className="rounded-md bg-background px-2 py-0.5 text-xs text-muted-foreground">{tickets.length}</span></h2>
+    <SortableContext items={tickets.map((ticket) => ticket.id)} strategy={verticalListSortingStrategy}>
+      <div className="flex min-h-28 flex-col gap-3">{tickets.map((ticket) => <TicketCard key={ticket.id} ticket={ticket} context={contextLabel(ticket.context, events, jobs)} assignee={ticket.assigneeId ? users.get(ticket.assigneeId) ?? 'Tidak tersedia' : 'Belum ditugaskan'} sortable={sortable} />)}{!tickets.length && <p className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">Belum ada ticket.</p>}</div>
+    </SortableContext>
+  </section>
+}
+
+function TicketDialog({ open, onOpenChange, events, jobs, users, initialContext, onSaved }: { open: boolean; onOpenChange: (open: boolean) => void; events: LocalEvent[]; jobs: LocalJob[]; users: LocalUser[]; initialContext?: TicketContext; onSaved: () => Promise<void> }) {
+  const [contextKey, setContextKey] = useState(initialContext?.kind === 'GENERAL' ? 'GENERAL' : initialContext ? `${initialContext.kind}:${initialContext.id}` : 'GENERAL')
+  const [assignee, setAssignee] = useState<string | null | undefined>(undefined)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
-  const options = [
-    ...events
-      .filter((item) => item.status === 'ACTIVE')
-      .map((item) => ({
-        context: { kind: 'EVENT', id: item.id } as TicketContext,
-        label: item.officialName,
-        type: 'Event',
-      })),
-    ...jobs
-      .filter((item) => !['COMPLETED', 'CANCELLED'].includes(item.status))
-      .map((item) => ({
-        context: { kind: 'JOB', id: item.id } as TicketContext,
-        label: `${item.jobNumber} · ${item.clientName}`,
-        type: 'Job',
-      })),
-  ]
-  const selectedLabel = selected
-    ? (options.find(
-        (item) => item.context.kind === selected.kind && item.context.id === selected.id,
-      )?.label ??
-      contextLabel(
-        selected,
-        new Map(events.map((item) => [item.id, item.officialName])),
-        new Map(jobs.map((item) => [item.id, `${item.jobNumber} · ${item.clientName}`])),
-      ))
-    : ''
-  const matches = options.filter((item) =>
-    `${item.type} ${item.label}`.toLowerCase().includes(query.toLowerCase()),
-  )
+  const contexts = [{ value: 'GENERAL', label: 'General / belum ada konteks' }, ...events.filter((event) => event.status === 'ACTIVE').map((event) => ({ value: `EVENT:${event.id}`, label: `Event · ${event.officialName}` })), ...jobs.filter((job) => !['COMPLETED', 'CANCELLED'].includes(job.status)).map((job) => ({ value: `JOB:${job.id}`, label: `Job · ${job.jobNumber} · ${job.clientName}` }))]
+  const selectedJob = contextKey.startsWith('JOB:') ? jobs.find((job) => job.id === contextKey.slice(4)) : undefined
   async function submit(form: FormData) {
-    if (!selected) {
-      setError('Pilih Event atau Job yang masih aktif.')
-      return
-    }
-    setSaving(true)
-    setError('')
+    const [kind, id] = contextKey.split(':') as ['GENERAL' | 'EVENT' | 'JOB', string | undefined]
+    const context: TicketContext = kind === 'GENERAL' ? { kind } : { kind, id: id ?? '' }
+    setSaving(true); setError('')
     try {
-      const input = {
-        title: String(form.get('title') || ''),
-        description: String(form.get('description') || '') || null,
-        context: selected,
-        priority: form.get('urgent') === 'on' ? ('URGENT' as const) : ('NORMAL' as const),
-      }
-      if (ticket) {
-        await updateTicket(ticket.id, input)
-        onSaved('Ticket berhasil diperbarui.')
-      } else {
-        await createTicket({ ...input, assigneeId: String(form.get('assigneeId') || '') })
-        onSaved('Ticket berhasil dibuat.')
-      }
-      onClose()
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Ticket gagal disimpan.')
-    } finally {
-      setSaving(false)
-    }
+      await createTicket({ title: String(form.get('title') ?? ''), description: String(form.get('description') ?? '') || null, priority: form.get('priority') === 'URGENT' ? 'URGENT' : 'NORMAL', context, assigneeId: assignee })
+      await onSaved(); toast('Ticket berhasil dibuat.', 'success'); onOpenChange(false)
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Ticket gagal dibuat.') } finally { setSaving(false) }
   }
-  return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/40 p-4">
-      <form action={submit} className="card w-full max-w-lg p-5">
-        <h2 className="text-lg font-bold">{ticket ? 'Edit ticket' : 'Tambah ticket'}</h2>
-        <label className="label mt-4">
-          Judul
-          <input required name="title" defaultValue={ticket?.title} className="input" />
-        </label>
-        {!ticket && (
-          <label className="label mt-3">
-            Ditugaskan ke
-            <select required name="assigneeId" defaultValue={currentUserId} className="input">
-              {users
-                .filter((user) => user.isActive)
-                .map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.name}
-                  </option>
-                ))}
-            </select>
-          </label>
-        )}
-        <div className="relative mt-3">
-          <label className="label">
-            Event atau Job
-            <input
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value)
-                setSelected(null)
-              }}
-              placeholder={selected ? selectedLabel : 'Ketik nama event atau nomor job…'}
-              className="input"
-            />
-          </label>
-          {query && (
-            <div className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
-              {matches.length ? (
-                matches.map((item) => (
-                  <button
-                    type="button"
-                    key={`${item.context.kind}:${item.context.id}`}
-                    onClick={() => {
-                      setSelected(item.context)
-                      setQuery('')
-                    }}
-                    className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
-                  >
-                    <span className="mr-2 text-xs font-semibold text-orange-700">{item.type}</span>
-                    {item.label}
-                  </button>
-                ))
-              ) : (
-                <p className="px-3 py-2 text-sm text-slate-500">Tidak ada Event atau Job aktif.</p>
-              )}
-            </div>
-          )}
-        </div>
-        {selected && (
-          <p className="mt-2 text-xs font-medium text-emerald-700">Terpilih: {selectedLabel}</p>
-        )}
-        <label className="label mt-3">
-          Deskripsi
-          <textarea
-            name="description"
-            defaultValue={ticket?.description ?? ''}
-            className="input min-h-20"
-          />
-        </label>
-        <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
-          <input
-            name="urgent"
-            type="checkbox"
-            defaultChecked={ticket?.priority === 'URGENT'}
-            className="size-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
-          />
-          Urgent
-        </label>
-        {error && <p className="mt-3 text-sm text-rose-700">{error}</p>}
-        <div className="mt-5 flex justify-end gap-2">
-          <button type="button" className="btn-secondary" onClick={onClose}>
-            Batal
-          </button>
-          <button disabled={saving} className="btn-primary">
-            {saving ? 'Menyimpan…' : 'Simpan'}
-          </button>
-        </div>
-      </form>
-    </div>
-  )
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg"><DialogHeader><DialogTitle>Tambah ticket</DialogTitle><DialogDescription>Buat intake General atau pilih konteks operasional.</DialogDescription></DialogHeader><form action={submit}><FieldGroup><Field><FieldLabel htmlFor="ticket-title">Judul</FieldLabel><Input id="ticket-title" name="title" required /></Field><Field><FieldLabel htmlFor="ticket-context">Konteks</FieldLabel><select id="ticket-context" value={contextKey} onChange={(event) => { setContextKey(event.target.value); setAssignee(undefined) }} className="input"><>{contexts.map((context) => <option key={context.value} value={context.value}>{context.label}</option>)}</></select></Field><Field><FieldLabel htmlFor="ticket-assignee">Ditugaskan ke</FieldLabel><select id="ticket-assignee" value={assignee === undefined ? '' : assignee ?? 'NONE'} onChange={(event) => setAssignee(event.target.value === '' ? undefined : event.target.value === 'NONE' ? null : event.target.value)} className="input"><option value="">{selectedJob?.assignedToId ? 'Gunakan PIC Job sebagai default' : 'Belum ditugaskan'}</option><option value="NONE">Belum ditugaskan</option>{users.filter((user) => user.isActive).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select>{selectedJob?.assignedToId && assignee === undefined && <FieldDescription>Mengikuti PIC Job sebagai default.</FieldDescription>}</Field><Field><FieldLabel htmlFor="ticket-description">Deskripsi</FieldLabel><Textarea id="ticket-description" name="description" /></Field><Field><FieldLabel htmlFor="ticket-priority">Urgensi</FieldLabel><select id="ticket-priority" name="priority" className="input"><option value="NORMAL">Normal</option><option value="URGENT">Urgent</option></select></Field>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}</FieldGroup><DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Batal</Button><Button type="submit" disabled={saving}>{saving ? 'Menyimpan…' : 'Simpan'}</Button></DialogFooter></form></DialogContent></Dialog>
 }
 
-export function TicketBoard({
-  userEmail,
-  initialEventId,
-  openNew = false,
-}: {
-  userEmail: string
-  initialEventId?: string
-  openNew?: boolean
-}) {
-  const [tickets, setTickets] = useState<Ticket[]>([])
-  const [events, setEvents] = useState<LocalEvent[]>([])
-  const [jobs, setJobs] = useState<LocalJob[]>([])
-  const [users, setUsers] = useState<LocalUser[]>([])
-  const [activeUser, setActiveUser] = useState<LocalUser | null>(null)
-  const [query, setQuery] = useState('')
-  const [contextFilter, setContextFilter] = useState('')
-  const [priority, setPriority] = useState('')
-  const [editor, setEditor] = useState<Ticket | null | 'new'>(openNew ? 'new' : null)
-  const [toast, setToast] = useState('')
-  const [loading, setLoading] = useState(true)
-  const loadingStartedAt = useRef(Date.now())
-  const load = useCallback(async () => {
-    loadingStartedAt.current = Date.now()
-    setLoading(true)
-    try {
-      const nextUsers = await listUsers()
-      const user = nextUsers.find((item) => item.email === userEmail && item.isActive) ?? null
-      if (!user) throw new Error('Akun login tidak tersedia sebagai assignee.')
-      await setActiveWorkspaceUser(user.id)
-      const [nextTickets, nextEvents, nextJobs] = await Promise.all([
-        listTicketsForUser(user.id),
-        listEvents(),
-        listJobs(),
-      ])
-      setTickets(nextTickets)
-      setEvents(nextEvents)
-      setJobs(nextJobs)
-      setUsers(nextUsers)
-      setActiveUser(user)
-    } finally {
-      finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
-    }
-  }, [userEmail])
-  useEffect(() => {
-    load()
-  }, [load])
-  const eventNames = useMemo(
-    () => new Map(events.map((item) => [item.id, item.officialName])),
-    [events],
-  )
-  const eventDetails = useMemo(() => new Map(events.map((item) => [item.id, item])), [events])
-  const jobNames = useMemo(
-    () => new Map(jobs.map((item) => [item.id, `${item.jobNumber} · ${item.clientName}`])),
-    [jobs],
-  )
-  const userNames = useMemo(() => new Map(users.map((item) => [item.id, item.name])), [users])
-  const visible = tickets.filter(
-    (ticket) =>
-      (!query ||
-        `${ticket.title} ${contextLabel(ticket.context, eventNames, jobNames)}`
-          .toLowerCase()
-          .includes(query.toLowerCase())) &&
-      (!contextFilter || `${ticket.context.kind}:${ticket.context.id}` === contextFilter) &&
-      (!priority || ticket.priority === priority),
-  )
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  )
-  async function drag(event: DragEndEvent) {
-    const id = String(event.active.id)
-    const ticket = tickets.find((item) => item.id === id)
-    if (!ticket || !event.over) return
-    const over = tickets.find((item) => item.id === String(event.over?.id))
-    const status = (over?.status ?? String(event.over.id)) as TicketStatus
-    if (!columns.some((item) => item.status === status)) return
-    const completion =
-      status === 'DONE' && ticket.status !== 'DONE'
-        ? window.prompt('Catatan hasil (wajib):') || undefined
-        : undefined
-    if (status === 'DONE' && ticket.status !== 'DONE' && !completion) return
-    const reopen =
-      ticket.status === 'DONE' && status !== 'DONE'
-        ? window.prompt('Alasan membuka kembali (wajib):') || undefined
-        : undefined
-    if (ticket.status === 'DONE' && status !== 'DONE' && !reopen) return
-    try {
-      const ids = tickets
-        .filter((item) => item.status === status && item.id !== id)
-        .map((item) => item.id)
-      ids.splice(Math.max(0, over ? ids.indexOf(over.id) : ids.length), 0, id)
-      await moveAndReorderMyTickets(id, status, ids, completion, reopen)
-      await load()
-    } catch (caught) {
-      window.alert(caught instanceof Error ? caught.message : 'Ticket gagal dipindahkan.')
-    }
-  }
-  if (loading) return <PageSkeleton cards={4} rows={3} />
-
-  return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-orange-600">Workspace</p>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900">Ticket Saya</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Atur pekerjaan {activeUser?.name ?? ''} dalam satu board.
-          </p>
-        </div>
-        <button onClick={() => setEditor('new')} className="btn-primary">
-          <Plus size={16} />
-          Tambah ticket
-        </button>
-      </div>
-      {toast && (
-        <div
-          role="status"
-          className="rounded-lg bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800"
-        >
-          {toast}
-        </div>
-      )}
-      <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-3">
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          className="input mt-0"
-          placeholder="Cari ticket…"
-        />
-        <select
-          value={contextFilter}
-          onChange={(event) => setContextFilter(event.target.value)}
-          className="input mt-0"
-        >
-          <option value="">Semua konteks</option>
-          <optgroup label="Event">
-            {events.map((event) => (
-              <option key={event.id} value={`EVENT:${event.id}`}>
-                {event.officialName}
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="Job">
-            {jobs.map((job) => (
-              <option key={job.id} value={`JOB:${job.id}`}>
-                {job.jobNumber} · {job.clientName}
-              </option>
-            ))}
-          </optgroup>
-        </select>
-        <select
-          value={priority}
-          onChange={(event) => setPriority(event.target.value)}
-          className="input mt-0"
-        >
-          <option value="">Semua urgensi</option>
-          <option value="URGENT">Urgent</option>
-          <option value="NORMAL">Normal</option>
-        </select>
-      </div>
-      <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={drag}>
-        <div className="flex gap-4 overflow-x-auto pb-3">
-          {columns.map((column) => (
-            <Column
-              key={column.status}
-              {...column}
-              cards={visible
-                .filter((ticket) => ticket.status === column.status)
-                .sort((a, b) => a.order - b.order)}
-              events={eventDetails}
-              jobs={jobNames}
-              users={userNames}
-              onEdit={setEditor}
-            />
-          ))}
-        </div>
-      </DndContext>
-      {editor && (
-        <TicketForm
-          ticket={editor === 'new' ? null : editor}
-          events={events}
-          jobs={jobs}
-          users={users}
-          currentUserId={activeUser?.id ?? ''}
-          initialEventId={initialEventId}
-          onClose={() => setEditor(null)}
-          onSaved={async (message) => {
-            await load()
-            setToast(message)
-            window.setTimeout(() => setToast(''), 3000)
-          }}
-        />
-      )}
-    </div>
-  )
+export function TicketBoard({ initialContext, openNew = false }: { initialContext?: TicketContext; openNew?: boolean }) {
+  const [scope, setScope] = useState<Scope>('mine'); const [tickets, setTickets] = useState<Ticket[]>([]); const [events, setEvents] = useState<LocalEvent[]>([]); const [jobs, setJobs] = useState<LocalJob[]>([]); const [users, setUsers] = useState<LocalUser[]>([]); const [query, setQuery] = useState(''); const [contextFilter, setContextFilter] = useState(initialContext?.kind === 'GENERAL' ? '' : initialContext ? `${initialContext.kind}:${initialContext.id}` : ''); const [priority, setPriority] = useState(''); const [newOpen, setNewOpen] = useState(openNew); const [pendingMove, setPendingMove] = useState<{ ticket: Ticket; status: TicketStatus; ids: string[] } | null>(null)
+  const load = useCallback(async () => { const started = Date.now(); try { const [nextTickets, nextEvents, nextJobs, nextUsers] = await Promise.all([listTickets({ scope, ...(contextFilter ? { contextKind: contextFilter.split(':')[0] as 'EVENT' | 'JOB', contextId: contextFilter.split(':')[1] } : {}) }), listEvents(), listJobs(), listUsers()]); setTickets(nextTickets); setEvents(nextEvents); setJobs(nextJobs); setUsers(nextUsers) } catch (caught) { toast(caught instanceof Error ? caught.message : 'Ticket gagal dimuat.', 'error') } finally { finishLoadingAfterMinimum(started, () => undefined) } }, [scope, contextFilter])
+  useEffect(() => { void load() }, [load])
+  const eventNames = useMemo(() => new Map(events.map((event) => [event.id, event.officialName])), [events]); const jobNames = useMemo(() => new Map(jobs.map((job) => [job.id, `${job.jobNumber} · ${job.clientName}`])), [jobs]); const userNames = useMemo(() => new Map(users.map((user) => [user.id, user.name])), [users])
+  const visible = tickets.filter((ticket) => (!query || `${ticket.ticketNumber} ${ticket.title} ${ticket.description ?? ''} ${contextLabel(ticket.context, eventNames, jobNames)} ${ticket.assigneeId ? userNames.get(ticket.assigneeId) ?? '' : ''}`.toLowerCase().includes(query.toLowerCase())) && (!priority || ticket.priority === priority))
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }))
+  function drag(event: DragEndEvent) { const ticket = tickets.find((item) => item.id === String(event.active.id)); if (!ticket || !event.over) return; const overTicket = tickets.find((item) => item.id === String(event.over?.id)); const status = (overTicket?.status ?? String(event.over.id)) as TicketStatus; if (!columns.some((column) => column.status === status)) return; const ids = tickets.filter((item) => item.status === status && item.id !== ticket.id).sort((a, b) => a.order - b.order).map((item) => item.id); ids.splice(overTicket ? Math.max(0, ids.indexOf(overTicket.id)) : ids.length, 0, ticket.id); setPendingMove({ ticket, status, ids }) }
+  async function confirmMove(form: FormData) { if (!pendingMove) return; try { await moveAndReorderTickets(pendingMove.ticket.id, pendingMove.status, pendingMove.ids, String(form.get('note') ?? '') || undefined, String(form.get('note') ?? '') || undefined); await load(); toast('Status ticket diperbarui.', 'success'); setPendingMove(null) } catch (caught) { toast(caught instanceof Error ? caught.message : 'Ticket gagal dipindahkan.', 'error') } }
+  return <div className="flex flex-col gap-5"><div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Workspace</p><h1 className="mt-1 text-3xl font-bold">Tickets</h1><p className="mt-1 text-sm text-muted-foreground">Koordinasi kerja yang dapat ditemukan seluruh staf.</p></div><Button onClick={() => setNewOpen(true)}><Plus data-icon="inline-start" />Tambah ticket</Button></div><div className="flex flex-wrap gap-2"><Button variant={scope === 'mine' ? 'default' : 'outline'} onClick={() => setScope('mine')}>Ticket saya</Button><Button variant={scope === 'unassigned' ? 'default' : 'outline'} onClick={() => setScope('unassigned')}>Belum ditugaskan</Button><Button variant={scope === 'all' ? 'default' : 'outline'} onClick={() => setScope('all')}>Semua ticket</Button></div><div className="grid gap-3 rounded-xl border bg-muted/40 p-3 md:grid-cols-3"><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari nomor, judul, konteks, atau PIC…" /><select value={contextFilter} onChange={(event) => setContextFilter(event.target.value)} className="input"><option value="">Semua konteks</option>{events.map((event) => <option key={event.id} value={`EVENT:${event.id}`}>Event · {event.officialName}</option>)}{jobs.map((job) => <option key={job.id} value={`JOB:${job.id}`}>Job · {job.jobNumber}</option>)}</select><select value={priority} onChange={(event) => setPriority(event.target.value)} className="input"><option value="">Semua urgensi</option><option value="NORMAL">Normal</option><option value="URGENT">Urgent</option></select></div>{scope === 'mine' ? <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={drag}><div className="flex gap-4 overflow-x-auto pb-3">{columns.map((column) => <Column key={column.status} column={column} tickets={visible.filter((ticket) => ticket.status === column.status).sort((a, b) => a.order - b.order)} events={eventNames} jobs={jobNames} users={userNames} sortable />)}</div></DndContext> : <div className="flex gap-4 overflow-x-auto pb-3">{columns.map((column) => <Column key={column.status} column={column} tickets={visible.filter((ticket) => ticket.status === column.status).sort((a, b) => a.order - b.order)} events={eventNames} jobs={jobNames} users={userNames} sortable={false} />)}</div>}<TicketDialog open={newOpen} onOpenChange={setNewOpen} events={events} jobs={jobs} users={users} initialContext={initialContext} onSaved={load} /><Dialog open={!!pendingMove} onOpenChange={(open) => !open && setPendingMove(null)}><DialogContent><DialogHeader><DialogTitle>{pendingMove?.status === 'DONE' ? 'Selesaikan ticket' : pendingMove?.ticket.status === 'DONE' ? 'Buka kembali ticket' : 'Pindahkan ticket'}</DialogTitle><DialogDescription>{pendingMove?.status === 'DONE' ? 'Catatan hasil wajib diisi.' : pendingMove?.ticket.status === 'DONE' ? 'Alasan membuka kembali wajib diisi.' : 'Konfirmasi perubahan status ticket.'}</DialogDescription></DialogHeader><form action={confirmMove}><Field><FieldLabel htmlFor="move-note">{pendingMove?.status === 'DONE' ? 'Catatan hasil' : pendingMove?.ticket.status === 'DONE' ? 'Alasan membuka kembali' : 'Catatan (opsional)'}</FieldLabel><Textarea id="move-note" name="note" required={pendingMove?.status === 'DONE' || pendingMove?.ticket.status === 'DONE'} /></Field><DialogFooter><Button type="button" variant="outline" onClick={() => setPendingMove(null)}>Batal</Button><Button type="submit">Simpan</Button></DialogFooter></form></DialogContent></Dialog></div>
 }

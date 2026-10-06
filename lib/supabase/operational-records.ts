@@ -5,7 +5,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin'
 export const operationalTables = [
   'operational_users', 'venues', 'event_organizers', 'events', 'exhibitors',
   'jobs', 'job_stages', 'job_documents', 'coordination_agents', 'cipls',
-  'cipl_versions', 'shipments', 'customs_jobs', 'tickets', 'preferences',
+  'cipl_versions', 'shipments', 'customs_jobs', 'preferences',
   'migration_review_items',
 ] as const
 

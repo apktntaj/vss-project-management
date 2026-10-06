@@ -30,10 +30,9 @@ import {
   validateJobTransition,
   validateShipmentAllocation,
 } from '@/domain/exhibition/validation'
-import type { Ticket, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
-import { validateStatusTransition, validateTicket } from '@/domain/ticket/validation'
+import type { Ticket, TicketActivity, TicketComment, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
 
-export type { Ticket, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
+export type { Ticket, TicketActivity, TicketComment, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
 
 export type LocalUser = {
   id: string
@@ -473,251 +472,94 @@ export async function listUsers() {
   return ensureSeeded()
 }
 
-type StoredTicket = Ticket
-type Preference = { id: 'activeUserId'; value: string }
 export type TicketInput = {
-  assigneeId: string
   title: string
   description?: string | null
   context: TicketContext
   priority?: TicketPriority
+  assigneeId?: string | null
 }
 
-function ticketForStorage(ticket: Ticket): StoredTicket {
-  return ticket
+export type TicketDetail = {
+  ticket: Ticket
+  comments: TicketComment[]
+  activities: TicketActivity[]
 }
 
-async function activeTicketUser() {
-  const users = await ensureSeeded()
-  const preference = (await readAll<Preference>('preferences')).find(
-    (item) => item.id === 'activeUserId',
-  )
-  const user =
-    users.find((item) => item.id === preference?.value && item.isActive) ??
-    users.find((item) => item.isActive)
-  if (!user) throw new Error('User aktif wajib tersedia.')
-  return user
+async function ticketRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    cache: 'no-store',
+  })
+  const body = await response.json().catch(() => null) as T | { error?: string } | null
+  if (!response.ok) throw new Error(body && typeof body === 'object' && 'error' in body ? body.error ?? 'Ticket tidak dapat diproses.' : 'Ticket tidak dapat diproses.')
+  return body as T
 }
 
-export async function getActiveUser() {
-  return activeTicketUser()
-}
-
-export async function setActiveWorkspaceUser(userId: string) {
-  const users = await ensureSeeded()
-  const user = users.find((item) => item.id === userId && item.isActive)
-  if (!user) throw new Error('Pengguna tidak aktif atau tidak ditemukan.')
-  await put('preferences', { id: 'activeUserId', value: user.id })
-  return user
-}
-
-export async function listMyTickets(): Promise<Ticket[]> {
-  const user = await activeTicketUser()
-  const tickets = (await readAll<StoredTicket>('tickets')).filter(
-    (ticket) => ticket.assigneeId === user.id,
-  )
-  return tickets.sort((a, b) => a.status.localeCompare(b.status) || a.order - b.order)
-}
-
-async function assertTicketOwner(
-  ticketId: string,
-): Promise<{ ticket: StoredTicket; user: LocalUser }> {
-  const [user, tickets] = await Promise.all([activeTicketUser(), readAll<StoredTicket>('tickets')])
-  const ticket = tickets.find((item) => item.id === ticketId)
-  if (!ticket || ticket.assigneeId !== user.id)
-    throw new Error('Ticket tidak tersedia untuk user aktif.')
-  return { ticket, user }
-}
-
-export async function createTicket(input: TicketInput): Promise<Ticket> {
-  const users = await ensureSeeded()
-  if (!users.some((user) => user.id === input.assigneeId && user.isActive))
-    throw new Error('Assignee wajib aktif dan valid.')
-  const eventId = await eventIdForTicketContext(input.context)
-  const timestamp = now()
-  const current = (await readAll<StoredTicket>('tickets')).filter(
-    (ticket) => ticket.eventId === eventId,
-  )
-  const ticket: Ticket = {
-    id: id(),
-    ticketNumber: Math.max(0, ...current.map((ticket) => ticket.ticketNumber)) + 1,
-    eventId,
-    assigneeId: input.assigneeId,
-    context: input.context,
-    title: input.title.trim(),
-    description: input.description?.trim() || null,
-    status: 'TODO',
-    order:
-      Math.max(0, ...current.filter((item) => item.status === 'TODO').map((item) => item.order)) +
-      1,
-    priority: input.priority ?? 'NORMAL',
-    completion: null,
-    statusHistory: [],
-    createdAt: timestamp,
-    updatedAt: timestamp,
+export async function listTickets(filters: {
+  scope: 'mine' | 'unassigned' | 'all'
+  contextKind?: 'EVENT' | 'JOB'
+  contextId?: string
+}): Promise<Ticket[]> {
+  const params = new URLSearchParams({ scope: filters.scope })
+  if (filters.contextKind && filters.contextId) {
+    params.set('contextKind', filters.contextKind)
+    params.set('contextId', filters.contextId)
   }
-  const error = validateTicket(ticket)
-  if (error) throw new Error(error)
-  return put('tickets', ticketForStorage(ticket))
+  return ticketRequest(`/api/tickets?${params}`)
 }
 
-export async function listTicketsForUser(userId: string): Promise<Ticket[]> {
-  const users = await ensureSeeded()
-  if (!users.some((user) => user.id === userId && user.isActive))
-    throw new Error('User tidak aktif atau tidak ditemukan.')
-  const tickets = (await readAll<StoredTicket>('tickets')).filter(
-    (ticket) => ticket.assigneeId === userId,
-  )
-  return tickets.sort((a, b) => a.status.localeCompare(b.status) || a.order - b.order)
+export function getTicketDetail(ticketId: string): Promise<TicketDetail> {
+  return ticketRequest(`/api/tickets/${encodeURIComponent(ticketId)}`)
 }
 
-async function assertTicketContext(context: TicketContext) {
-  await eventIdForTicketContext(context)
+export function createTicket(input: TicketInput): Promise<Ticket> {
+  return ticketRequest('/api/tickets', { method: 'POST', body: JSON.stringify(input) })
 }
 
-async function eventIdForTicketContext(context: TicketContext): Promise<string> {
-  if (context.kind === 'EVENT') {
-    const event = (await listEvents()).find(
-      (item) => item.id === context.id && item.status === 'ACTIVE',
-    )
-    if (!event) throw new Error('Event harus aktif dan valid.')
-    return event.id
-  }
-  const job = (await listJobs()).find(
-    (item) => item.id === context.id && item.status !== 'COMPLETED' && item.status !== 'CANCELLED',
-  )
-  const event =
-    job?.eventId &&
-    (await listEvents()).find((item) => item.id === job.eventId && item.status === 'ACTIVE')
-  if (!event) throw new Error('Job harus aktif dan terkait Event aktif.')
-  return event.id
+export function updateTicketDetails(ticketId: string, input: TicketInput): Promise<Ticket> {
+  return ticketRequest(`/api/tickets/${encodeURIComponent(ticketId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ action: 'EDIT', input }),
+  })
 }
 
-export async function updateTicket(ticketId: string, input: Partial<TicketInput>): Promise<Ticket> {
-  const { ticket } = await assertTicketOwner(ticketId)
-  const eventId = input.context ? await eventIdForTicketContext(input.context) : ticket.eventId
-  const updated: Ticket = {
-    ...ticket,
-    eventId,
-    title: input.title === undefined ? ticket.title : input.title.trim(),
-    description:
-      input.description === undefined ? ticket.description : input.description?.trim() || null,
-    priority: input.priority ?? ticket.priority,
-    context: input.context ?? ticket.context,
-    updatedAt: now(),
-  }
-  const error = validateTicket(updated)
-  if (error) throw new Error(error)
-  return put('tickets', ticketForStorage(updated))
+export function assignTicket(ticketId: string, assigneeId: string | null): Promise<Ticket> {
+  return ticketRequest(`/api/tickets/${encodeURIComponent(ticketId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ action: 'ASSIGN', input: { assigneeId } }),
+  })
 }
 
-export async function moveTicket(
+export function takeTicket(ticketId: string): Promise<Ticket> {
+  return ticketRequest(`/api/tickets/${encodeURIComponent(ticketId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ action: 'TAKE' }),
+  })
+}
+
+export function moveAndReorderTickets(
   ticketId: string,
   status: TicketStatus,
+  orderedTicketIds?: string[],
   completionNote?: string,
   reopenReason?: string,
 ): Promise<Ticket> {
-  const { ticket } = await assertTicketOwner(ticketId)
-  const reason = ticket.status === 'DONE' && status !== 'DONE' ? reopenReason?.trim() || null : null
-  const transitionError = validateStatusTransition(
-    ticket.status,
-    status,
-    reason,
-    completionNote?.trim() || null,
-  )
-  if (transitionError) throw new Error(transitionError)
-  const timestamp = now()
-  const updated: Ticket = {
-    ...ticket,
-    status,
-    completion: status === 'DONE' ? { note: completionNote!.trim(), completedAt: timestamp } : null,
-    statusHistory:
-      ticket.status === status
-        ? ticket.statusHistory
-        : [
-            ...ticket.statusHistory,
-            { from: ticket.status, to: status, reason, changedAt: timestamp },
-          ],
-    updatedAt: timestamp,
-  }
-  return put('tickets', ticketForStorage(updated))
+  return ticketRequest(`/api/tickets/${encodeURIComponent(ticketId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      action: 'MOVE',
+      input: { status, orderedTicketIds, completionNote, reopenReason },
+    }),
+  })
 }
 
-/** Rewrites ticket positions through Supabase records. */
-export async function reorderMyTickets(status: TicketStatus, ticketIds: string[]) {
-  const user = await activeTicketUser()
-  const tickets = await readAll<StoredTicket>('tickets')
-  const owned = tickets.filter((ticket) => ticket.assigneeId === user.id)
-  if (
-    new Set(ticketIds).size !== ticketIds.length ||
-    ticketIds.some((id) => !owned.some((ticket) => ticket.id === id))
-  )
-    throw new Error('Urutan ticket tidak valid.')
-  await Promise.all(
-    ticketIds.map((ticketId, index) => {
-      const ticket = owned.find((item) => item.id === ticketId)!
-      return put(
-        'tickets',
-        ticketForStorage({ ...ticket, status, order: index + 1, updatedAt: now() }),
-      )
-    }),
-  )
-}
-
-/** Moves a ticket and rewrites its destination-column order. */
-export async function moveAndReorderMyTickets(
-  ticketId: string,
-  status: TicketStatus,
-  ticketIds: string[],
-  completionNote?: string,
-  reopenReason?: string,
-) {
-  const { ticket, user } = await assertTicketOwner(ticketId)
-  if (!ticketIds.includes(ticketId))
-    throw new Error('Urutan tujuan harus memuat ticket yang dipindahkan.')
-  const reason = ticket.status === 'DONE' && status !== 'DONE' ? reopenReason?.trim() || null : null
-  const transitionError = validateStatusTransition(
-    ticket.status,
-    status,
-    reason,
-    completionNote?.trim() || null,
-  )
-  if (transitionError) throw new Error(transitionError)
-  const all = await readAll<StoredTicket>('tickets')
-  if (
-    new Set(ticketIds).size !== ticketIds.length ||
-    ticketIds.some(
-      (id) =>
-        id !== ticketId &&
-        !all.some(
-          (item) => item.id === id && item.assigneeId === user.id && item.status === status,
-        ),
-    )
-  )
-    throw new Error('Urutan ticket tidak valid.')
-  const timestamp = now()
-  const moved: Ticket = {
-    ...ticket,
-    status,
-    completion: status === 'DONE' ? { note: completionNote!.trim(), completedAt: timestamp } : null,
-    statusHistory:
-      ticket.status === status
-        ? ticket.statusHistory
-        : [
-            ...ticket.statusHistory,
-            { from: ticket.status, to: status, reason, changedAt: timestamp },
-          ],
-    updatedAt: timestamp,
-  }
-  await Promise.all(
-    ticketIds.map((id, index) => {
-      const value = id === ticketId ? moved : all.find((item) => item.id === id)!
-      return put(
-        'tickets',
-        ticketForStorage({ ...value, status, order: index + 1, updatedAt: timestamp }),
-      )
-    }),
-  )
+export function addTicketComment(ticketId: string, body: string): Promise<TicketComment> {
+  return ticketRequest(`/api/tickets/${encodeURIComponent(ticketId)}/comments`, {
+    method: 'POST',
+    body: JSON.stringify({ body }),
+  })
 }
 
 type JobsApiPayload = {
@@ -1297,7 +1139,7 @@ export async function saveJobOperationalDetails(
 export async function saveJob(input: JobInput, existingId?: string) {
   const previous = existingId ? await getJob(existingId) : null
   const timestamp = now()
-  const createdById = previous ? previous.createdById ?? null : (await activeTicketUser()).id
+  const createdById = previous ? previous.createdById ?? null : (await listUsers()).find((user) => user.isActive)?.id ?? null
   const job: LocalJob = {
     ...previous,
     id: existingId ?? id(),
@@ -1319,7 +1161,7 @@ export async function saveJob(input: JobInput, existingId?: string) {
 export async function saveJobWithDocument(input: JobInput, file: File, existingId?: string) {
   const previous = existingId ? await getJob(existingId) : null
   const timestamp = now()
-  const createdById = previous ? previous.createdById ?? null : (await activeTicketUser()).id
+  const createdById = previous ? previous.createdById ?? null : (await listUsers()).find((user) => user.isActive)?.id ?? null
   const job: LocalJob = {
     ...previous,
     id: existingId ?? id(),

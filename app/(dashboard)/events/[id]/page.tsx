@@ -23,6 +23,7 @@ import {
   type LocalJob,
 } from '@/lib/data-client'
 import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
+import { ContextTicketList } from '@/components/context-ticket-list'
 
 function formatDateRange(startsAt: string, endsAt: string) {
   const formatter = new Intl.DateTimeFormat('id-ID', {
@@ -103,7 +104,7 @@ export default function EventDetailPage() {
           {event.alias && <p className="mt-2 text-sm text-slate-500">{event.alias}</p>}
         </div>
         <div className="flex items-center gap-2">
-          <Link href={`/kanban?event=${event.id}&new=1`} className="btn-secondary shrink-0">
+          <Link href={`/kanban?new=1&contextKind=EVENT&contextId=${event.id}`} className="btn-secondary shrink-0">
             <Plus size={16} /> <span className="ml-2">Tambah ticket</span>
           </Link>
           {event.status !== 'CANCELLED' && (
@@ -217,6 +218,7 @@ export default function EventDetailPage() {
           </p>
         )}
       </section>
+      <ContextTicketList contextKind="EVENT" contextId={event.id} />
       {showCancelDialog && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
