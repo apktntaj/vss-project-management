@@ -6,13 +6,15 @@ import {
   getOperationalDetails,
   saveJobInvoiceExtraction,
   saveJobTransportExtraction,
-  type JobDocumentParty,
-  type JobInvoiceExtraction,
-  type JobInvoiceItem,
-  type JobTransportContainer,
-  type JobTransportExtraction,
   type LocalJob,
 } from '@/lib/data-client'
+import type {
+  JobDocumentParty,
+  JobInvoiceExtraction,
+  JobInvoiceItem,
+  JobTransportContainer,
+  JobTransportExtraction,
+} from '@/domain/exhibition/source-documents'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,

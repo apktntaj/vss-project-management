@@ -1,4 +1,4 @@
-import type { JobInvoiceExtraction, JobTransportExtraction } from '@/lib/data-client'
+import type { JobInvoiceExtraction, JobTransportExtraction } from '@/domain/exhibition/source-documents'
 
 export type DocumentComparisonStatus = 'MATCH' | 'DIFFERENT' | 'UNAVAILABLE'
 

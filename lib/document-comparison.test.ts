@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { compareInvoiceWithTransport } from './document-comparison'
-import type { JobInvoiceExtraction, JobTransportExtraction } from './data-client'
+import type { JobInvoiceExtraction, JobTransportExtraction } from '@/domain/exhibition/source-documents'
 
 const invoice: JobInvoiceExtraction = {
   invoiceNumber: null, invoiceDate: null, seller: { name: 'PT. Contoh', address: null, countryCode: null, taxId: null }, buyer: { name: 'Acme Indonesia', address: null, countryCode: null, taxId: null }, currency: null, incoterm: null, incotermLocation: null, totalAmount: null, freightAmount: null, insuranceAmount: null, totalGrossWeightKg: 100, totalNetWeightKg: 90, totalPackageCount: 4, packageType: 'Wooden Case', items: [],

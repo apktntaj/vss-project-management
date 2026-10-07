@@ -14,6 +14,7 @@ import {
   Settings,
   Menu,
   ChevronRight,
+  Landmark,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -31,6 +32,7 @@ const links = [
   { href: '/events', label: 'Events', icon: CalendarDays },
   { href: '/jobs', label: 'Jobs', icon: BriefcaseBusiness },
   { href: '/kanban', label: 'Tickets', icon: FolderKanban },
+  { href: '/ceisa', label: 'CEISA', icon: Landmark },
   { href: '/general-cargo', label: 'General Cargo', icon: Package, available: false },
   { href: '/projects', label: 'Projects', icon: FolderKanban, available: false },
 ]

@@ -6,4 +6,13 @@ node_modules
 supabase/.temp/
 public/uploads/*
 !public/uploads/.gitkeep
+*.tsbuildinfo
+/*.pdf
+/CEISA40_ARCHIVE.md
+/CEISA_GET_INTEGRATIONS_PLAN.md
+/docs/Export_openapi-auth_prod.json
+/docs/LAPORAN_PEMERIKSAAN_DOKUMENTASI_CEISA.md
+/docs/RENCANA_DEMO_DRAFT_BC23.md
+/docs/openapi_swagger.json
+/docs/supabase/
 .env.example

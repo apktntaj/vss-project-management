@@ -123,6 +123,7 @@ export type StatusChange = {
   to: CustomsJobStatus
   reason: string
   changedAt: string
+  ceisaObservationId?: string
 }
 export type CustomsJob = {
   id: string
@@ -132,6 +133,7 @@ export type CustomsJob = {
   ajuNumber: string | null
   registrationNumber: string | null
   registrationDate: string | null
+  customsOfficeCode: string | null
   warehouseId: string | null
   warehouseName: string | null
   assignedToId: string | null

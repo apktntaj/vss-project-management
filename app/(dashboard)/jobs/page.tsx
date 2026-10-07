@@ -23,9 +23,8 @@ import {
   type LocalEvent,
   type LocalJob,
   type LocalJobDocument,
-  type JobInvoiceExtraction,
-  type JobTransportExtraction,
 } from '@/lib/data-client'
+import type { JobInvoiceExtraction, JobTransportExtraction } from '@/domain/exhibition/source-documents'
 import { StatusBadge } from '@/components/status-badge'
 import { JobDocumentEditorDialog, type EditableJobDocument } from '@/components/job-document-editor-dialog'
 import { Button } from '@/components/ui/button'

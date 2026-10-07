@@ -1,0 +1,8 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { CeisaClient } from '@/lib/server/ceisa/client'
+import { ceisaFailure, ceisaNoStore, requireCeisaUser } from '@/lib/server/ceisa/http'
+import { recordCeisaObservation } from '@/lib/server/ceisa/repository'
+export const runtime = 'nodejs'; export const dynamic = 'force-dynamic'
+const currency = z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/); const hs = z.string().regex(/^\d{8}$/); const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+export async function GET(request: NextRequest) { const denied = await requireCeisaUser(); if (denied) return denied; const action = request.nextUrl.searchParams.get('action'); try { const client = new CeisaClient(); if (action === 'rate') { const data = await client.getExchangeRate(currency.parse(request.nextUrl.searchParams.get('currency'))); await recordCeisaObservation({ operation: 'RATE', correlationKey: `${data.currencyCode}:${data.effectiveDate}`, payload: data }); return NextResponse.json(data, { headers: ceisaNoStore }) } if (action === 'tariff') { const data = await client.getTariff({ hsCode: hs.parse(request.nextUrl.searchParams.get('hsCode')), effectiveDate: date.parse(request.nextUrl.searchParams.get('effectiveDate')) }); await recordCeisaObservation({ operation: 'TARIFF', correlationKey: `${data.hsCode}:${data.effectiveDate}`, payload: data }); return NextResponse.json(data, { headers: ceisaNoStore }) } return NextResponse.json({ error: 'Aksi finansial CEISA tidak valid.' }, { status: 400 }) } catch (error) { if (error instanceof z.ZodError) return NextResponse.json({ error: 'Parameter finansial CEISA tidak valid.' }, { status: 400 }); return ceisaFailure(error) } }
