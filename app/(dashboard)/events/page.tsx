@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   AlertTriangle,
-  Briefcase,
   Building2,
   CalendarDays,
   MapPin,
@@ -21,9 +20,11 @@ import {
   listCipls,
   listCiplVersions,
   listEventsWithExhibitors,
+  listJobs,
   type InternationalJobJenis,
   type LocalEvent,
   type LocalExhibitor,
+  type LocalJob,
 } from '@/lib/data-client'
 import type { Cipl, CiplVersion } from '@/domain/exhibition/types'
 import { jobKindLabels } from '@/domain/job/types'
@@ -143,6 +144,7 @@ export default function EventsPage() {
   const router = useRouter()
   const [events, setEvents] = useState<LocalEvent[]>([])
   const [exhibitorsByEvent, setExhibitorsByEvent] = useState<Record<string, LocalExhibitor[]>>({})
+  const [jobs, setJobs] = useState<LocalJob[]>([])
   const [cipls, setCipls] = useState<CiplWithVersions[]>([])
   const [newJobForEvent, setNewJobForEvent] = useState<LocalEvent | null>(null)
   const [initJob, setInitJob] = useState<{ event: LocalEvent; jenis: InternationalJobJenis } | null>(null)
@@ -161,9 +163,11 @@ export default function EventsPage() {
   const reloadEvents = () => {
     loadingStartedAt.current = Date.now()
     setLoading(true)
-    listEventsWithExhibitors().then(async ({ events: loadedEvents, exhibitorsByEvent }) => {
-      setEvents(loadedEvents)
-      setExhibitorsByEvent(exhibitorsByEvent)
+    Promise.all([listEventsWithExhibitors(), listJobs()]).then(
+      async ([{ events: loadedEvents, exhibitorsByEvent }, loadedJobs]) => {
+        setEvents(loadedEvents)
+        setExhibitorsByEvent(exhibitorsByEvent)
+        setJobs(loadedJobs)
       const loadedCipls = await Promise.all(
         Object.values(exhibitorsByEvent)
           .flat()
@@ -178,8 +182,9 @@ export default function EventsPage() {
           }),
       )
       setCipls(loadedCipls.flat())
-      finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
-    })
+        finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
+      },
+    )
   }
   useEffect(() => {
     if (initialLoadStarted.current) return
@@ -243,6 +248,11 @@ export default function EventsPage() {
   const clearFilters = () => {
     setSearch('')
     setStatus('active')
+  }
+  const jobsByEvent: Record<string, LocalJob[]> = {}
+  for (const job of jobs) {
+    if (!job.eventId) continue
+    ;(jobsByEvent[job.eventId] ||= []).push(job)
   }
 
   async function handleDeleteEvent() {
@@ -388,6 +398,7 @@ export default function EventsPage() {
                 const isPastEvent =
                   isCancelledEvent || getEventStatus(event.startsAt, event.endsAt) === 'done'
                 const exhibitors = exhibitorsByEvent[event.id] ?? []
+                const eventJobs = jobsByEvent[event.id] ?? []
                 return (
                   <article
                     key={event.id}
@@ -425,26 +436,33 @@ export default function EventsPage() {
                               : event.officialName}
                           </span>
                         </h3>
+                        <div className="mt-2 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(clickEvent) => {
+                              clickEvent.stopPropagation()
+                              if (isPastEvent) return
+                              setNewJobForEvent(event)
+                            }}
+                            disabled={isPastEvent}
+                            aria-label={`Buat job untuk ${event.officialName}`}
+                            title="Buat job"
+                            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
+                              isPastEvent
+                                ? 'cursor-not-allowed bg-slate-200 text-slate-400'
+                                : 'bg-orange-600 text-white hover:bg-orange-700'
+                            }`}
+                          >
+                            <Plus size={14} />
+                          </button>
+                          <span
+                            className={`text-sm ${isPastEvent ? 'text-slate-400' : 'text-slate-600'}`}
+                          >
+                            {eventJobs.length} job
+                          </span>
+                        </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={(clickEvent) => {
-                            clickEvent.stopPropagation()
-                            if (isPastEvent) return
-                            setNewJobForEvent(event)
-                          }}
-                          disabled={isPastEvent}
-                          aria-label={`Buat job untuk ${event.officialName}`}
-                          title="Buat job"
-                          className={`rounded-lg p-2 text-slate-500 ${
-                            isPastEvent
-                              ? 'cursor-not-allowed opacity-40'
-                              : 'hover:bg-orange-50 hover:text-orange-700'
-                          }`}
-                        >
-                          <Briefcase size={20} />
-                        </button>
                         <div className="relative">
                           <button
                             type="button"
