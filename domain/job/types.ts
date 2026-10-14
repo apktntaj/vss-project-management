@@ -24,3 +24,14 @@ export const internationalJobJenisLabels: Record<InternationalJobJenis, string> 
   ATA_CARNET: 'ATA Carnet',
   TEMPORARY_EXPORT: 'Ekspor Sementara',
 }
+
+/** Dokumen BC yang dilayani job; BC 2.7 dipakai untuk pengalihan barang (inward manifest ALLPACK). */
+export const bcDocumentKinds = ['BC_2_3', 'BC_2_5', 'BC_3_0', 'BC_2_7'] as const
+export type BcDocumentKind = (typeof bcDocumentKinds)[number]
+
+export const bcDocumentLabels: Record<BcDocumentKind, string> = {
+  BC_2_3: 'BC 2.3',
+  BC_2_5: 'BC 2.5',
+  BC_3_0: 'BC 3.0',
+  BC_2_7: 'BC 2.7',
+}
