@@ -1,29 +1,29 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import {
-  AlertTriangle,
-  Building2,
-  CalendarDays,
-  Globe2,
-  MapPin,
-  FileStack,
-  Plus,
-  Users,
-} from 'lucide-react'
+import { Briefcase, Building2, CalendarDays, MapPin, Plus } from 'lucide-react'
 import { useParams } from 'next/navigation'
 import {
-  cancelEvent,
-  listCipls,
+  listAgents,
   listEventJobs,
   listEventsWithExhibitors,
+  type InternationalJobJenis,
   type LocalEvent,
   type LocalExhibitor,
   type LocalJob,
+  type Agent,
 } from '@/lib/data-client'
 import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
 import { ContextTicketList } from '@/components/context-ticket-list'
+import { EventJobsTable } from '@/components/event-jobs-table'
+import { NewJobKindModal } from '@/components/new-job-kind-modal'
+import { InternationalJobInitModal } from '@/components/international-job-init-modal'
+import { jobKindLabels } from '@/domain/job/types'
+
+function toast(message: string, tone: 'success' | 'error') {
+  window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
+}
 
 function formatDateRange(startsAt: string, endsAt: string) {
   const formatter = new Intl.DateTimeFormat('id-ID', {
@@ -39,46 +39,29 @@ export default function EventDetailPage() {
   const [event, setEvent] = useState<LocalEvent | null>(null)
   const [exhibitors, setExhibitors] = useState<LocalExhibitor[]>([])
   const [jobs, setJobs] = useState<LocalJob[]>([])
-  const [ciplCounts, setCiplCounts] = useState<Record<string, number>>({})
+  const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
   const loadingStartedAt = useRef(Date.now())
-  const [showCancelDialog, setShowCancelDialog] = useState(false)
-  const [cancellationReason, setCancellationReason] = useState('')
-  const [cancelError, setCancelError] = useState('')
-  const [cancelling, setCancelling] = useState(false)
+  const [showNewJob, setShowNewJob] = useState(false)
+  const [initJenis, setInitJenis] = useState<InternationalJobJenis | null>(null)
 
-  useEffect(() => {
+  const loadData = useCallback(() => {
     loadingStartedAt.current = Date.now()
-    Promise.all([listEventsWithExhibitors(), listEventJobs(params.id)]).then(
-      ([{ events, exhibitorsByEvent }, eventJobs]) => {
-        const eventExhibitors = exhibitorsByEvent[params.id] ?? []
+    setLoading(true)
+    Promise.all([listEventsWithExhibitors(), listEventJobs(params.id), listAgents()]).then(
+      ([{ events, exhibitorsByEvent }, eventJobs, loadedAgents]) => {
         setEvent(events.find((item) => item.id === params.id) ?? null)
-        setExhibitors(eventExhibitors)
+        setExhibitors(exhibitorsByEvent[params.id] ?? [])
         setJobs(eventJobs)
-        Promise.all(eventExhibitors.map(async (exhibitor) => [exhibitor.id, (await listCipls(exhibitor.id)).length] as const))
-          .then((counts) => setCiplCounts(Object.fromEntries(counts)))
+        setAgents(loadedAgents)
         finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
       },
     )
   }, [params.id])
 
-  async function handleCancel() {
-    if (!event) return
-    if (!cancellationReason.trim()) {
-      setCancelError('Alasan pembatalan wajib diisi.')
-      return
-    }
-    setCancelling(true)
-    setCancelError('')
-    try {
-      setEvent(await cancelEvent(event.id, cancellationReason))
-      setShowCancelDialog(false)
-    } catch (error) {
-      setCancelError(error instanceof Error ? error.message : 'Event tidak dapat dibatalkan.')
-    } finally {
-      setCancelling(false)
-    }
-  }
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   if (loading) {
     return <PageSkeleton cards={2} rows={5} />
@@ -107,15 +90,6 @@ export default function EventDetailPage() {
           <Link href={`/kanban?new=1&contextKind=EVENT&contextId=${event.id}`} className="btn-secondary shrink-0">
             <Plus size={16} /> <span className="ml-2">Tambah ticket</span>
           </Link>
-          {event.status !== 'CANCELLED' && (
-            <button
-              type="button"
-              onClick={() => setShowCancelDialog(true)}
-              className="btn-secondary shrink-0 text-rose-700 hover:border-rose-200 hover:bg-rose-50"
-            >
-              Cancel event
-            </button>
-          )}
         </div>
       </div>
 
@@ -160,111 +134,53 @@ export default function EventDetailPage() {
       </section>
 
       <section className="card p-6 sm:p-8">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold">List of exhibitor</h2>
+            <h2 className="text-lg font-semibold">Jobs ({jobs.length})</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Perusahaan yang berpartisipasi dalam event ini.
+              Satu agent mewakili satu job dengan satu CIPL dan satu B/L.
             </p>
           </div>
-          <Users className="shrink-0 text-orange-600" size={22} />
+          {event.status !== 'CANCELLED' && (
+            <button
+              type="button"
+              onClick={() => setShowNewJob(true)}
+              className="btn-primary shrink-0"
+            >
+              <Briefcase size={16} /> New Job
+            </button>
+          )}
         </div>
-        {exhibitors.length ? (
-          <div className="mt-5 divide-y divide-black/10 rounded-xl border border-black/10">
-            {exhibitors.map((exhibitor) => (
-              <div
-                key={exhibitor.id}
-                className="grid gap-3 p-4 sm:grid-cols-[1fr_auto] sm:items-center"
-              >
-                <div>
-                  <p className="font-semibold text-slate-900">{exhibitor.legalName}</p>
-                  {exhibitor.aliasName && (
-                    <p className="mt-1 text-sm text-slate-500">{exhibitor.aliasName}</p>
-                  )}
-                  <p className="mt-2 text-xs text-slate-500">
-                    {[exhibitor.email, exhibitor.phone, exhibitor.countryCode]
-                      .filter(Boolean)
-                      .join(' · ') || 'Kontak belum diinput'}
-                  </p>
-                  {jobs.filter((job) => job.exhibitorId === exhibitor.id).length > 0 && (
-                    <div className="mt-3 space-y-1.5">
-                      {jobs
-                        .filter((job) => job.exhibitorId === exhibitor.id)
-                        .map((job) => (
-                          <Link key={job.id} href={`/jobs/${job.id}`} className="block text-xs text-slate-600 hover:text-orange-700">
-                            <span className="font-semibold text-slate-800">{job.jobNumber}</span>
-                            {' · '}
-                            {job.awbNumber || job.blNumber || 'Dokumen belum diberi nomor'}
-                          </Link>
-                        ))}
-                    </div>
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex w-fit items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                    <Globe2 size={13} /> {exhibitor.type === 'LOCAL' ? 'Local' : 'International'}
-                  </span>
-                  <span className="inline-flex items-center gap-1 text-xs text-slate-500"><FileStack size={13} /> {ciplCounts[exhibitor.id] ?? 0} CIPL</span>
-                  {jobs.find((job) => job.exhibitorId === exhibitor.id) && (
-                    <Link href={`/jobs/${jobs.find((job) => job.exhibitorId === exhibitor.id)!.id}`} className="btn-secondary px-3 py-1.5 text-xs">Buka Job</Link>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-5 rounded-xl border border-dashed border-black/15 px-4 py-8 text-center text-sm text-slate-500">
-            Belum ada exhibitor yang ditambahkan.
-          </p>
-        )}
+        <EventJobsTable jobs={jobs} agents={agents} exhibitors={exhibitors} />
       </section>
       <ContextTicketList contextKind="EVENT" contextId={event.id} />
-      {showCancelDialog && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-          role="presentation"
-          onMouseDown={(mouseEvent) => {
-            if (mouseEvent.target === mouseEvent.currentTarget) setShowCancelDialog(false)
+      {showNewJob && (
+        <NewJobKindModal
+          event={event}
+          onSelect={(kind, internationalJenis) => {
+            setShowNewJob(false)
+            if (kind === 'INTERNATIONAL' && internationalJenis) {
+              setInitJenis(internationalJenis)
+              return
+            }
+            toast(
+              `Job ${jobKindLabels[kind]} dipilih. Form inisiasi job Local menyusul pada iterasi berikutnya.`,
+              'success',
+            )
           }}
-        >
-          <div
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="cancel-event-title"
-            className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-6 shadow-2xl"
-          >
-            <div className="flex items-start gap-4">
-              <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700">
-                <AlertTriangle size={22} />
-              </div>
-              <div>
-                <h2 id="cancel-event-title" className="text-lg font-bold">
-                  Batalkan event?
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Event akan tetap tersimpan sebagai rekam operasional. Masukkan alasan pembatalan.
-                </p>
-              </div>
-            </div>
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowCancelDialog(false)}
-                className="btn-secondary"
-              >
-                Batal
-              </button>
-              <button type="button" onClick={handleCancel} disabled={cancelling} className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60">
-                {cancelling ? 'Membatalkan...' : 'Batalkan event'}
-              </button>
-            </div>
-            <label className="label mt-5">
-              Alasan pembatalan
-              <textarea value={cancellationReason} onChange={(input) => setCancellationReason(input.target.value)} required className="input mt-1 min-h-24" />
-            </label>
-            {cancelError && <p className="mt-3 text-sm text-rose-700">{cancelError}</p>}
-          </div>
-        </div>
+          onCancel={() => setShowNewJob(false)}
+        />
+      )}
+      {initJenis && (
+        <InternationalJobInitModal
+          event={event}
+          jenis={initJenis}
+          onCreated={() => {
+            setInitJenis(null)
+            loadData()
+          }}
+          onCancel={() => setInitJenis(null)}
+        />
       )}
     </div>
   )

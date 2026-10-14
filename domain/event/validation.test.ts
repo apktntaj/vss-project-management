@@ -14,6 +14,13 @@ assert.equal(eventInputSchema.safeParse({
 
 assert.equal(eventInputSchema.safeParse({
   name: 'Vissasa Expo',
+  venueId: 'venue-jiexpo',
+  startsOn: '2026-10-01',
+  endsOn: '2026-10-03',
+}).success, false)
+
+assert.equal(eventInputSchema.safeParse({
+  name: 'Vissasa Expo',
   venueId: 'b3d6e4c5-1457-4a67-bbad-23778d112240',
   eventOrganizerId: '2a17e637-2c0e-4d43-9e55-85f46bf520f9',
   startsOn: '2026-10-03',

@@ -4,26 +4,36 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   AlertTriangle,
+  Briefcase,
   Building2,
   CalendarDays,
   MapPin,
+  MoreVertical,
+  Pencil,
   Plus,
   Search,
-  UserPlus,
+  Trash2,
   Users,
-  X,
 } from 'lucide-react'
-import { EventForm } from '@/components/event-form'
 import {
+  deleteEvent,
   listCipls,
   listCiplVersions,
   listEventsWithExhibitors,
+  type InternationalJobJenis,
   type LocalEvent,
   type LocalExhibitor,
 } from '@/lib/data-client'
 import type { Cipl, CiplVersion } from '@/domain/exhibition/types'
-import { EventExhibitorModal } from '@/components/event-exhibitor-modal'
+import { jobKindLabels } from '@/domain/job/types'
+import { EventFormModal } from '@/components/event-form-modal'
+import { InternationalJobInitModal } from '@/components/international-job-init-modal'
+import { NewJobKindModal } from '@/components/new-job-kind-modal'
 import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
+
+function toast(message: string, tone: 'success' | 'error') {
+  window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
+}
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -94,33 +104,6 @@ function formatEventDateRange(startsAt: string, endsAt: string) {
   return `${fullDate(start)} - ${fullDate(end)}`
 }
 
-function getTimelineDays(startsAt: string, endsAt: string) {
-  return Math.max(
-    1,
-    Math.floor((calendarDay(new Date(endsAt)) - calendarDay(new Date(startsAt))) / DAY) + 1,
-  )
-}
-
-function getLeadTimeDays(event: LocalEvent) {
-  const leadTime = Math.floor(
-    (calendarDay(new Date(event.startsAt)) - calendarDay(new Date(event.createdAt))) / DAY,
-  )
-  return leadTime >= 0 ? leadTime : null
-}
-
-function getEventPosition(startsAt: string, endsAt: string, today = new Date()) {
-  const start = calendarDay(new Date(startsAt))
-  const end = calendarDay(new Date(endsAt))
-  const current = calendarDay(today)
-  const progress = Math.round(
-    Math.min(1, Math.max(0, (current - start) / Math.max(1, end - start))) * 100,
-  )
-
-  if (current < start) return { label: 'Belum dimulai', progress: 0 }
-  if (current > end) return { label: 'Selesai', progress: 100 }
-  return { label: 'Berlangsung', progress }
-}
-
 function overlapsInCalendar(event: LocalEvent, other: LocalEvent) {
   return (
     calendarDay(new Date(event.startsAt)) <= calendarDay(new Date(other.endsAt)) &&
@@ -160,11 +143,16 @@ export default function EventsPage() {
   const [events, setEvents] = useState<LocalEvent[]>([])
   const [exhibitorsByEvent, setExhibitorsByEvent] = useState<Record<string, LocalExhibitor[]>>({})
   const [cipls, setCipls] = useState<CiplWithVersions[]>([])
+  const [newJobForEvent, setNewJobForEvent] = useState<LocalEvent | null>(null)
+  const [initJob, setInitJob] = useState<{ event: LocalEvent; jenis: InternationalJobJenis } | null>(null)
   const [showNewEvent, setShowNewEvent] = useState(false)
-  const [addingExhibitorsToEvent, setAddingExhibitorsToEvent] = useState<LocalEvent | null>(null)
+  const [editingEvent, setEditingEvent] = useState<LocalEvent | null>(null)
+  const [deletingEvent, setDeletingEvent] = useState<LocalEvent | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [openMenuEventId, setOpenMenuEventId] = useState<string | null>(null)
   const [expandedExhibitorEventId, setExpandedExhibitorEventId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [status, setStatus] = useState<EventFilter>('all')
+  const [status, setStatus] = useState<EventFilter>('active')
   const [loading, setLoading] = useState(true)
   const loadingStartedAt = useRef(Date.now())
   const initialLoadStarted = useRef(false)
@@ -215,15 +203,16 @@ export default function EventsPage() {
       .join(' ')
       .toLowerCase()
     const matchesSearch = !normalizedSearch || searchableText.includes(normalizedSearch)
+    const eventStatus = getEventStatus(event.startsAt, event.endsAt)
     const matchesStatus =
       status === 'all' ||
-      (status === 'active' && getEventStatus(event.startsAt, event.endsAt) !== 'done') ||
-      getEventStatus(event.startsAt, event.endsAt) === status
+      (status === 'active' && !isCancelled(event) && eventStatus !== 'done') ||
+      eventStatus === status
 
     return matchesSearch && matchesStatus
   })
 
-  const hasFilters = Boolean(search || status !== 'all')
+  const hasFilters = Boolean(search || status !== 'active')
   const activeEvents = events.filter((event) => !isCancelled(event))
   const ongoingEvents = activeEvents.filter(
     (event) => getEventStatus(event.startsAt, event.endsAt) === 'ongoing',
@@ -251,7 +240,22 @@ export default function EventsPage() {
   }, 0)
   const clearFilters = () => {
     setSearch('')
-    setStatus('all')
+    setStatus('active')
+  }
+
+  async function handleDeleteEvent() {
+    if (!deletingEvent) return
+    setDeleting(true)
+    try {
+      await deleteEvent(deletingEvent.id)
+      toast('Event dihapus permanen.', 'success')
+      setDeletingEvent(null)
+      reloadEvents()
+    } catch (caught) {
+      toast(caught instanceof Error ? caught.message : 'Event tidak dapat dihapus.', 'error')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   if (loading) return <PageSkeleton cards={3} rows={6} />
@@ -259,9 +263,14 @@ export default function EventsPage() {
   return (
     <>
       <div className="space-y-8">
-        <header>
-          <h1 className="text-3xl font-bold tracking-tight">Events</h1>
-          <p className="mt-2 text-sm text-slate-500">Pantau kesiapan dan jadwal pameran.</p>
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Events</h1>
+            <p className="mt-2 text-sm text-slate-500">Pantau kesiapan dan jadwal pameran.</p>
+          </div>
+          <button type="button" onClick={() => setShowNewEvent(true)} className="btn-primary shrink-0">
+            <Plus size={16} /> <span className="ml-2">New event</span>
+          </button>
         </header>
 
         <div className="grid gap-5 lg:grid-cols-3">
@@ -340,6 +349,7 @@ export default function EventsPage() {
               </label>
               <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-2 px-0 py-2">
                 {[
+                  ['active', 'Aktif'],
                   ['all', 'All'],
                   ['soon', 'Soon'],
                   ['ongoing', 'On going'],
@@ -358,13 +368,6 @@ export default function EventsPage() {
                   </label>
                 ))}
               </fieldset>
-              <button
-                type="button"
-                onClick={() => setShowNewEvent(true)}
-                className="btn-primary shrink-0 lg:ml-auto"
-              >
-                <Plus size={16} /> New Event
-              </button>
             </div>
             {hasFilters && (
               <button
@@ -427,19 +430,74 @@ export default function EventsPage() {
                           onClick={(clickEvent) => {
                             clickEvent.stopPropagation()
                             if (isPastEvent) return
-                            setAddingExhibitorsToEvent(event)
+                            setNewJobForEvent(event)
                           }}
                           disabled={isPastEvent}
-                          aria-label={`Tambah exhibitor untuk ${event.officialName}`}
-                          title="Tambah exhibitor"
+                          aria-label={`Buat job untuk ${event.officialName}`}
+                          title="Buat job"
                           className={`rounded-lg p-2 text-slate-500 ${
                             isPastEvent
                               ? 'cursor-not-allowed opacity-40'
                               : 'hover:bg-orange-50 hover:text-orange-700'
                           }`}
                         >
-                          <UserPlus size={22} />
+                          <Briefcase size={20} />
                         </button>
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={(clickEvent) => {
+                              clickEvent.stopPropagation()
+                              setOpenMenuEventId((current) => (current === event.id ? null : event.id))
+                            }}
+                            aria-label={`Menu aksi untuk ${event.officialName}`}
+                            aria-expanded={openMenuEventId === event.id}
+                            aria-haspopup="menu"
+                            title="Menu"
+                            className="rounded-lg p-2 text-slate-500 hover:bg-orange-50 hover:text-orange-700"
+                          >
+                            <MoreVertical size={20} />
+                          </button>
+                          {openMenuEventId === event.id && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-40"
+                                role="presentation"
+                                onClick={() => setOpenMenuEventId(null)}
+                              />
+                              <div
+                                role="menu"
+                                aria-label={`Aksi untuk ${event.officialName}`}
+                                className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg"
+                              >
+                                <button
+                                  role="menuitem"
+                                  type="button"
+                                  onClick={(clickEvent) => {
+                                    clickEvent.stopPropagation()
+                                    setOpenMenuEventId(null)
+                                    setEditingEvent(event)
+                                  }}
+                                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                                >
+                                  <Pencil size={15} /> Edit
+                                </button>
+                                <button
+                                  role="menuitem"
+                                  type="button"
+                                  onClick={(clickEvent) => {
+                                    clickEvent.stopPropagation()
+                                    setOpenMenuEventId(null)
+                                    setDeletingEvent(event)
+                                  }}
+                                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
+                                >
+                                  <Trash2 size={15} /> Hapus
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <p className="mt-2 text-sm text-slate-500">{event.alias || ''}</p>
@@ -537,59 +595,112 @@ export default function EventsPage() {
                 {events.length ? 'Tidak ada event yang sesuai' : 'Belum ada event'}
               </p>
               <p className="mt-1 text-sm text-slate-500">
-                {events.length ? 'Coba ubah atau reset filter.' : 'Buat event pertama untuk mulai.'}
+                {events.length ? 'Coba ubah atau reset filter.' : 'Event perlu tersedia lebih dulu untuk membuat job.'}
               </p>
+              {!events.length && (
+                <button type="button" onClick={() => setShowNewEvent(true)} className="btn-primary mt-6">
+                  <Plus size={16} /> <span className="ml-2">New event</span>
+                </button>
+              )}
             </div>
           )}
         </section>
       </div>
       {showNewEvent && (
+        <EventFormModal
+          onSaved={() => {
+            setShowNewEvent(false)
+            reloadEvents()
+          }}
+          onCancel={() => setShowNewEvent(false)}
+        />
+      )}
+      {editingEvent && (
+        <EventFormModal
+          event={editingEvent}
+          onSaved={() => {
+            setEditingEvent(null)
+            reloadEvents()
+          }}
+          onCancel={() => setEditingEvent(null)}
+        />
+      )}
+      {deletingEvent && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4 sm:p-8"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
           role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setShowNewEvent(false)
+          onMouseDown={(mouseEvent) => {
+            if (!deleting && mouseEvent.target === mouseEvent.currentTarget) setDeletingEvent(null)
           }}
         >
           <div
-            role="dialog"
+            role="alertdialog"
             aria-modal="true"
-            aria-labelledby="new-event-title"
-            className="card flex max-h-[calc(100vh-2rem)] min-h-0 w-full max-w-4xl flex-col overflow-hidden lg:max-w-[50vw]"
+            aria-labelledby="delete-event-title"
+            className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-6 shadow-2xl"
           >
-            <div className="flex shrink-0 items-center justify-between border-b px-6 py-5 sm:px-8">
-              <div>
-                <h2 id="new-event-title" className="text-2xl font-bold">
-                  Form Input Pameran
-                </h2>
+            <div className="flex items-start gap-4">
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700">
+                <AlertTriangle size={22} />
               </div>
+              <div>
+                <h2 id="delete-event-title" className="text-lg font-bold">
+                  Hapus event?
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  <span className="font-semibold">{deletingEvent.officialName}</span> beserta
+                  exhibitor, job, CIPL, dokumen shipment, dan ticket yang terikat padanya akan
+                  dihapus permanen. Tindakan ini tidak dapat dibatalkan.
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
               <button
                 type="button"
-                onClick={() => setShowNewEvent(false)}
-                aria-label="Tutup form event"
-                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-black"
+                onClick={() => setDeletingEvent(null)}
+                disabled={deleting}
+                className="btn-secondary"
               >
-                <X size={20} />
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteEvent}
+                disabled={deleting}
+                className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+              >
+                {deleting ? 'Menghapus...' : 'Hapus permanen'}
               </button>
             </div>
-            <EventForm
-              onSaved={() => {
-                setShowNewEvent(false)
-                reloadEvents()
-              }}
-              onCancel={() => setShowNewEvent(false)}
-            />
           </div>
         </div>
       )}
-      {addingExhibitorsToEvent && (
-        <EventExhibitorModal
-          event={addingExhibitorsToEvent}
-          onSaved={() => {
-            setAddingExhibitorsToEvent(null)
+      {newJobForEvent && (
+        <NewJobKindModal
+          event={newJobForEvent}
+          onSelect={(kind, internationalJenis) => {
+            setNewJobForEvent(null)
+            if (kind === 'INTERNATIONAL' && internationalJenis) {
+              setInitJob({ event: newJobForEvent, jenis: internationalJenis })
+              return
+            }
+            toast(
+              `Job ${jobKindLabels[kind]} dipilih. Form inisiasi job Local menyusul pada iterasi berikutnya.`,
+              'success',
+            )
+          }}
+          onCancel={() => setNewJobForEvent(null)}
+        />
+      )}
+      {initJob && (
+        <InternationalJobInitModal
+          event={initJob.event}
+          jenis={initJob.jenis}
+          onCreated={() => {
+            setInitJob(null)
             reloadEvents()
           }}
-          onCancel={() => setAddingExhibitorsToEvent(null)}
+          onCancel={() => setInitJob(null)}
         />
       )}
     </>

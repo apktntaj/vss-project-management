@@ -36,8 +36,12 @@ import type {
   JobTransportExtraction,
 } from '@/domain/exhibition/source-documents'
 import type { Ticket, TicketActivity, TicketComment, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
+import type { Agent, EventAgent } from '@/domain/agent/types'
+import type { InternationalJobJenis, JobKind } from '@/domain/job/types'
 
 export type { Ticket, TicketActivity, TicketComment, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
+export type { Agent, EventAgent } from '@/domain/agent/types'
+export type { InternationalJobJenis, JobKind } from '@/domain/job/types'
 
 export type LocalUser = {
   id: string
@@ -155,6 +159,10 @@ export type LocalJob = {
   createdById?: string | null
   eventId?: string | null
   exhibitorId?: string | null
+  /** Job international terikat ke agent (master data); null pada job lama per exhibitor. */
+  agentId?: string | null
+  kind?: JobKind | null
+  internationalJenis?: InternationalJobJenis | null
   sourceDocumentName?: string | null
   createdAt: string
   updatedAt: string
@@ -213,7 +221,7 @@ export type LocalEo = EventOrganizer & {
   aliasName: string | null
   contactInfo: string | null
 }
-/** Display adapter; Event itself remains immutable and status is cancellation-derived. */
+/** Display adapter; status stays cancellation-derived for historical rows (pembuatan cancel baru sudah dihapus). */
 export type LocalEvent = Omit<EventRecord, 'venue' | 'eventOrganizer'> & {
   officialName: string
   alias: string | null
@@ -246,6 +254,7 @@ type StoreName =
   | 'venues'
   | 'eos'
   | 'exhibitors'
+  | 'agents'
   | 'jobDocuments'
   | 'coordinationAgents'
   | 'cipls'
@@ -262,7 +271,7 @@ type StoredRecord = { id: string }
 
 const collectionTable: Record<Exclude<StoreName, 'files' | 'counters'>, string> = {
   jobs: 'jobs', stages: 'job_stages', users: 'operational_users', events: 'events', venues: 'venues',
-  eos: 'event_organizers', exhibitors: 'exhibitors', jobDocuments: 'job_documents',
+  eos: 'event_organizers', exhibitors: 'exhibitors', agents: 'agents', jobDocuments: 'job_documents',
   coordinationAgents: 'coordination_agents', cipls: 'cipls', ciplVersions: 'cipl_versions',
   shipmentsV2: 'shipments', customsJobs: 'customs_jobs', migrationReviewItems: 'migration_review_items',
   tickets: 'tickets', preferences: 'preferences',
@@ -668,8 +677,8 @@ function eventFromRow(row: Record<string, unknown>): LocalEvent {
     officialName: String(row.name),
     alias: null,
     venueId: String(row.venue_id),
-    eventOrganizerId: String(row.event_organizer_id),
-    eoId: String(row.event_organizer_id),
+    eventOrganizerId: String(row.event_organizer_id ?? ''),
+    eoId: String(row.event_organizer_id ?? ''),
     startsOn: String(row.starts_on),
     endsOn: String(row.ends_on),
     startsAt: `${String(row.starts_on)}T00:00:00`,
@@ -741,29 +750,60 @@ export async function listEos(): Promise<LocalEo[]> {
   return rows.map((row) => ({ id: String(row.id), name: String(row.name), legalName: String(row.name), aliasName: null, contactInfo: null, npwp: (row.npwp as string | null) ?? null, contacts: Array.isArray(row.contacts) ? (row.contacts as Record<string, unknown>[]).map(contactFromRow) : [], address: (row.address as string | null) ?? null, website: (row.website as string | null) ?? null, createdAt: String(row.created_at), updatedAt: String(row.updated_at) }))
 }
 
-export type EventExhibitorInput =
-  | {
-      kind: 'LOCAL'
-      name: string
-      contact: ExhibitorContact
-      agentId: string | null
-      npwp: string | null
-    }
-  | {
-      kind: 'INTERNATIONAL'
-      name: string
-      contact: ExhibitorContact
-      agentId: string | null
-    }
 export type VenueInput = Pick<Venue, 'name' | 'contacts' | 'address' | 'website' | 'loadingAccessNotes'>
 export type EoInput = Pick<EventOrganizer, 'name' | 'npwp' | 'contacts' | 'address' | 'website'>
 export type EventInput = Pick<EventRecord, 'name' | 'venueId' | 'eventOrganizerId' | 'startsOn' | 'endsOn'>
 
-export async function saveEventExhibitors(eventId: string, inputs: EventExhibitorInput[]) {
-  return eventsRequest<LocalExhibitor[]>(
-    `/api/events/${encodeURIComponent(eventId)}/exhibitors`,
-    { method: 'POST', body: JSON.stringify(inputs) },
-  )
+
+export type AgentInput = {
+  name: string
+  contact: ExhibitorContact
+  address: string | null
+  countryCode: string | null
+}
+
+export async function listAgents(): Promise<Agent[]> {
+  return (await readAll<Agent>('agents'))
+    .filter((agent) => agent.status !== 'INACTIVE')
+    .sort((left, right) => left.name.localeCompare(right.name))
+}
+
+export async function saveAgent(input: AgentInput, existingId?: string): Promise<Agent> {
+  if (!input.name.trim()) throw new Error('Nama agent wajib diisi.')
+  const existing = existingId
+    ? (await readAll<Agent>('agents')).find((agent) => agent.id === existingId) ?? null
+    : null
+  const timestamp = now()
+  return put('agents', {
+    id: existing?.id ?? id(),
+    name: input.name.trim(),
+    contact: input.contact,
+    address: input.address,
+    countryCode: input.countryCode,
+    status: existing?.status ?? 'ACTIVE',
+    createdAt: existing?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+  })
+}
+
+export type EventAgentView = EventAgent & { agent: Agent }
+
+export async function listEventAgents(eventId: string): Promise<EventAgentView[]> {
+  return eventsRequest<EventAgentView[]>(`/api/events/${encodeURIComponent(eventId)}/agents`)
+}
+
+export async function addAgentToEvent(eventId: string, agentId: string): Promise<EventAgentView> {
+  return eventsRequest<EventAgentView>(`/api/events/${encodeURIComponent(eventId)}/agents`, {
+    method: 'POST',
+    body: JSON.stringify({ agentId }),
+  })
+}
+
+export async function setExhibitorAgent(eventId: string, exhibitorId: string, agentId: string | null) {
+  return eventsRequest(`/api/events/${encodeURIComponent(eventId)}/exhibitors`, {
+    method: 'PATCH',
+    body: JSON.stringify({ exhibitorId, agentId }),
+  })
 }
 
 export async function saveVenue(input: VenueInput) {
@@ -818,16 +858,18 @@ export async function saveEvent(input: EventInput) {
   })
 }
 
-export async function cancelEvent(eventId: string, reason: string) {
-  await eventsRequest<void>(`/api/events/${encodeURIComponent(eventId)}`, {
-    method: 'DELETE',
-    body: JSON.stringify({ reason }),
-  })
-  return (await listEvents()).find((event) => event.id === eventId) ?? null
+export async function updateEvent(eventId: string, input: EventInput) {
+  return eventsRequest<{ id: string }>(
+    `/api/events/${encodeURIComponent(eventId)}`,
+    { method: 'PATCH', body: JSON.stringify(input) },
+  )
 }
 
-export async function deleteEvent() {
-  throw new Error('Event bersifat immutable dan tidak dapat dihapus.')
+/** Hapus permanen event beserta rekam operasional yang terikat padanya. */
+export async function deleteEvent(eventId: string) {
+  await eventsRequest<void>(`/api/events/${encodeURIComponent(eventId)}`, {
+    method: 'DELETE',
+  })
 }
 
 export type JobInput = Pick<
@@ -1130,6 +1172,79 @@ export async function saveJobWithDocument(input: JobInput, file: File, existingI
     } satisfies StoredFile),
   ])
   return job
+}
+
+export type InternationalJobInitInput = {
+  eventId: string
+  agentId: string
+  internationalJenis: InternationalJobJenis
+  exhibitorIds: string[]
+}
+
+/**
+ * Inisiasi job international: satu agent = satu job per event, dengan daftar
+ * exhibitor binaan. Job lahir dalam fase Draft; CIPL/B/L menyusul di fase berikutnya.
+ */
+export async function createInternationalJobInit(input: InternationalJobInitInput): Promise<LocalJob> {
+  const [jobs, agents, exhibitors] = await Promise.all([
+    readAll<LocalJob>('jobs'),
+    readAll<Agent>('agents'),
+    readAll<LocalExhibitor>('exhibitors'),
+  ])
+  const agent = agents.find((item) => item.id === input.agentId)
+  if (!agent) throw new Error('Agent tidak ditemukan.')
+  if (input.exhibitorIds.length === 0) throw new Error('Pilih minimal satu exhibitor binaan.')
+  if (input.exhibitorIds.some((exhibitorId) => !exhibitors.some((exhibitor) => exhibitor.id === exhibitorId))) {
+    throw new Error('Exhibitor tidak ditemukan.')
+  }
+  if (jobs.some((job) => job.agentId === input.agentId && job.eventId === input.eventId)) {
+    throw new Error('Agent ini sudah memiliki job di event ini.')
+  }
+
+  await addAgentToEvent(input.eventId, input.agentId)
+  await Promise.all(
+    input.exhibitorIds.map((exhibitorId) => setExhibitorAgent(input.eventId, exhibitorId, input.agentId)),
+  )
+
+  const nextSequence = jobs.reduce((max, job) => {
+    const match = /^VSS-(\d+)$/.exec(job.jobNumber ?? '')
+    return match ? Math.max(max, Number(match[1])) : max
+  }, 0) + 1
+  const timestamp = now()
+  const job: LocalJob = {
+    id: `job-for-agent-${input.agentId}-${input.eventId}`,
+    jobNumber: `VSS-${String(nextSequence).padStart(4, '0')}`,
+    awbNumber: null,
+    blNumber: null,
+    shipper: null,
+    consignee: null,
+    notifyParty: null,
+    agent: agent.name,
+    shippingLine: null,
+    cargoDescription: null,
+    shipmentMode: null,
+    cargoDetails: null,
+    journeyDetails: null,
+    type: 'IMPORT',
+    clientName: agent.name,
+    clientInfo: null,
+    status: 'DRAFT',
+    notes: null,
+    trackingToken: crypto.randomUUID(),
+    assignedToId: null,
+    createdById: null,
+    eventId: input.eventId,
+    exhibitorId: null,
+    agentId: input.agentId,
+    kind: 'INTERNATIONAL',
+    internationalJenis: input.internationalJenis,
+    sourceDocumentName: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    stages: [],
+    documents: [],
+  }
+  return put('jobs', job)
 }
 
 export async function addStage(jobId: string, name: string): Promise<LocalStage> {
