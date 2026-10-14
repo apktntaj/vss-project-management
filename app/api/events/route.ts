@@ -15,10 +15,11 @@ export async function GET() {
       organizersResult,
       cancellationsResult,
       exhibitorsResult,
+      picUsersResult,
     ] = await Promise.all([
       client
         .from('events')
-        .select('id, name, venue_id, event_organizer_id, pic_id, starts_on, ends_on, created_at, created_by_id, pic:app_users(id, full_name)')
+        .select('id, name, venue_id, event_organizer_id, pic_id, starts_on, ends_on, created_at, created_by_id')
         .eq('workspace_id', workspaceId)
         .order('starts_on'),
       client
@@ -38,6 +39,9 @@ export async function GET() {
         .select('*')
         .eq('workspace_id', workspaceId)
         .order('name'),
+      client
+        .from('app_users')
+        .select('id, full_name'),
     ])
 
     const error =
@@ -45,7 +49,8 @@ export async function GET() {
       venuesResult.error ??
       organizersResult.error ??
       cancellationsResult.error ??
-      exhibitorsResult.error
+      exhibitorsResult.error ??
+      picUsersResult.error
     if (error) throw error
 
     const venues = new Map((venuesResult.data ?? []).map((venue) => [venue.id, venue]))
@@ -64,6 +69,9 @@ export async function GET() {
       exhibitors.push(exhibitor)
       exhibitorsByEvent.set(exhibitor.event_id, exhibitors)
     }
+    const picUsers = new Map(
+      (picUsersResult.data ?? []).map((user) => [user.id, { id: user.id, full_name: user.full_name }]),
+    )
 
     return NextResponse.json(
       (eventsResult.data ?? []).map((event) => ({
@@ -72,6 +80,7 @@ export async function GET() {
         event_organizers: organizers.get(event.event_organizer_id) ?? null,
         event_cancellations: cancellations.get(event.id) ?? null,
         exhibitors: exhibitorsByEvent.get(event.id) ?? [],
+        pic: event.pic_id ? picUsers.get(event.pic_id) ?? null : null,
       })),
       { headers: { 'Cache-Control': 'no-store' } },
     )

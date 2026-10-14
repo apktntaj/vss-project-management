@@ -27,7 +27,12 @@ export async function getEventApiContext() {
 }
 
 export function eventApiFailure(error: unknown) {
-  const message = error instanceof Error ? error.message : 'Data event tidak dapat diproses.'
+  // Objek PostgrestError dari Supabase bukan instance Error; ekstrak pesannya.
+  const message = error instanceof Error
+    ? error.message
+    : error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+      ? error.message
+      : 'Data event tidak dapat diproses.'
   return NextResponse.json(
     { error: message },
     { status: message === 'Autentikasi diperlukan.' ? 401 : 400 },
