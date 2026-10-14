@@ -37,11 +37,35 @@ import type {
 } from '@/domain/exhibition/source-documents'
 import type { Ticket, TicketActivity, TicketComment, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
 import type { Agent, EventAgent } from '@/domain/agent/types'
-import type { InternationalJobJenis, JobKind } from '@/domain/job/types'
+import type { InternationalJobJenis, JobKind, BcDocumentKind } from '@/domain/job/types'
+import {
+  exhibitorLogisticsSchema,
+  inwardManifestSchema,
+  jobReturnSchema,
+  type ExhibitorLogistics,
+  type InwardManifest,
+  type JobReturn,
+} from '@/domain/job/manifest'
 
 export type { Ticket, TicketActivity, TicketComment, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
 export type { Agent, EventAgent } from '@/domain/agent/types'
-export type { InternationalJobJenis, JobKind } from '@/domain/job/types'
+export type { InternationalJobJenis, JobKind, BcDocumentKind } from '@/domain/job/types'
+export type {
+  ContainerSize,
+  ExhibitorLogistics,
+  InwardManifest,
+  JobReturn,
+  Koli,
+  KoliCollection,
+  KoliSummary,
+  LoadConfiguration,
+  Milestone,
+  MilestoneKind,
+  OperationalNote,
+  OperationalNoteKind,
+  ReturnMode,
+  ShippingContainer,
+} from '@/domain/job/manifest'
 
 export type LocalUser = {
   id: string
@@ -109,7 +133,7 @@ export type JobOperationalDetails = {
   /** Complete B/L or AWB extraction retained alongside the inbound leg summary. */
   inboundDocument?: JobTransportExtraction | null
   cipl: JobCiplInfo
-  customs: Record<'BC_2_3' | 'BC_2_5' | 'BC_3_0', JobCustomsDocument>
+  customs: Record<BcDocumentKind, JobCustomsDocument>
 }
 
 
@@ -124,6 +148,7 @@ export type JobDocumentKind =
   | 'BC_2_3'
   | 'BC_2_5'
   | 'BC_3_0'
+  | 'BC_2_7'
   | 'OTHER'
 
 export type JobDocumentMimeType =
@@ -163,6 +188,10 @@ export type LocalJob = {
   agentId?: string | null
   kind?: JobKind | null
   internationalJenis?: InternationalJobJenis | null
+  /** Isi blok inward manifest (dokumen angkut, konfigurasi muatan, milestone, catatan). */
+  inward?: InwardManifest | null
+  /** Fase kepulangan ala return list container/LCL. */
+  kepulangan?: JobReturn | null
   sourceDocumentName?: string | null
   createdAt: string
   updatedAt: string
@@ -245,6 +274,8 @@ export type LocalExhibitor = Exhibitor & {
   agent: string | null
   address: string | null
   countryCode: string | null
+  /** Data fisik kepesertaan ala inward manifest: hall, booth, koli, catatan. */
+  logistics?: ExhibitorLogistics | null
 }
 
 type StoreName =
@@ -366,6 +397,7 @@ export function getOperationalDetails(
       BC_2_3: emptyCustomsDocument(),
       BC_2_5: emptyCustomsDocument(false),
       BC_3_0: emptyCustomsDocument(),
+      BC_2_7: emptyCustomsDocument(false),
     },
   }
 }
@@ -700,6 +732,8 @@ function eventFromRow(row: Record<string, unknown>): LocalEvent {
 
 function exhibitorFromRow(row: Record<string, unknown>): LocalExhibitor {
   const contact = contactFromRow((row.contact as Record<string, unknown>) ?? {})
+  const logisticsPayload = (row.payload as Record<string, unknown> | null)?.logistics
+  const logistics = logisticsPayload ? exhibitorLogisticsSchema.safeParse(logisticsPayload) : null
   const shared = {
     id: String(row.id),
     eventId: String(row.event_id),
@@ -714,6 +748,7 @@ function exhibitorFromRow(row: Record<string, unknown>): LocalExhibitor {
     agent: null,
     address: null,
     countryCode: null,
+    logistics: logistics && logistics.success ? logistics.data : null,
     createdAt: String(row.created_at),
     createdById: String(row.created_by_id),
     updatedAt: String(row.updated_at),
@@ -813,6 +848,15 @@ export async function setExhibitorAgent(eventId: string, exhibitorId: string, ag
   })
 }
 
+/** Exhibitor satu event, termasuk data fisik kepesertaan (payload.logistics). */
+export async function listEventExhibitors(eventId: string): Promise<LocalExhibitor[]> {
+  const rows = await eventsRequest<Array<Record<string, unknown>>>(
+    `/api/events/${encodeURIComponent(eventId)}/exhibitors`,
+  )
+  return rows.map(exhibitorFromRow)
+}
+
+/** Simpan venue master data. */
 export async function saveVenue(input: VenueInput) {
   return eventRecords<LocalVenue>('venues', { method: 'POST', body: JSON.stringify(input) })
 }
@@ -1125,8 +1169,7 @@ export type InternationalJobInitInput = {
  * Inisiasi job international: satu agent = satu job per event, dengan daftar
  * exhibitor binaan. Job lahir dalam fase Draft; CIPL/B/L menyusul di fase berikutnya.
  */
-export async function createInternationalJobInit(input: InternationalJobInitInput): Promise<LocalJob> {
-  const [jobs, agents, exhibitors] = await Promise.all([
+export async function createInternationalJobInit(input: InternationalJobInitInput): Promise<LocalJob> {  const [jobs, agents, exhibitors] = await Promise.all([
     readAll<LocalJob>('jobs'),
     readAll<Agent>('agents'),
     readAll<LocalExhibitor>('exhibitors'),
@@ -1185,6 +1228,36 @@ export async function createInternationalJobInit(input: InternationalJobInitInpu
     documents: [],
   }
   return put('jobs', job)
+}
+
+/** Simpan blok inward manifest (dokumen angkut, konfigurasi muatan, milestone, catatan). */
+export async function saveJobInward(jobId: string, input: InwardManifest): Promise<LocalJob> {
+  const inward = inwardManifestSchema.parse(input)
+  const previous = await getJob(jobId)
+  if (!previous) throw new Error('Job tidak ditemukan.')
+  if (previous.kind === 'LOCAL') throw new Error('Job Local tidak memiliki dokumen kepabeanan.')
+  return put('jobs', { ...previous, inward, updatedAt: now() })
+}
+
+/** Simpan fase kepulangan (return list) pada job; null mengosongkannya. */
+export async function saveJobKepulangan(jobId: string, input: JobReturn | null): Promise<LocalJob> {
+  const kepulangan = input === null ? null : jobReturnSchema.parse(input)
+  const previous = await getJob(jobId)
+  if (!previous) throw new Error('Job tidak ditemukan.')
+  return put('jobs', { ...previous, kepulangan, updatedAt: now() })
+}
+
+/** Simpan data fisik kepesertaan exhibitor (hall, booth, koli, catatan) ala inward manifest. */
+export async function saveExhibitorLogistics(
+  eventId: string,
+  exhibitorId: string,
+  input: ExhibitorLogistics,
+): Promise<ExhibitorLogistics> {
+  const logistics = exhibitorLogisticsSchema.parse(input)
+  return eventsRequest<ExhibitorLogistics>(
+    `/api/events/${encodeURIComponent(eventId)}/exhibitor-logistics`,
+    { method: 'PUT', body: JSON.stringify({ exhibitorId, logistics }) },
+  )
 }
 
 export type CiplVersionInput = {
