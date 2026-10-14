@@ -181,7 +181,7 @@ function EventJobRow({
       </td>
       <td className="px-3 py-3 align-top">
         <div className="flex gap-1.5">
-          {(['BC_2_3', 'BC_2_5', 'BC_3_0'] as const).map((key) => {
+          {(['BC_2_3', 'BC_2_5', 'BC_3_0', 'BC_2_7'] as const).map((key) => {
             const document = operational.customs[key]
             const label = key.replace('_', ' ')
             const tone = document.applicable ? customsTones[document.status] : 'border-slate-100 bg-slate-50 text-slate-400'
