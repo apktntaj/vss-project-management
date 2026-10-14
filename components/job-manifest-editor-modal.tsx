@@ -13,15 +13,24 @@ import {
   inwardManifestSchema,
   jobReturnSchema,
   type ContainerSize,
+  type ExhibitorLogistics,
   type InwardManifest,
   type JobReturn,
   type MilestoneKind,
   type OperationalNoteKind,
 } from '@/domain/job/manifest'
-import { saveJobInward, saveJobKepulangan, type LocalJob } from '@/lib/data-client'
+import { saveExhibitorLogistics, saveJobInward, saveJobKepulangan, type LocalExhibitor, type LocalJob } from '@/lib/data-client'
+import type { ManifestBlockParse } from '@/lib/server/manifest-extraction'
 
 function toast(message: string, tone: 'success' | 'error') {
   window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
+}
+
+const normalizeName = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+const namesOverlap = (left: string, right: string) => {
+  const a = normalizeName(left)
+  const b = normalizeName(right)
+  return Boolean(a) && Boolean(b) && (a === b || a.includes(b) || b.includes(a))
 }
 
 type ContainerDraft = { containerNumber: string; size: ContainerSize; sealNumber: string }
@@ -129,17 +138,32 @@ const inputClass = 'input mt-1'
 
 export function JobManifestEditorModal({
   job,
+  eventId,
+  peserta,
   onClose,
   onSaved,
+  onPesertaLogisticsSaved,
 }: {
   job: LocalJob
+  eventId: string | null
+  peserta: Array<{ exhibitor: LocalExhibitor; logistics: LocalExhibitor['logistics'] }>
   onClose: () => void
   onSaved: (job: LocalJob) => void
+  onPesertaLogisticsSaved: (exhibitorId: string, logistics: ExhibitorLogistics) => void
 }) {
   const [draft, setDraft] = useState(() => draftFromJob(job))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [importError, setImportError] = useState('')
+  const [importResult, setImportResult] = useState<{ blocks: ManifestBlockParse[]; warnings: string[] } | null>(null)
+  const [appliedExhibitorIds, setAppliedExhibitorIds] = useState<Set<string>>(new Set())
   const usedMilestoneKinds = new Set(draft.milestones.map((milestone) => milestone.kind))
+  const appliedBlock = importResult
+    ? (job.agent ? importResult.blocks.find((block) => namesOverlap(block.agentName, job.agent!)) : undefined) ??
+      importResult.blocks[0] ??
+      null
+    : null
 
   function buildInward(): InwardManifest {
     return {
@@ -191,6 +215,73 @@ export function JobManifestEditorModal({
     }
   }
 
+  function applyBlockToDraft(block: ManifestBlockParse) {
+    setDraft((current) => ({
+      ...current,
+      documentKind: block.inward.transportDocument.kind,
+      documentNumber: block.inward.transportDocument.number,
+      loadKind: block.inward.loadConfiguration.kind,
+      containers:
+        block.inward.loadConfiguration.kind === 'FCL'
+          ? block.inward.loadConfiguration.containers.map((container) => ({
+              containerNumber: container.containerNumber ?? '',
+              size: container.size,
+              sealNumber: container.sealNumber ?? '',
+            }))
+          : [emptyContainer()],
+      milestones: block.inward.milestones.map((milestone) => ({
+        kind: milestone.kind,
+        date: milestone.date,
+        documentNumber: milestone.documentNumber ?? '',
+      })),
+      notes: block.inward.notes.map((note) => ({ kind: note.kind, text: note.text })),
+    }))
+  }
+
+  async function importManifestFile(file: File) {
+    setImporting(true)
+    setImportError('')
+    try {
+      const body = new FormData()
+      body.set('file', file)
+      const response = await fetch('/api/parse-manifest', { method: 'POST', body })
+      const data = (await response.json().catch(() => null)) as
+        | { blocks?: ManifestBlockParse[]; warnings?: string[] }
+        | { error?: string }
+        | null
+      if (!response.ok || !data || ('error' in data && typeof data.error === 'string')) {
+        throw new Error(data && 'error' in data && typeof data.error === 'string' ? data.error : 'Manifest tidak dapat diparse.')
+      }
+      const result = data as { blocks: ManifestBlockParse[]; warnings?: string[] }
+      setImportResult({ blocks: result.blocks, warnings: result.warnings ?? [] })
+      if (!result.blocks.length) {
+        toast('Tidak ada blok manifest yang terbaca.', 'error')
+        return
+      }
+      const block = (job.agent ? result.blocks.find((item) => namesOverlap(item.agentName, job.agent!)) : undefined) ?? result.blocks[0]
+      applyBlockToDraft(block)
+      toast(`Blok "${block.agentName}" diterapkan ke form — review lalu simpan.`, 'success')
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : 'Manifest tidak dapat diparse.'
+      setImportError(message)
+      toast(message, 'error')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  async function applyExhibitorLogistics(target: { exhibitor: LocalExhibitor }, logistics: ExhibitorLogistics) {
+    if (!eventId) return
+    try {
+      const saved = await saveExhibitorLogistics(eventId, target.exhibitor.id, logistics)
+      setAppliedExhibitorIds((current) => new Set(current).add(target.exhibitor.id))
+      onPesertaLogisticsSaved(target.exhibitor.id, saved)
+      toast(`Logistik ${target.exhibitor.name} terisi dari manifest.`, 'success')
+    } catch (caught) {
+      toast(caught instanceof Error ? caught.message : 'Logistik exhibitor tidak dapat disimpan.', 'error')
+    }
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4 sm:p-8"
@@ -220,6 +311,75 @@ export function JobManifestEditorModal({
         </div>
 
         <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
+          {eventId && (
+            <fieldset className="rounded-xl border border-dashed border-orange-300 bg-orange-50/50 p-4">
+              <legend className="px-1 text-sm font-semibold text-slate-800">Import manifest (otomatis)</legend>
+              <p className="text-sm text-slate-600">
+                Pilih file inward manifest (Excel/PDF). Blok job ini akan mengisi form di bawah untuk direview sebelum disimpan.
+              </p>
+              <input
+                type="file"
+                accept="application/pdf,.pdf,.xlsx,.xls"
+                disabled={importing}
+                className="mt-3 block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-orange-600 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-orange-700"
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (file) void importManifestFile(file)
+                  event.target.value = ''
+                }}
+              />
+              {importing && <p className="mt-2 text-sm font-medium text-orange-700">Memparsing manifest…</p>}
+              {importError && <p className="mt-2 text-sm text-rose-700">{importError}</p>}
+              {importResult && (
+                <div className="mt-3 space-y-2 text-sm">
+                  {importResult.warnings.map((warning, index) => (
+                    <p key={index} className="text-xs text-amber-700">{warning}</p>
+                  ))}
+                  {appliedBlock ? (
+                    <p className="text-slate-700">
+                      Blok <strong>{appliedBlock.agentName}</strong> diterapkan ke form ({appliedBlock.inward.transportDocument.kind}{' '}
+                      {appliedBlock.inward.transportDocument.number}).
+                    </p>
+                  ) : (
+                    <p className="text-slate-500">Tidak ada blok yang cocok untuk job ini.</p>
+                  )}
+                  {appliedBlock && appliedBlock.exhibitors.length > 0 && (
+                    <div className="rounded-lg border border-black/10 bg-white">
+                      <p className="border-b px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Koli exhibitor dari manifest
+                      </p>
+                      <ul className="divide-y divide-slate-100">
+                        {appliedBlock.exhibitors.map((exhibitor) => {
+                          const target = peserta.find((item) => namesOverlap(item.exhibitor.name, exhibitor.name))
+                          const applied = target && appliedExhibitorIds.has(target.exhibitor.id)
+                          return (
+                            <li key={exhibitor.name} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                              <span className="min-w-0 truncate text-slate-700" title={exhibitor.name}>
+                                {exhibitor.name} · {exhibitor.logistics.koli.totalCount} koli
+                              </span>
+                              {target ? (
+                                <button
+                                  type="button"
+                                  disabled={applied}
+                                  onClick={() => void applyExhibitorLogistics(target, exhibitor.logistics)}
+                                  className="text-xs font-semibold text-orange-700 hover:text-orange-800 disabled:text-emerald-700"
+                                >
+                                  {applied ? '✓ Diterapkan' : `Terapkan ke ${target.exhibitor.name}`}
+                                </button>
+                              ) : (
+                                <span className="text-xs text-slate-400">Tidak ada exhibitor yang cocok</span>
+                              )}
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </fieldset>
+          )}
+
           <fieldset className="rounded-xl border border-black/10 p-4">
             <legend className="px-1 text-sm font-semibold text-slate-800">Dokumen angkut</legend>
             <div className="grid gap-4 sm:grid-cols-[180px_1fr]">

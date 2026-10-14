@@ -176,6 +176,14 @@ function spreadsheetText(buffer: Buffer) {
   return content.slice(0, MAX_SPREADSHEET_TEXT_LENGTH)
 }
 
+/** Mengubah file PDF/Excel menjadi part input Gemini (inlineData untuk PDF, teks CSV untuk spreadsheet). */
+export async function geminiDocumentInput(file: File) {
+  const buffer = Buffer.from(await file.arrayBuffer())
+  return isPdf(file)
+    ? { inlineData: { mimeType: 'application/pdf', data: buffer.toString('base64') } }
+    : { text: `Spreadsheet content:\n${spreadsheetText(buffer)}` }
+}
+
 function normalizeClassification(value: unknown): DocumentClassification {
   const input = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
   const documentType = documentTypes.includes(input.documentType as DocumentType)
@@ -196,10 +204,7 @@ export async function extractDocument(file: File): Promise<DocumentExtraction> {
   if (!apiKey) throw new DocumentExtractionError('GEMINI_API_KEY belum dikonfigurasi.', 503)
 
   try {
-    const buffer = Buffer.from(await file.arrayBuffer())
-    const input = isPdf(file)
-      ? { inlineData: { mimeType: 'application/pdf', data: buffer.toString('base64') } }
-      : { text: `Spreadsheet content:\n${spreadsheetText(buffer)}` }
+    const input = await geminiDocumentInput(file)
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
