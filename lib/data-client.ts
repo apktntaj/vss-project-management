@@ -1107,73 +1107,6 @@ export async function saveJobOperationalDetails(
   return job
 }
 
-export async function saveJob(input: JobInput, existingId?: string) {
-  const previous = existingId ? await getJob(existingId) : null
-  const timestamp = now()
-  const createdById = previous ? previous.createdById ?? null : (await listUsers()).find((user) => user.isActive)?.id ?? null
-  const job: LocalJob = {
-    ...previous,
-    id: existingId ?? id(),
-    jobNumber:
-      previous?.jobNumber ??
-      `VSS-${String((await readAll<LocalJob>('jobs')).length + 1).padStart(4, '0')}`,
-    trackingToken: previous?.trackingToken ?? id(),
-    createdById,
-    createdAt: previous?.createdAt ?? timestamp,
-    updatedAt: timestamp,
-    stages: previous?.stages ?? [],
-    documents: previous?.documents ?? [],
-    ...input,
-  }
-  return put('jobs', job)
-}
-
-/** Metadata Job dan PDF sumber disimpan melalui Supabase. */
-export async function saveJobWithDocument(input: JobInput, file: File, existingId?: string) {
-  const previous = existingId ? await getJob(existingId) : null
-  const timestamp = now()
-  const createdById = previous ? previous.createdById ?? null : (await listUsers()).find((user) => user.isActive)?.id ?? null
-  const job: LocalJob = {
-    ...previous,
-    id: existingId ?? id(),
-    jobNumber:
-      previous?.jobNumber ??
-      `VSS-${String((await readAll<LocalJob>('jobs')).length + 1).padStart(4, '0')}`,
-    trackingToken: previous?.trackingToken ?? id(),
-    createdById,
-    createdAt: previous?.createdAt ?? timestamp,
-    updatedAt: timestamp,
-    stages: previous?.stages ?? [],
-    documents: previous?.documents ?? [],
-    ...input,
-  }
-  const document: LocalJobDocument = {
-    id: id(),
-    jobId: job.id,
-    fileName: file.name,
-    mimeType: 'application/pdf',
-    fileSize: file.size,
-    attachmentId: id(),
-    createdAt: timestamp,
-  }
-  await Promise.all([
-    put('jobs', job),
-    put('jobDocuments', document),
-    put('files', {
-      id: document.attachmentId,
-      ownerType: 'LEGACY_JOB',
-      ownerId: job.id,
-      kind: 'SOURCE',
-      fileName: document.fileName,
-      mimeType: document.mimeType,
-      fileSize: document.fileSize,
-      content: file,
-      createdAt: timestamp,
-    } satisfies StoredFile),
-  ])
-  return job
-}
-
 export type InternationalJobInitInput = {
   eventId: string
   agentId: string
@@ -1245,28 +1178,6 @@ export async function createInternationalJobInit(input: InternationalJobInitInpu
     documents: [],
   }
   return put('jobs', job)
-}
-
-export async function addStage(jobId: string, name: string): Promise<LocalStage> {
-  const stages = (await readAll<LocalStage>('stages')).filter((stage) => stage.jobId === jobId)
-  return put('stages', {
-    id: id(),
-    jobId,
-    name: name.trim(),
-    status: 'PENDING',
-    order: stages.length,
-    notes: null,
-    createdAt: now(),
-    updatedAt: now(),
-  })
-}
-
-export async function toggleStage(stage: LocalStage): Promise<LocalStage> {
-  return put('stages', {
-    ...stage,
-    status: stage.status === 'DONE' ? 'IN_PROGRESS' : 'DONE',
-    updatedAt: now(),
-  })
 }
 
 export type CiplVersionInput = {
