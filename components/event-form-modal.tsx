@@ -4,11 +4,13 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { X } from 'lucide-react'
 import {
   listEos,
+  listUsers,
   listVenues,
   saveEvent,
   updateEvent,
   type LocalEo,
   type LocalEvent,
+  type LocalUser,
   type LocalVenue,
 } from '@/lib/data-client'
 
@@ -36,8 +38,10 @@ export function EventFormModal({
   const isEdit = Boolean(event)
   const [venues, setVenues] = useState<LocalVenue[]>([])
   const [organizers, setOrganizers] = useState<LocalEo[]>([])
+  const [users, setUsers] = useState<LocalUser[]>([])
   const [venueId, setVenueId] = useState(event?.venueId ?? '')
   const [organizerId, setOrganizerId] = useState(event?.eventOrganizerId ?? '')
+  const [picId, setPicId] = useState(event?.picId ?? '')
   const [name, setName] = useState(event?.name ?? '')
   const [startsOn, setStartsOn] = useState(event?.startsOn ?? '')
   const [endsOn, setEndsOn] = useState(event?.endsOn ?? '')
@@ -46,10 +50,11 @@ export function EventFormModal({
   const [error, setError] = useState('')
 
   useEffect(() => {
-    Promise.all([listVenues(), listEos()])
-      .then(([loadedVenues, loadedOrganizers]) => {
+    Promise.all([listVenues(), listEos(), listUsers()])
+      .then(([loadedVenues, loadedOrganizers, loadedUsers]) => {
         setVenues(loadedVenues)
         setOrganizers(loadedOrganizers)
+        setUsers(loadedUsers)
       })
       .catch((caught) => {
         const message = caught instanceof Error ? caught.message : 'Data EO dan venue tidak dapat dimuat.'
@@ -73,6 +78,7 @@ export function EventFormModal({
         name: name.trim(),
         venueId,
         eventOrganizerId: organizerId,
+        picId,
         startsOn,
         endsOn,
       }
@@ -184,6 +190,21 @@ export function EventFormModal({
               <option value="">{loading ? 'Memuat event organizer…' : 'Pilih event organizer'}</option>
               {organizers.map((organizer) => (
                 <option key={organizer.id} value={organizer.id}>{organizer.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="label">
+            PIC
+            <select
+              required
+              disabled={loading}
+              value={picId}
+              onChange={(event) => setPicId(event.target.value)}
+              className="input"
+            >
+              <option value="">{loading ? 'Memuat PIC…' : 'Pilih PIC'}</option>
+              {users.filter((user) => user.isActive).map((user) => (
+                <option key={user.id} value={user.id}>{user.name}</option>
               ))}
             </select>
           </label>

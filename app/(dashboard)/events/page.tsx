@@ -13,6 +13,7 @@ import {
   Plus,
   Search,
   Trash2,
+  User,
   Users,
 } from 'lucide-react'
 import {
@@ -194,6 +195,7 @@ export default function EventsPage() {
       event.venue?.officialName,
       event.venue?.aliasName,
       event.eventOrganizer?.legalName,
+      event.picName,
       ...(exhibitorsByEvent[event.id] ?? []).flatMap((exhibitor) => [
         exhibitor.legalName,
         exhibitor.aliasName,
@@ -525,6 +527,10 @@ export default function EventsPage() {
                       <div className="grid grid-cols-[16px_minmax(0,1fr)] items-start gap-2 text-xs text-slate-500">
                         <Building2 className="text-slate-400" size={15} />
                         <span>{event.eventOrganizer?.legalName || 'Belum diinput'}</span>
+                      </div>
+                      <div className="grid grid-cols-[16px_minmax(0,1fr)] items-start gap-2 text-xs text-slate-500">
+                        <User className="mt-0.5 text-slate-400" size={15} />
+                        <span>PIC: {event.picName || 'Belum diinput'}</span>
                       </div>
                       <div className="grid grid-cols-[16px_minmax(0,1fr)] items-start gap-2 text-xs text-slate-500">
                         <Users className="mt-0.5 text-slate-400" size={15} />

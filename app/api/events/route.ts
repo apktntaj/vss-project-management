@@ -18,7 +18,7 @@ export async function GET() {
     ] = await Promise.all([
       client
         .from('events')
-        .select('id, name, venue_id, event_organizer_id, starts_on, ends_on, created_at, created_by_id')
+        .select('id, name, venue_id, event_organizer_id, pic_id, starts_on, ends_on, created_at, created_by_id, pic:app_users(id, full_name)')
         .eq('workspace_id', workspaceId)
         .order('starts_on'),
       client
@@ -92,6 +92,7 @@ export async function POST(request: NextRequest) {
       name: input.name,
       venue_id: input.venueId,
       event_organizer_id: input.eventOrganizerId,
+      pic_id: input.picId,
       starts_on: input.startsOn,
       ends_on: input.endsOn,
       created_by_id: userId,

@@ -54,6 +54,8 @@ export type Event = {
   name: string
   venueId: string
   eventOrganizerId: string
+  /** PIC: penanggung jawab event; berhak menghapus event. */
+  picId: string | null
   startsOn: string
   endsOn: string
   createdAt: string

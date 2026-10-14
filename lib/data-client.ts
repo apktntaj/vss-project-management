@@ -231,6 +231,7 @@ export type LocalEvent = Omit<EventRecord, 'venue' | 'eventOrganizer'> & {
   cancellationReason: string | null
   cancelledAt: string | null
   eoId: string
+  picName: string | null
   venue?: LocalVenue
   eventOrganizer?: LocalEo
 }
@@ -619,6 +620,7 @@ function eventFromRow(row: Record<string, unknown>): LocalEvent {
   const cancellationRow = Array.isArray(row.event_cancellations)
     ? row.event_cancellations[0]
     : row.event_cancellations
+  const picRow = Array.isArray(row.pic) ? row.pic[0] : row.pic
   const cancellation =
     cancellationRow && typeof cancellationRow === 'object'
       ? {
@@ -689,6 +691,8 @@ function eventFromRow(row: Record<string, unknown>): LocalEvent {
     cancellationReason: cancellation?.reason ?? null,
     cancelledAt: cancellation?.cancelledAt ?? null,
     cancellation,
+    picId: row.pic_id ? String(row.pic_id) : null,
+    picName: picRow && typeof picRow === 'object' ? String((picRow as Record<string, unknown>).full_name ?? '') || null : null,
     venue,
     eventOrganizer,
   }
@@ -752,7 +756,10 @@ export async function listEos(): Promise<LocalEo[]> {
 
 export type VenueInput = Pick<Venue, 'name' | 'contacts' | 'address' | 'website' | 'loadingAccessNotes'>
 export type EoInput = Pick<EventOrganizer, 'name' | 'npwp' | 'contacts' | 'address' | 'website'>
-export type EventInput = Pick<EventRecord, 'name' | 'venueId' | 'eventOrganizerId' | 'startsOn' | 'endsOn'>
+export type EventInput = Pick<EventRecord, 'name' | 'venueId' | 'eventOrganizerId' | 'startsOn' | 'endsOn'> & {
+  /** PIC wajib saat pembuatan; berhak menghapus event. */
+  picId: string
+}
 
 
 export type AgentInput = {

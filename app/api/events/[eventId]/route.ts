@@ -19,6 +19,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         name: input.name,
         venue_id: input.venueId,
         event_organizer_id: input.eventOrganizerId,
+        pic_id: input.picId,
         starts_on: input.startsOn,
         ends_on: input.endsOn,
         updated_at: timestamp,
@@ -42,17 +43,24 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
 // Hapus permanen event beserta rekam operasional yang terikat padanya.
 // Tabel tanpa FK dihapus lewat filter payload; urutannya anak sebelum induk.
+// Hanya PIC event yang boleh menghapus; event tanpa PIC (data lama) bebas dihapus.
 export async function DELETE(_request: NextRequest, { params }: RouteContext) {
   try {
-    const { client, workspaceId } = await getEventApiContext()
+    const { client, workspaceId, userId } = await getEventApiContext()
     const { data: existing, error: existingError } = await client
       .from('events')
-      .select('id')
+      .select('id, pic_id')
       .eq('workspace_id', workspaceId)
       .eq('id', params.eventId)
-      .maybeSingle<{ id: string }>()
+      .maybeSingle<{ id: string; pic_id: string | null }>()
     if (existingError) throw existingError
     if (!existing) throw new Error('Event tidak ditemukan.')
+    if (existing.pic_id && String(existing.pic_id) !== userId) {
+      return NextResponse.json(
+        { error: 'Hanya PIC event yang dapat menghapus event ini.' },
+        { status: 403 },
+      )
+    }
 
     const { data: eventJobs, error: jobsError } = await client
       .from('jobs')
