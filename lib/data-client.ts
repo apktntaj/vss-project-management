@@ -372,7 +372,20 @@ function emptyCustomsDocument(applicable = true): JobCustomsDocument {
 export function getOperationalDetails(
   job: Pick<LocalJob, 'operational' | 'blNumber' | 'awbNumber' | 'shippingLine'>,
 ): JobOperationalDetails {
-  if (job.operational) return job.operational
+  const stored = job.operational
+  if (stored) {
+    // Job lama menyimpan customs sebelum BC_2_7 ada — lengkapi jenis yang hilang dengan default.
+    const customs = (stored.customs ?? {}) as Partial<Record<BcDocumentKind, JobCustomsDocument>>
+    return {
+      ...stored,
+      customs: {
+        BC_2_3: customs.BC_2_3 ?? emptyCustomsDocument(),
+        BC_2_5: customs.BC_2_5 ?? emptyCustomsDocument(false),
+        BC_3_0: customs.BC_3_0 ?? emptyCustomsDocument(),
+        BC_2_7: customs.BC_2_7 ?? emptyCustomsDocument(false),
+      },
+    }
+  }
   const documentType = job.blNumber ? 'BL' : job.awbNumber ? 'AWB' : null
   return {
     inbound: {
