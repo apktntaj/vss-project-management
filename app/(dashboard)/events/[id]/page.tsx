@@ -1,22 +1,38 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Briefcase, Building2, CalendarDays, MapPin, Plus } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { AlertTriangle, Building2, CalendarDays, ChevronDown, ChevronRight, MapPin, Plus } from 'lucide-react'
 import { useParams } from 'next/navigation'
 import {
-  listAgents,
+  deleteJob,
   listEventJobs,
   listEventsWithExhibitors,
   type LocalEvent,
-  type LocalExhibitor,
   type LocalJob,
-  type Agent,
+  type LocalJobDocument,
 } from '@/lib/data-client'
+import {
+  internationalJobJenisLabels,
+  type BcDocumentKind,
+  type InternationalJobJenis,
+} from '@/domain/job/types'
+import { buildJobNomor } from '@/lib/job-number'
 import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
 import { ContextTicketList } from '@/components/context-ticket-list'
-import { EventJobsTable } from '@/components/event-jobs-table'
 import { JobInitModal } from '@/components/job-init-modal'
+import {
+  JobDocumentEditorDialog,
+  type EditableJobDocument,
+} from '@/components/job-document-editor-dialog'
+import {
+  JobRow,
+  applyUploadedDocument,
+  downloadCustomsWorkbook,
+  label,
+  type JobDocumentExtraction,
+} from '@/components/job-row'
 
 function formatDateRange(startsAt: string, endsAt: string) {
   const formatter = new Intl.DateTimeFormat('id-ID', {
@@ -27,25 +43,72 @@ function formatDateRange(startsAt: string, endsAt: string) {
   return `${formatter.format(new Date(startsAt))} - ${formatter.format(new Date(endsAt))}`
 }
 
+type JobJenisGroup = InternationalJobJenis | 'LOCAL' | 'LEGACY'
+
+/** Urutan dasar grup jenis; dipakai sebagai tie-break saat jumlah job sama. */
+const jobJenisOrder: ReadonlyArray<JobJenisGroup> = [
+  'VENUE',
+  'ROAD_SHIPMENT',
+  'PERMANENT_IMPORT',
+  'ATA_CARNET',
+  'TEMPORARY_EXPORT',
+  'LOCAL',
+  'LEGACY',
+]
+
+function jobJenisKey(job: LocalJob): JobJenisGroup {
+  if (job.kind === 'LOCAL') return 'LOCAL'
+  if (job.internationalJenis) return job.internationalJenis
+  return 'LEGACY'
+}
+
+function jobJenisLabel(key: JobJenisGroup) {
+  if (key === 'LOCAL') return 'Local'
+  if (key === 'LEGACY') return 'Job lama'
+  return internationalJobJenisLabels[key]
+}
+
 export default function EventDetailPage() {
   const params = useParams<{ id: string }>()
+  const router = useRouter()
   const [event, setEvent] = useState<LocalEvent | null>(null)
-  const [exhibitors, setExhibitors] = useState<LocalExhibitor[]>([])
   const [jobs, setJobs] = useState<LocalJob[]>([])
-  const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
   const loadingStartedAt = useRef(Date.now())
   const [showNewJob, setShowNewJob] = useState(false)
+  const [editingDocument, setEditingDocument] = useState<{
+    job: LocalJob
+    kind: EditableJobDocument
+  } | null>(null)
+  const [openJenis, setOpenJenis] = useState<Record<string, boolean>>({})
+  const [deletingJob, setDeletingJob] = useState<LocalJob | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const nomorByJobId = useMemo(() => buildJobNomor(jobs), [jobs])
+
+  const jenisGroups = useMemo(() => {
+    const byKey = new Map<JobJenisGroup, LocalJob[]>()
+    for (const job of jobs) {
+      const key = jobJenisKey(job)
+      const bucket = byKey.get(key)
+      if (bucket) bucket.push(job)
+      else byKey.set(key, [job])
+    }
+    return jobJenisOrder
+      .flatMap((key) => {
+        const groupJobs = byKey.get(key)
+        return groupJobs ? [{ key, jobs: groupJobs }] : []
+      })
+      .sort((a, b) => b.jobs.length - a.jobs.length)
+  }, [jobs])
 
   const loadData = useCallback(() => {
     loadingStartedAt.current = Date.now()
     setLoading(true)
-    Promise.all([listEventsWithExhibitors(), listEventJobs(params.id), listAgents()]).then(
-      ([{ events, exhibitorsByEvent }, eventJobs, loadedAgents]) => {
+    Promise.all([listEventsWithExhibitors(), listEventJobs(params.id)]).then(
+      ([{ events }, eventJobs]) => {
         setEvent(events.find((item) => item.id === params.id) ?? null)
-        setExhibitors(exhibitorsByEvent[params.id] ?? [])
         setJobs(eventJobs)
-        setAgents(loadedAgents)
         finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
       },
     )
@@ -54,6 +117,50 @@ export default function EventDetailPage() {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  const showToast = (message: string, tone: 'info' | 'error' = 'info') => {
+    window.dispatchEvent(
+      new CustomEvent('vss:toast', {
+        detail: { message, tone: tone === 'error' ? 'error' : 'success' },
+      }),
+    )
+  }
+  const handleDocumentSaved = (updated: LocalJob) => {
+    setJobs((current) => current.map((job) => (job.id === updated.id ? updated : job)))
+  }
+  const handleDocumentUploaded = (
+    jobId: string,
+    document: LocalJobDocument,
+    extraction?: JobDocumentExtraction,
+  ) => {
+    setJobs((current) =>
+      current.map((job) =>
+        job.id === jobId ? applyUploadedDocument(job, document, extraction) : job,
+      ),
+    )
+  }
+  async function generateCustomsWorkbook(job: LocalJob, documentType: BcDocumentKind) {
+    try {
+      await downloadCustomsWorkbook(job, documentType)
+      showToast(`${label(documentType)} berhasil diunduh.`)
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : 'File BC tidak dapat dibuat.', 'error')
+    }
+  }
+  async function handleDeleteJob() {
+    if (!deletingJob) return
+    setDeleting(true)
+    try {
+      await deleteJob(deletingJob.id)
+      showToast(`${deletingJob.jobNumber} dihapus.`)
+      setDeletingJob(null)
+      loadData()
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : 'Job tidak dapat dihapus.', 'error')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   if (loading) {
     return <PageSkeleton cards={2} rows={5} />
@@ -72,16 +179,11 @@ export default function EventDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="mt-2 text-3xl font-bold tracking-tight">{event.officialName}</h1>
           {event.alias && <p className="mt-2 text-sm text-slate-500">{event.alias}</p>}
-        </div>
-        <div className="flex items-center gap-2">
-          <Link href={`/kanban?new=1&contextKind=EVENT&contextId=${event.id}`} className="btn-secondary shrink-0">
-            <Plus size={16} /> <span className="ml-2">Tambah ticket</span>
-          </Link>
         </div>
       </div>
 
@@ -125,13 +227,10 @@ export default function EventDetailPage() {
         )}
       </section>
 
-      <section className="card p-6 sm:p-8">
+      <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold">Jobs ({jobs.length})</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Satu agent mewakili satu job dengan satu CIPL dan satu B/L.
-            </p>
+            <h2 className="text-lg font-semibold">{jobs.length} Jobs</h2>
           </div>
           {event.status !== 'CANCELLED' && (
             <button
@@ -139,13 +238,149 @@ export default function EventDetailPage() {
               onClick={() => setShowNewJob(true)}
               className="btn-primary shrink-0"
             >
-              <Briefcase size={16} /> New Job
+              <Plus size={16} /> New Job
             </button>
           )}
         </div>
-        <EventJobsTable jobs={jobs} agents={agents} exhibitors={exhibitors} />
+        {jobs.length ? (
+          <div className="space-y-4">
+            {jenisGroups.map((group) => {
+              const isOpen = openJenis[group.key] ?? false
+              return (
+                <section
+                  key={group.key}
+                  className="overflow-hidden rounded-xl border border-black/10"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setOpenJenis((value) => ({ ...value, [group.key]: !isOpen }))}
+                    aria-expanded={isOpen}
+                    className="flex w-full items-center gap-3 bg-slate-50 px-5 py-4 text-left hover:text-orange-700"
+                  >
+                    <span className="text-slate-400">
+                      {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate font-semibold text-slate-900">
+                      {jobJenisLabel(group.key)}
+                    </span>
+                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600">
+                      {group.jobs.length} Job
+                    </span>
+                  </button>
+                  {isOpen && (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-[900px] w-full table-fixed text-left text-sm">
+                        <colgroup>
+                          <col className="w-[115px]" />
+                          <col className="w-[145px]" />
+                          <col className="w-[190px]" />
+                          <col className="w-[135px]" />
+                          <col className="w-[210px]" />
+                          <col className="w-[60px]" />
+                        </colgroup>
+                        <thead className="border-b bg-white text-slate-900 font-semibold uppercase tracking-wider">
+                          <tr>
+                            <th className="px-3 py-3">No Job</th>
+                            <th className="px-3 py-3">Exhibitor</th>
+                            <th className="px-3 py-3">Dokumen shipment</th>
+                            <th className="px-3 py-3">ETA</th>
+                            <th className="px-3 py-3">Dokumen BC</th>
+                            <th className="px-3 py-3">Aksi</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {group.jobs.map((job) => (
+                            <JobRow
+                              key={job.id}
+                              job={job}
+                              nomor={nomorByJobId.get(job.id)}
+                              actions={{
+                                onEdit: (editedJob) => router.push(`/jobs/${editedJob.id}/edit`),
+                                onDelete: (deletedJob) => setDeletingJob(deletedJob),
+                              }}
+                              onDocumentUploaded={handleDocumentUploaded}
+                              onToast={showToast}
+                              onGenerate={generateCustomsWorkbook}
+                              onEditDocument={(selectedJob, kind) =>
+                                setEditingDocument({ job: selectedJob, kind })
+                              }
+                            />
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="rounded-xl border border-dashed border-black/15 px-4 py-8 text-center text-sm text-slate-500">
+            Belum ada job untuk event ini.
+          </p>
+        )}
       </section>
-      <ContextTicketList contextKind="EVENT" contextId={event.id} />
+      {/* <ContextTicketList contextKind="EVENT" contextId={event.id} /> */}
+      <JobDocumentEditorDialog
+        job={editingDocument?.job ?? null}
+        kind={editingDocument?.kind ?? 'INVOICE'}
+        open={Boolean(editingDocument)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setEditingDocument(null)
+        }}
+        onSaved={handleDocumentSaved}
+        onToast={showToast}
+      />
+      {deletingJob && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          role="presentation"
+          onMouseDown={(mouseEvent) => {
+            if (!deleting && mouseEvent.target === mouseEvent.currentTarget) setDeletingJob(null)
+          }}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-job-title"
+            className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-6 shadow-2xl"
+          >
+            <div className="flex items-start gap-4">
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700">
+                <AlertTriangle size={22} />
+              </div>
+              <div>
+                <h2 id="delete-job-title" className="text-lg font-bold">
+                  Hapus job?
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  <span className="font-semibold">{deletingJob.jobNumber}</span> beserta dokumen
+                  shipment, stage, shipment, customs job, dan ticket yang terikat padanya akan
+                  dihapus permanen. Tindakan ini tidak dapat dibatalkan.
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeletingJob(null)}
+                disabled={deleting}
+                className="btn-secondary"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteJob}
+                disabled={deleting}
+                className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+              >
+                {deleting ? 'Menghapus...' : 'Hapus permanen'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showNewJob && (
         <JobInitModal
           event={event}

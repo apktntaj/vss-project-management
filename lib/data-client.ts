@@ -936,6 +936,14 @@ export async function deleteEvent(eventId: string) {
   })
 }
 
+/** Hapus permanen job beserta dokumen, stage, shipment, customs job, dan ticket yang terikat padanya. */
+export async function deleteJob(jobId: string) {
+  const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' })
+  if (response.ok) return
+  const data = await response.json().catch(() => null) as { error?: string } | null
+  throw new Error(data?.error ?? 'Job tidak dapat dihapus.')
+}
+
 export type JobInput = Pick<
   LocalJob,
   | 'awbNumber'
