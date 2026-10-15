@@ -5,6 +5,7 @@ import { Plus, X } from 'lucide-react'
 
 import {
   createInternationalJobInit,
+  createLocalJobInit,
   listAgents,
   saveAgent,
   type Agent,
@@ -18,21 +19,38 @@ function toast(message: string, tone: 'success' | 'error') {
   window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
 }
 
-const internationalJenisDescriptions: Record<InternationalJobJenis, string> = {
-  VENUE: 'Pengiriman barang terkait kebutuhan venue event.',
-  ROAD_SHIPMENT: 'Pengiriman darat antar wilayah, seperti grup ROAD SHIPMENT pada inward manifest.',
-  PERMANENT_IMPORT: 'Impor tetap; barang menjadi milik impor dan tidak wajib diekspor kembali.',
-  ATA_CARNET: 'Impor sementara dengan dokumen ATA Carnet.',
-  TEMPORARY_EXPORT: 'Ekspor sementara; barang wajib dipulangkan kembali.',
-}
+type JobTypeSelection = 'LOCAL' | InternationalJobJenis
 
-const internationalJenisOrder: InternationalJobJenis[] = [
-  'VENUE',
-  'ROAD_SHIPMENT',
-  'PERMANENT_IMPORT',
-  'ATA_CARNET',
-  'TEMPORARY_EXPORT',
+const jobTypeOptions: Array<{ value: JobTypeSelection; description: string }> = [
+  {
+    value: 'LOCAL',
+    description: 'Barang dibawa langsung oleh exhibitor lokal tanpa dokumen kepabeanan.',
+  },
+  {
+    value: 'VENUE',
+    description: 'Pengiriman barang terkait kebutuhan venue event.',
+  },
+  {
+    value: 'ROAD_SHIPMENT',
+    description: 'Pengiriman darat antar wilayah, seperti grup ROAD SHIPMENT pada inward manifest.',
+  },
+  {
+    value: 'PERMANENT_IMPORT',
+    description: 'Impor tetap; barang menjadi milik impor dan tidak wajib diekspor kembali.',
+  },
+  {
+    value: 'ATA_CARNET',
+    description: 'Impor sementara dengan dokumen ATA Carnet.',
+  },
+  {
+    value: 'TEMPORARY_EXPORT',
+    description: 'Ekspor sementara; barang wajib dipulangkan kembali.',
+  },
 ]
+
+function jobTypeLabel(value: JobTypeSelection) {
+  return value === 'LOCAL' ? 'Local' : internationalJobJenisLabels[value]
+}
 
 /**
  * Inisiasi job dalam satu form: jenis job (dropdown, default Venue) + agent.
@@ -47,7 +65,7 @@ export function JobInitModal({
   onCreated: (job: LocalJob) => void
   onCancel: () => void
 }) {
-  const [selection, setSelection] = useState<InternationalJobJenis>('VENUE')
+  const [selection, setSelection] = useState<JobTypeSelection>('VENUE')
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
   const [agentMode, setAgentMode] = useState<'existing' | 'new'>('existing')
@@ -58,6 +76,7 @@ export function JobInitModal({
   const [newAgentPhone, setNewAgentPhone] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const isLocal = selection === 'LOCAL'
 
   useEffect(() => {
     let active = true
@@ -73,17 +92,23 @@ export function JobInitModal({
 
   async function submit(formEvent: FormEvent<HTMLFormElement>) {
     formEvent.preventDefault()
-    if (agentMode === 'new' && !newAgentName.trim()) {
+    if (!isLocal && agentMode === 'new' && !newAgentName.trim()) {
       setError('Nama agent wajib diisi.')
       return
     }
-    if (agentMode === 'existing' && !selectedAgentId) {
+    if (!isLocal && agentMode === 'existing' && !selectedAgentId) {
       setError('Pilih agent atau buat agent baru.')
       return
     }
     setSaving(true)
     setError('')
     try {
+      if (isLocal) {
+        const job = await createLocalJobInit(event.id)
+        toast(`Job ${job.jobNumber} (Local) dibuat.`, 'success')
+        onCreated(job)
+        return
+      }
       let agentId = selectedAgentId
       let agentName = agents.find((agent) => agent.id === agentId)?.name ?? ''
       if (agentMode === 'new') {
@@ -106,7 +131,10 @@ export function JobInitModal({
         agentId,
         internationalJenis: selection,
       })
-      toast(`Job ${job.jobNumber} (${internationalJobJenisLabels[selection]}) dibuat untuk agent ${agentName}.`, 'success')
+      toast(
+        `Job ${job.jobNumber} (${jobTypeLabel(selection)}) dibuat untuk agent ${agentName}.`,
+        'success',
+      )
       onCreated(job)
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Job tidak dapat dibuat.'
@@ -135,11 +163,9 @@ export function JobInitModal({
         <div className="flex shrink-0 items-center justify-between border-b px-6 py-5 sm:px-8">
           <div>
             <h2 id="job-init-title" className="text-2xl font-bold">
-              Inisiasi job baru
+              Form Job Baru
             </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              {event.officialName} · {event.venue?.officialName || 'Venue belum diinput'}
-            </p>
+            <p className="mt-1 text-sm text-slate-500">{event.officialName}</p>
           </div>
           <button
             type="button"
@@ -156,23 +182,32 @@ export function JobInitModal({
             Jenis job
             <select
               value={selection}
-              onChange={(selectEvent) => setSelection(selectEvent.target.value as InternationalJobJenis)}
+              onChange={(selectEvent) =>
+                setSelection(selectEvent.target.value as JobTypeSelection)
+              }
               className="input mt-1"
             >
-              {internationalJenisOrder.map((jenis) => (
-                <option key={jenis} value={jenis}>
-                  {internationalJobJenisLabels[jenis]}
+              {jobTypeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {jobTypeLabel(option.value)}
                 </option>
               ))}
             </select>
             <span className="mt-1 block text-xs font-normal text-slate-500">
-              {internationalJenisDescriptions[selection]}
+              {jobTypeOptions.find((option) => option.value === selection)?.description}
             </span>
           </label>
 
+          {isLocal ? (
+            <p className="rounded-xl border border-dashed border-black/15 px-4 py-3 text-sm text-slate-500">
+              Job Local tidak memakai agent. Exhibitor lokal dilekatkan belakangan di detail job.
+            </p>
+          ) : (
           <section>
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-500">Agent</h3>
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-500">
+                Agent
+              </h3>
               <button
                 type="button"
                 onClick={() => setAgentMode((mode) => (mode === 'new' ? 'existing' : 'new'))}
@@ -184,7 +219,6 @@ export function JobInitModal({
             </div>
             {agentMode === 'existing' ? (
               <label className="label mt-3">
-                Pilih agent
                 <select
                   value={selectedAgentId}
                   onChange={(selectEvent) => setSelectedAgentId(selectEvent.target.value)}
@@ -237,10 +271,8 @@ export function JobInitModal({
                 </label>
               </div>
             )}
-            <p className="mt-2 text-xs text-slate-500">
-              Satu agent mewakili satu job pada event ini. Exhibitor binaan diisi belakangan di detail job.
-            </p>
           </section>
+          )}
         </div>
 
         <div className="shrink-0 border-t px-6 py-4 sm:px-8">

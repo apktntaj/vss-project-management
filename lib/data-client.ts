@@ -1216,6 +1216,49 @@ export async function createInternationalJobInit(input: InternationalJobInitInpu
   return put('jobs', job)
 }
 
+/**
+ * Inisiasi job Local: tanpa agent dan tanpa dokumen kepabeanan; exhibitor lokal
+ * dilekatkan belakangan di detail job.
+ */
+export async function createLocalJobInit(eventId: string): Promise<LocalJob> {
+  const jobs = await readAll<LocalJob>('jobs')
+  const timestamp = now()
+  const job: LocalJob = {
+    id: id(),
+    jobNumber: `VSS-${String(nextJobSequence(jobs)).padStart(4, '0')}`,
+    awbNumber: null,
+    blNumber: null,
+    shipper: null,
+    consignee: null,
+    notifyParty: null,
+    agent: null,
+    shippingLine: null,
+    cargoDescription: null,
+    shipmentMode: null,
+    cargoDetails: null,
+    journeyDetails: null,
+    type: 'IMPORT',
+    clientName: 'Local',
+    clientInfo: null,
+    status: 'DRAFT',
+    notes: null,
+    trackingToken: crypto.randomUUID(),
+    assignedToId: null,
+    createdById: null,
+    eventId,
+    exhibitorId: null,
+    agentId: null,
+    kind: 'LOCAL',
+    internationalJenis: null,
+    sourceDocumentName: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    stages: [],
+    documents: [],
+  }
+  return put('jobs', job)
+}
+
 function nextJobSequence(jobs: LocalJob[]) {
   return jobs.reduce((max, job) => {
     const match = /^VSS-(\d+)$/.exec(job.jobNumber ?? '')
