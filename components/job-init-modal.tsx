@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, type FormEvent } from 'react'
-import { X } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 
 import {
   createInternationalJobInit,
@@ -171,27 +171,17 @@ export function JobInitModal({
           </label>
 
           <section>
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-500">Agent</h3>
-            <fieldset className="mt-3 flex gap-4 text-sm font-medium">
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="agent-mode"
-                  checked={agentMode === 'existing'}
-                  onChange={() => setAgentMode('existing')}
-                />
-                Agent tersimpan
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="agent-mode"
-                  checked={agentMode === 'new'}
-                  onChange={() => setAgentMode('new')}
-                />
-                Agent baru
-              </label>
-            </fieldset>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-500">Agent</h3>
+              <button
+                type="button"
+                onClick={() => setAgentMode((mode) => (mode === 'new' ? 'existing' : 'new'))}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-orange-700 hover:text-orange-800"
+              >
+                <Plus size={13} />
+                {agentMode === 'new' ? 'Pilih agent tersimpan' : 'Agent baru'}
+              </button>
+            </div>
             {agentMode === 'existing' ? (
               <label className="label mt-3">
                 Pilih agent
