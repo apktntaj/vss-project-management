@@ -239,7 +239,9 @@ export function JobInitModal({
                   Nama agent
                   <input
                     value={newAgentName}
-                    onChange={(inputEvent) => setNewAgentName(inputEvent.target.value)}
+                    onChange={(inputEvent) =>
+                      setNewAgentName(inputEvent.target.value.toLocaleUpperCase('id-ID'))
+                    }
                     className="input mt-1"
                     placeholder="cth. JS LOGISTICS"
                   />
