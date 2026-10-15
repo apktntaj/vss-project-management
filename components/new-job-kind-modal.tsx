@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import {
+  ArrowLeft,
   Globe2,
   MapPin,
   Repeat,
@@ -95,8 +96,6 @@ export function NewJobKindModal({
   onCancel: () => void
 }) {
   const [step, setStep] = useState<'kind' | 'international-jenis'>('kind')
-  const [selectedKind, setSelectedKind] = useState<JobKind | null>(null)
-  const [selectedJenis, setSelectedJenis] = useState<InternationalJobJenis | null>(null)
   const isJenisStep = step === 'international-jenis'
 
   return (
@@ -134,7 +133,14 @@ export function NewJobKindModal({
         <div className="min-h-0 flex-1 overflow-y-auto p-6 sm:p-8">
           {isJenisStep ? (
             <div>
-              <h3 id="new-job-international-jenis-title" className="text-lg font-semibold">
+              <button
+                type="button"
+                onClick={() => setStep('kind')}
+                className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-orange-700"
+              >
+                <ArrowLeft size={14} /> Kembali
+              </button>
+              <h3 id="new-job-international-jenis-title" className="mt-3 text-lg font-semibold">
                 Jenis job international
               </h3>
               <p className="mt-1 text-sm text-slate-500">
@@ -146,18 +152,17 @@ export function NewJobKindModal({
                 className="mt-5 grid gap-4 sm:grid-cols-2"
               >
                 {internationalJenisOptions.map((option) => {
-                  const isSelected = selectedJenis === option.value
                   const Icon = option.icon
                   return (
                     <button
                       key={option.value}
                       type="button"
                       role="radio"
-                      aria-checked={isSelected}
-                      onClick={() => setSelectedJenis(option.value)}
-                      className={optionCardClasses(isSelected)}
+                      aria-checked={false}
+                      onClick={() => onSelect('INTERNATIONAL', option.value)}
+                      className={optionCardClasses(false)}
                     >
-                      <span className={optionIconClasses(isSelected)}>
+                      <span className={optionIconClasses(false)}>
                         <Icon size={20} />
                       </span>
                       <span className="text-base font-semibold text-slate-900">
@@ -176,18 +181,20 @@ export function NewJobKindModal({
               className="grid gap-4 sm:grid-cols-2"
             >
               {jobKindOptions.map((option) => {
-                const isSelected = selectedKind === option.value
                 const Icon = option.icon
                 return (
                   <button
                     key={option.value}
                     type="button"
                     role="radio"
-                    aria-checked={isSelected}
-                    onClick={() => setSelectedKind(option.value)}
-                    className={optionCardClasses(isSelected)}
+                    aria-checked={false}
+                    onClick={() => {
+                      if (option.value === 'INTERNATIONAL') setStep('international-jenis')
+                      else onSelect('LOCAL')
+                    }}
+                    className={optionCardClasses(false)}
                   >
-                    <span className={optionIconClasses(isSelected)}>
+                    <span className={optionIconClasses(false)}>
                       <Icon size={20} />
                     </span>
                     <span className="text-base font-semibold text-slate-900">{option.label}</span>
@@ -197,31 +204,6 @@ export function NewJobKindModal({
               })}
             </div>
           )}
-        </div>
-        <div className="flex shrink-0 justify-end gap-3 border-t px-6 py-4 sm:px-8">
-          {isJenisStep && (
-            <button type="button" onClick={() => setStep('kind')} className="btn-secondary mr-auto">
-              Kembali
-            </button>
-          )}
-          <button type="button" onClick={onCancel} className="btn-secondary">
-            Batal
-          </button>
-          <button
-            type="button"
-            disabled={isJenisStep ? !selectedJenis : !selectedKind}
-            onClick={() => {
-              if (!isJenisStep && selectedKind === 'INTERNATIONAL') {
-                setStep('international-jenis')
-                return
-              }
-              if (isJenisStep && selectedJenis) onSelect('INTERNATIONAL', selectedJenis)
-              else if (selectedKind === 'LOCAL') onSelect('LOCAL')
-            }}
-            className="btn-primary"
-          >
-            Lanjut
-          </button>
         </div>
       </div>
     </div>
