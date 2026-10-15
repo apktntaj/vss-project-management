@@ -8,7 +8,6 @@ import {
   listAgents,
   listEventJobs,
   listEventsWithExhibitors,
-  type InternationalJobJenis,
   type LocalEvent,
   type LocalExhibitor,
   type LocalJob,
@@ -17,13 +16,7 @@ import {
 import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
 import { ContextTicketList } from '@/components/context-ticket-list'
 import { EventJobsTable } from '@/components/event-jobs-table'
-import { NewJobKindModal } from '@/components/new-job-kind-modal'
-import { InternationalJobInitModal } from '@/components/international-job-init-modal'
-import { jobKindLabels } from '@/domain/job/types'
-
-function toast(message: string, tone: 'success' | 'error') {
-  window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
-}
+import { JobInitModal } from '@/components/job-init-modal'
 
 function formatDateRange(startsAt: string, endsAt: string) {
   const formatter = new Intl.DateTimeFormat('id-ID', {
@@ -43,7 +36,6 @@ export default function EventDetailPage() {
   const [loading, setLoading] = useState(true)
   const loadingStartedAt = useRef(Date.now())
   const [showNewJob, setShowNewJob] = useState(false)
-  const [initJenis, setInitJenis] = useState<InternationalJobJenis | null>(null)
 
   const loadData = useCallback(() => {
     loadingStartedAt.current = Date.now()
@@ -155,31 +147,13 @@ export default function EventDetailPage() {
       </section>
       <ContextTicketList contextKind="EVENT" contextId={event.id} />
       {showNewJob && (
-        <NewJobKindModal
+        <JobInitModal
           event={event}
-          onSelect={(kind, internationalJenis) => {
-            setShowNewJob(false)
-            if (kind === 'INTERNATIONAL' && internationalJenis) {
-              setInitJenis(internationalJenis)
-              return
-            }
-            toast(
-              `Job ${jobKindLabels[kind]} dipilih. Form inisiasi job Local menyusul pada iterasi berikutnya.`,
-              'success',
-            )
-          }}
-          onCancel={() => setShowNewJob(false)}
-        />
-      )}
-      {initJenis && (
-        <InternationalJobInitModal
-          event={event}
-          jenis={initJenis}
           onCreated={() => {
-            setInitJenis(null)
+            setShowNewJob(false)
             loadData()
           }}
-          onCancel={() => setInitJenis(null)}
+          onCancel={() => setShowNewJob(false)}
         />
       )}
     </div>

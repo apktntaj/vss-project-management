@@ -1162,37 +1162,23 @@ export type InternationalJobInitInput = {
   eventId: string
   agentId: string
   internationalJenis: InternationalJobJenis
-  exhibitorIds: string[]
 }
 
 /**
- * Inisiasi job international: satu agent = satu job per event, dengan daftar
- * exhibitor binaan. Job lahir dalam fase Draft; CIPL/B/L menyusul di fase berikutnya.
+ * Inisiasi job international: satu agent = satu job per event. Fase inisiasi
+ * hanya mencatat jenis dan agent; exhibitor binaan dilekatkan belakangan di detail job.
  */
-export async function createInternationalJobInit(input: InternationalJobInitInput): Promise<LocalJob> {  const [jobs, agents, exhibitors] = await Promise.all([
-    readAll<LocalJob>('jobs'),
-    readAll<Agent>('agents'),
-    readAll<LocalExhibitor>('exhibitors'),
-  ])
+export async function createInternationalJobInit(input: InternationalJobInitInput): Promise<LocalJob> {
+  const [jobs, agents] = await Promise.all([readAll<LocalJob>('jobs'), readAll<Agent>('agents')])
   const agent = agents.find((item) => item.id === input.agentId)
   if (!agent) throw new Error('Agent tidak ditemukan.')
-  if (input.exhibitorIds.length === 0) throw new Error('Pilih minimal satu exhibitor binaan.')
-  if (input.exhibitorIds.some((exhibitorId) => !exhibitors.some((exhibitor) => exhibitor.id === exhibitorId))) {
-    throw new Error('Exhibitor tidak ditemukan.')
-  }
   if (jobs.some((job) => job.agentId === input.agentId && job.eventId === input.eventId)) {
     throw new Error('Agent ini sudah memiliki job di event ini.')
   }
 
   await addAgentToEvent(input.eventId, input.agentId)
-  await Promise.all(
-    input.exhibitorIds.map((exhibitorId) => setExhibitorAgent(input.eventId, exhibitorId, input.agentId)),
-  )
 
-  const nextSequence = jobs.reduce((max, job) => {
-    const match = /^VSS-(\d+)$/.exec(job.jobNumber ?? '')
-    return match ? Math.max(max, Number(match[1])) : max
-  }, 0) + 1
+  const nextSequence = nextJobSequence(jobs)
   const timestamp = now()
   const job: LocalJob = {
     id: `job-for-agent-${input.agentId}-${input.eventId}`,
@@ -1228,6 +1214,56 @@ export async function createInternationalJobInit(input: InternationalJobInitInpu
     documents: [],
   }
   return put('jobs', job)
+}
+
+/**
+ * Inisiasi job Local: tanpa agent dan tanpa dokumen kepabeanan; exhibitor lokal
+ * dilekatkan belakangan di detail job.
+ */
+export async function createLocalJobInit(eventId: string): Promise<LocalJob> {
+  const jobs = await readAll<LocalJob>('jobs')
+  const timestamp = now()
+  const job: LocalJob = {
+    id: id(),
+    jobNumber: `VSS-${String(nextJobSequence(jobs)).padStart(4, '0')}`,
+    awbNumber: null,
+    blNumber: null,
+    shipper: null,
+    consignee: null,
+    notifyParty: null,
+    agent: null,
+    shippingLine: null,
+    cargoDescription: null,
+    shipmentMode: null,
+    cargoDetails: null,
+    journeyDetails: null,
+    type: 'IMPORT',
+    clientName: 'Local',
+    clientInfo: null,
+    status: 'DRAFT',
+    notes: null,
+    trackingToken: crypto.randomUUID(),
+    assignedToId: null,
+    createdById: null,
+    eventId,
+    exhibitorId: null,
+    agentId: null,
+    kind: 'LOCAL',
+    internationalJenis: null,
+    sourceDocumentName: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    stages: [],
+    documents: [],
+  }
+  return put('jobs', job)
+}
+
+function nextJobSequence(jobs: LocalJob[]) {
+  return jobs.reduce((max, job) => {
+    const match = /^VSS-(\d+)$/.exec(job.jobNumber ?? '')
+    return match ? Math.max(max, Number(match[1])) : max
+  }, 0) + 1
 }
 
 /** Simpan blok inward manifest (dokumen angkut, konfigurasi muatan, milestone, catatan). */

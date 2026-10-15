@@ -21,16 +21,13 @@ import {
   listCiplVersions,
   listEventsWithExhibitors,
   listJobs,
-  type InternationalJobJenis,
   type LocalEvent,
   type LocalExhibitor,
   type LocalJob,
 } from '@/lib/data-client'
 import type { Cipl, CiplVersion } from '@/domain/exhibition/types'
-import { jobKindLabels } from '@/domain/job/types'
 import { EventFormModal } from '@/components/event-form-modal'
-import { InternationalJobInitModal } from '@/components/international-job-init-modal'
-import { NewJobKindModal } from '@/components/new-job-kind-modal'
+import { JobInitModal } from '@/components/job-init-modal'
 import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
 
 function toast(message: string, tone: 'success' | 'error') {
@@ -147,7 +144,6 @@ export default function EventsPage() {
   const [jobs, setJobs] = useState<LocalJob[]>([])
   const [cipls, setCipls] = useState<CiplWithVersions[]>([])
   const [newJobForEvent, setNewJobForEvent] = useState<LocalEvent | null>(null)
-  const [initJob, setInitJob] = useState<{ event: LocalEvent; jenis: InternationalJobJenis } | null>(null)
   const [showNewEvent, setShowNewEvent] = useState(false)
   const [editingEvent, setEditingEvent] = useState<LocalEvent | null>(null)
   const [deletingEvent, setDeletingEvent] = useState<LocalEvent | null>(null)
@@ -700,31 +696,13 @@ export default function EventsPage() {
         </div>
       )}
       {newJobForEvent && (
-        <NewJobKindModal
+        <JobInitModal
           event={newJobForEvent}
-          onSelect={(kind, internationalJenis) => {
-            setNewJobForEvent(null)
-            if (kind === 'INTERNATIONAL' && internationalJenis) {
-              setInitJob({ event: newJobForEvent, jenis: internationalJenis })
-              return
-            }
-            toast(
-              `Job ${jobKindLabels[kind]} dipilih. Form inisiasi job Local menyusul pada iterasi berikutnya.`,
-              'success',
-            )
-          }}
-          onCancel={() => setNewJobForEvent(null)}
-        />
-      )}
-      {initJob && (
-        <InternationalJobInitModal
-          event={initJob.event}
-          jenis={initJob.jenis}
           onCreated={() => {
-            setInitJob(null)
+            setNewJobForEvent(null)
             reloadEvents()
           }}
-          onCancel={() => setInitJob(null)}
+          onCancel={() => setNewJobForEvent(null)}
         />
       )}
     </>
