@@ -1,0 +1,2 @@
+Placeholder — kerangka domain auth murni (tipe, validator kredensial, kontrak hashing).
+Diisi pada task 5.1 (domain/auth/types.ts, domain/auth/validation.ts).

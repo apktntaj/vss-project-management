@@ -7,9 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "guard:arch": "tsx scripts/guard-architecture.ts",
     "data:build": "node scripts/build-discovery-dataset.mjs",
     "domain:demo": "tsx domain/v2/demo.ts",
-    "domain:test": "bun test domain/v2/validation.test.ts domain/event/validation.test.ts domain/exhibition/validation.test.ts domain/job/manifest.test.ts domain/user/validation.test.ts domain/user/user.test.ts domain/ticket/validation.test.ts domain/ticket/timeline.test.ts lib/document-comparison.test.ts lib/manifest-view.test.ts lib/operational-details.test.ts lib/job-number.test.ts lib/ceisa/bc23-draft.test.ts lib/server/ceisa/crypto.test.ts",
+    "domain:test": "bun test domain/v2/validation.test.ts domain/event/validation.test.ts domain/event/reference-validation.test.ts domain/exhibition/validation.test.ts domain/job/manifest.test.ts domain/user/validation.test.ts domain/user/user.test.ts domain/ticket/validation.test.ts domain/ticket/timeline.test.ts lib/document-comparison.test.ts lib/manifest-view.test.ts lib/operational-details.test.ts lib/job-number.test.ts lib/ceisa/bc23-draft.test.ts lib/server/ceisa/crypto.test.ts features/auth/auth.config.test.ts",
     "supabase:create-user": "tsx scripts/create-supabase-user.ts",
     "supabase:seed-reference": "tsx scripts/seed-exhibition-reference.ts",
     "domain:validate-samples": "tsx domain/v2/validate-samples.mts"
@@ -30,6 +31,7 @@
     "next-auth": "^5.0.0-beta.32",
     "react": "18.3.1",
     "react-dom": "18.3.1",
+    "server-only": "0.0.1",
     "tailwind-merge": "2.6.0",
     "xlsx": "^0.18.5",
     "zod": "3.24.4"
@@ -42,6 +44,7 @@
     "bun-types": "^1.4.2",
     "eslint": "^8.57.1",
     "eslint-config-next": "^14.2.33",
+    "fast-check": "4.10.2",
     "postcss": "8.4.49",
     "prettier": "^3.9.6",
     "tailwindcss": "3.4.17",

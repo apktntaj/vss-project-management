@@ -1,124 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+// Mengapa: route handler TIPIS untuk koleksi event (clean cutover DD-A4 — mengganti handler lama
+// yang memegang SQL + aturan bisnis langsung). Tanggung jawab handler hanya: autentikasi
+// (`requireCurrentUser` → 401), parse input dengan Zod di batas, delegasi ke use-case (AuthZ +
+// invariant hidup DI SANA, bukan di sini), lalu map hasil/err. Tidak ada SQL, tidak ada aturan
+// bisnis di route (Req 2.6, 7.7, 8.1).
+//
+// Keputusan clean-cutover: GET dihapus. Dalam redesign, baca dashboard berjalan lewat Server
+// Component yang memanggil `listEventsForDashboard` langsung di server — bukan `fetch` dari klien.
+// GET lama mengembalikan payload gabungan bentuk-lama (venues/event_organizers/exhibitors/pic
+// bersarang) untuk `lib/data-client.ts`; konsumen itu memakai `fetch` tak-bertipe, sehingga
+// menghapus GET TIDAK memutus `tsc`/`build`. Menyediakan GET minimal yang mengembalikan
+// `EventListPage` pun tak akan memuaskan parser lama (bentuknya berbeda total). Jadi penghapusan
+// adalah pilihan cutover yang jujur; baca pindah ke RSC.
+
+import { requireCurrentUser } from '@/features/auth'
+import { createEvent } from '@/features/events'
 import { eventInputSchema } from '@/domain/event/validation'
-import { eventApiFailure, getEventApiContext } from '@/lib/supabase/event-api'
+import { toErrorResponse } from '@/lib/server/errors'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
-  try {
-    const { client, workspaceId } = await getEventApiContext()
-    const [
-      eventsResult,
-      venuesResult,
-      organizersResult,
-      cancellationsResult,
-      exhibitorsResult,
-      picUsersResult,
-    ] = await Promise.all([
-      client
-        .from('events')
-        .select('id, name, venue_id, event_organizer_id, pic_id, starts_on, ends_on, created_at, created_by_id')
-        .eq('workspace_id', workspaceId)
-        .order('starts_on'),
-      client
-        .from('venues')
-        .select('id, name, contacts, address, website, loading_access_notes, created_at, updated_at')
-        .eq('workspace_id', workspaceId),
-      client
-        .from('event_organizers')
-        .select('id, name, npwp, contacts, address, website, created_at, updated_at')
-        .eq('workspace_id', workspaceId),
-      client
-        .from('event_cancellations')
-        .select('event_id, reason, cancelled_at, cancelled_by_id')
-        .eq('workspace_id', workspaceId),
-      client
-        .from('exhibitors')
-        .select('*')
-        .eq('workspace_id', workspaceId)
-        .order('name'),
-      client
-        .from('app_users')
-        .select('id, full_name'),
-    ])
-
-    const error =
-      eventsResult.error ??
-      venuesResult.error ??
-      organizersResult.error ??
-      cancellationsResult.error ??
-      exhibitorsResult.error ??
-      picUsersResult.error
-    if (error) throw error
-
-    const venues = new Map((venuesResult.data ?? []).map((venue) => [venue.id, venue]))
-    const organizers = new Map(
-      (organizersResult.data ?? []).map((organizer) => [organizer.id, organizer]),
-    )
-    const cancellations = new Map(
-      (cancellationsResult.data ?? []).map((cancellation) => [
-        cancellation.event_id,
-        cancellation,
-      ]),
-    )
-    const exhibitorsByEvent = new Map<string, typeof exhibitorsResult.data>()
-    for (const exhibitor of exhibitorsResult.data ?? []) {
-      const exhibitors = exhibitorsByEvent.get(exhibitor.event_id) ?? []
-      exhibitors.push(exhibitor)
-      exhibitorsByEvent.set(exhibitor.event_id, exhibitors)
-    }
-    const picUsers = new Map(
-      (picUsersResult.data ?? []).map((user) => [user.id, { id: user.id, full_name: user.full_name }]),
-    )
-
-    return NextResponse.json(
-      (eventsResult.data ?? []).map((event) => ({
-        ...event,
-        venues: venues.get(event.venue_id) ?? null,
-        event_organizers: organizers.get(event.event_organizer_id) ?? null,
-        event_cancellations: cancellations.get(event.id) ?? null,
-        exhibitors: exhibitorsByEvent.get(event.id) ?? [],
-        pic: event.pic_id ? picUsers.get(event.pic_id) ?? null : null,
-      })),
-      { headers: { 'Cache-Control': 'no-store' } },
-    )
-  } catch (error) {
-    return eventApiFailure(error)
-  }
-}
-
+/**
+ * Buat event. Parse `eventInputSchema` (format + invariant tanggal di Zod), delegasi ke use-case
+ * `createEvent` (otorisasi + invariant referensi), kembalikan event tersimpan dengan status 201.
+ */
 export async function POST(request: NextRequest) {
   try {
+    const currentUser = await requireCurrentUser()
     const input = eventInputSchema.parse(await request.json())
-    const { client, workspaceId, userId } = await getEventApiContext()
-    const id = crypto.randomUUID()
-    const timestamp = new Date().toISOString()
-    const { error } = await client.from('events').insert({
-      workspace_id: workspaceId,
-      id,
-      name: input.name,
-      venue_id: input.venueId,
-      event_organizer_id: input.eventOrganizerId,
-      pic_id: input.picId,
-      starts_on: input.startsOn,
-      ends_on: input.endsOn,
-      created_by_id: userId,
-      created_at: timestamp,
-      updated_at: timestamp,
-      payload: input,
-    })
-    if (error) throw error
-
-    return NextResponse.json({
-      id,
-      ...input,
-      createdAt: timestamp,
-      createdById: userId,
-      cancellation: null,
+    const event = await createEvent(currentUser, input)
+    return NextResponse.json(event, {
+      status: 201,
+      headers: { 'Cache-Control': 'no-store' },
     })
   } catch (error) {
-    return eventApiFailure(error)
+    return toErrorResponse(error)
   }
 }
