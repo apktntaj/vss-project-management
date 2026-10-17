@@ -105,7 +105,7 @@ export function JobInitModal({
     try {
       if (isLocal) {
         const job = await createLocalJobInit(event.id)
-        toast(`Job ${job.jobNumber} (Local) dibuat.`, 'success')
+        toast('Job Local dibuat.', 'success')
         onCreated(job)
         return
       }
@@ -131,10 +131,7 @@ export function JobInitModal({
         agentId,
         internationalJenis: selection,
       })
-      toast(
-        `Job ${job.jobNumber} (${jobTypeLabel(selection)}) dibuat untuk agent ${agentName}.`,
-        'success',
-      )
+      toast(`Job (${jobTypeLabel(selection)}) dibuat untuk agent ${agentName}.`, 'success')
       onCreated(job)
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Job tidak dapat dibuat.'
@@ -182,9 +179,7 @@ export function JobInitModal({
             Jenis job
             <select
               value={selection}
-              onChange={(selectEvent) =>
-                setSelection(selectEvent.target.value as JobTypeSelection)
-              }
+              onChange={(selectEvent) => setSelection(selectEvent.target.value as JobTypeSelection)}
               className="input mt-1"
             >
               {jobTypeOptions.map((option) => (
@@ -203,77 +198,77 @@ export function JobInitModal({
               Job Local tidak memakai agent. Exhibitor lokal dilekatkan belakangan di detail job.
             </p>
           ) : (
-          <section>
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-500">
-                Agent
-              </h3>
-              <button
-                type="button"
-                onClick={() => setAgentMode((mode) => (mode === 'new' ? 'existing' : 'new'))}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-orange-700 hover:text-orange-800"
-              >
-                <Plus size={13} />
-                {agentMode === 'new' ? 'Pilih agent tersimpan' : 'Agent baru'}
-              </button>
-            </div>
-            {agentMode === 'existing' ? (
-              <label className="label mt-3">
-                <select
-                  value={selectedAgentId}
-                  onChange={(selectEvent) => setSelectedAgentId(selectEvent.target.value)}
-                  className="input mt-1"
-                  disabled={loading}
+            <section>
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-500">
+                  Agent
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setAgentMode((mode) => (mode === 'new' ? 'existing' : 'new'))}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-orange-700 hover:text-orange-800"
                 >
-                  <option value="">{loading ? 'Memuat agent...' : 'Pilih agent...'}</option>
-                  {agents.map((agent) => (
-                    <option key={agent.id} value={agent.id}>
-                      {agent.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                <label className="label sm:col-span-2">
-                  Nama agent
-                  <input
-                    value={newAgentName}
-                    onChange={(inputEvent) =>
-                      setNewAgentName(inputEvent.target.value.toLocaleUpperCase('id-ID'))
-                    }
-                    className="input mt-1"
-                    placeholder="cth. JS LOGISTICS"
-                  />
-                </label>
-                <label className="label">
-                  Nama PIC
-                  <input
-                    value={newAgentContactName}
-                    onChange={(inputEvent) => setNewAgentContactName(inputEvent.target.value)}
-                    className="input mt-1"
-                  />
-                </label>
-                <label className="label">
-                  Telepon PIC
-                  <input
-                    value={newAgentPhone}
-                    onChange={(inputEvent) => setNewAgentPhone(inputEvent.target.value)}
-                    className="input mt-1"
-                  />
-                </label>
-                <label className="label sm:col-span-2">
-                  Email PIC
-                  <input
-                    type="email"
-                    value={newAgentEmail}
-                    onChange={(inputEvent) => setNewAgentEmail(inputEvent.target.value)}
-                    className="input mt-1"
-                  />
-                </label>
+                  <Plus size={13} />
+                  {agentMode === 'new' ? 'Pilih agent tersimpan' : 'Agent baru'}
+                </button>
               </div>
-            )}
-          </section>
+              {agentMode === 'existing' ? (
+                <label className="label mt-3">
+                  <select
+                    value={selectedAgentId}
+                    onChange={(selectEvent) => setSelectedAgentId(selectEvent.target.value)}
+                    className="input mt-1"
+                    disabled={loading}
+                  >
+                    <option value="">{loading ? 'Memuat agent...' : 'Pilih agent...'}</option>
+                    {agents.map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  <label className="label sm:col-span-2">
+                    Nama agent
+                    <input
+                      value={newAgentName}
+                      onChange={(inputEvent) =>
+                        setNewAgentName(inputEvent.target.value.toLocaleUpperCase('id-ID'))
+                      }
+                      className="input mt-1"
+                      placeholder="cth. JS LOGISTICS"
+                    />
+                  </label>
+                  <label className="label">
+                    Nama PIC
+                    <input
+                      value={newAgentContactName}
+                      onChange={(inputEvent) => setNewAgentContactName(inputEvent.target.value)}
+                      className="input mt-1"
+                    />
+                  </label>
+                  <label className="label">
+                    Telepon PIC
+                    <input
+                      value={newAgentPhone}
+                      onChange={(inputEvent) => setNewAgentPhone(inputEvent.target.value)}
+                      className="input mt-1"
+                    />
+                  </label>
+                  <label className="label sm:col-span-2">
+                    Email PIC
+                    <input
+                      type="email"
+                      value={newAgentEmail}
+                      onChange={(inputEvent) => setNewAgentEmail(inputEvent.target.value)}
+                      className="input mt-1"
+                    />
+                  </label>
+                </div>
+              )}
+            </section>
           )}
         </div>
 

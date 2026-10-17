@@ -35,7 +35,14 @@ import type {
   JobInvoiceItem,
   JobTransportExtraction,
 } from '@/domain/exhibition/source-documents'
-import type { Ticket, TicketActivity, TicketComment, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
+import type {
+  Ticket,
+  TicketActivity,
+  TicketComment,
+  TicketContext,
+  TicketPriority,
+  TicketStatus,
+} from '@/domain/ticket/types'
 import type { Agent, EventAgent } from '@/domain/agent/types'
 import type { InternationalJobJenis, JobKind, BcDocumentKind } from '@/domain/job/types'
 import {
@@ -47,7 +54,14 @@ import {
   type JobReturn,
 } from '@/domain/job/manifest'
 
-export type { Ticket, TicketActivity, TicketComment, TicketContext, TicketPriority, TicketStatus } from '@/domain/ticket/types'
+export type {
+  Ticket,
+  TicketActivity,
+  TicketComment,
+  TicketContext,
+  TicketPriority,
+  TicketStatus,
+} from '@/domain/ticket/types'
 export type { Agent, EventAgent } from '@/domain/agent/types'
 export type { InternationalJobJenis, JobKind, BcDocumentKind } from '@/domain/job/types'
 export type {
@@ -135,7 +149,6 @@ export type JobOperationalDetails = {
   cipl: JobCiplInfo
   customs: Record<BcDocumentKind, JobCustomsDocument>
 }
-
 
 export type JobDocumentKind =
   | 'SOURCE'
@@ -302,11 +315,23 @@ type StoreName =
 type StoredRecord = { id: string }
 
 const collectionTable: Record<Exclude<StoreName, 'files' | 'counters'>, string> = {
-  jobs: 'jobs', stages: 'job_stages', users: 'operational_users', events: 'events', venues: 'venues',
-  eos: 'event_organizers', exhibitors: 'exhibitors', agents: 'agents', jobDocuments: 'job_documents',
-  coordinationAgents: 'coordination_agents', cipls: 'cipls', ciplVersions: 'cipl_versions',
-  shipmentsV2: 'shipments', customsJobs: 'customs_jobs', migrationReviewItems: 'migration_review_items',
-  tickets: 'tickets', preferences: 'preferences',
+  jobs: 'jobs',
+  stages: 'job_stages',
+  users: 'operational_users',
+  events: 'events',
+  venues: 'venues',
+  eos: 'event_organizers',
+  exhibitors: 'exhibitors',
+  agents: 'agents',
+  jobDocuments: 'job_documents',
+  coordinationAgents: 'coordination_agents',
+  cipls: 'cipls',
+  ciplVersions: 'cipl_versions',
+  shipmentsV2: 'shipments',
+  customsJobs: 'customs_jobs',
+  migrationReviewItems: 'migration_review_items',
+  tickets: 'tickets',
+  preferences: 'preferences',
 }
 
 async function records<T>(storeName: StoreName, init?: RequestInit, recordId?: string): Promise<T> {
@@ -315,11 +340,17 @@ async function records<T>(storeName: StoreName, init?: RequestInit, recordId?: s
   const params = new URLSearchParams({ table })
   if (recordId) params.set('id', recordId)
   const response = await fetch(`/api/operational-records?${params}`, {
-    cache: 'no-store', ...init,
+    cache: 'no-store',
+    ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   })
-  const data = await response.json().catch(() => null) as T | { error?: string } | null
-  if (!response.ok) throw new Error(data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' ? data.error : 'Data Supabase tidak dapat diproses.')
+  const data = (await response.json().catch(() => null)) as T | { error?: string } | null
+  if (!response.ok)
+    throw new Error(
+      data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+        ? data.error
+        : 'Data Supabase tidak dapat diproses.',
+    )
   return data as T
 }
 
@@ -415,7 +446,6 @@ export function getOperationalDetails(
   }
 }
 
-
 function attachmentMetadata(upload: AttachmentUpload): Attachment {
   const { content: _content, ...attachment } = upload
   return attachment
@@ -436,15 +466,22 @@ async function saveFile(file: StoredFile) {
   form.set('ownerType', file.ownerType)
   form.set('ownerId', file.ownerId)
   if (file.kind) form.set('kind', file.kind)
-  form.set('file', file.content instanceof File ? file.content : new File([file.content], file.fileName, { type: file.mimeType }))
+  form.set(
+    'file',
+    file.content instanceof File
+      ? file.content
+      : new File([file.content], file.fileName, { type: file.mimeType }),
+  )
   const response = await fetch('/api/attachments', { method: 'POST', body: form })
-  const body = await response.json().catch(() => null) as { error?: string } | null
+  const body = (await response.json().catch(() => null)) as { error?: string } | null
   if (!response.ok) throw new Error(body?.error ?? 'Lampiran tidak dapat diunggah.')
 }
 
 /** Returns attachment bytes without leaking the active storage implementation to UI code. */
 export async function getAttachmentContent(attachmentId: string): Promise<Blob | null> {
-  const response = await fetch(`/api/attachments?id=${encodeURIComponent(attachmentId)}`, { cache: 'no-store' })
+  const response = await fetch(`/api/attachments?id=${encodeURIComponent(attachmentId)}`, {
+    cache: 'no-store',
+  })
   return response.ok ? response.blob() : null
 }
 
@@ -476,8 +513,13 @@ async function ticketRequest<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...init?.headers },
     cache: 'no-store',
   })
-  const body = await response.json().catch(() => null) as T | { error?: string } | null
-  if (!response.ok) throw new Error(body && typeof body === 'object' && 'error' in body ? body.error ?? 'Ticket tidak dapat diproses.' : 'Ticket tidak dapat diproses.')
+  const body = (await response.json().catch(() => null)) as T | { error?: string } | null
+  if (!response.ok)
+    throw new Error(
+      body && typeof body === 'object' && 'error' in body
+        ? (body.error ?? 'Ticket tidak dapat diproses.')
+        : 'Ticket tidak dapat diproses.',
+    )
   return body as T
 }
 
@@ -557,10 +599,8 @@ type JobsApiPayload = {
 
 export async function listJobsWithEvents() {
   const response = await fetch('/api/jobs', { cache: 'no-store' })
-  const data = await response.json().catch(() => null) as
-    | JobsApiPayload
-    | { error?: string }
-    | null
+  const data = (await response.json().catch(() => null)) as
+    JobsApiPayload | { error?: string } | null
   if (!response.ok || !data || ('error' in data && typeof data.error === 'string')) {
     throw new Error(
       data && 'error' in data && typeof data.error === 'string'
@@ -617,13 +657,21 @@ async function eventRecords<T>(
   init?: RequestInit,
   search?: URLSearchParams,
 ): Promise<T> {
-  const response = await fetch(`/api/event-records?${new URLSearchParams({ resource, ...Object.fromEntries(search ?? []) })}`, {
-    cache: 'no-store',
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-  })
-  const data = await response.json().catch(() => null) as T | { error?: string } | null
-  if (!response.ok) throw new Error(data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' ? data.error : 'Data event tidak dapat diproses.')
+  const response = await fetch(
+    `/api/event-records?${new URLSearchParams({ resource, ...Object.fromEntries(search ?? []) })}`,
+    {
+      cache: 'no-store',
+      ...init,
+      headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    },
+  )
+  const data = (await response.json().catch(() => null)) as T | { error?: string } | null
+  if (!response.ok)
+    throw new Error(
+      data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+        ? data.error
+        : 'Data event tidak dapat diproses.',
+    )
   return data as T
 }
 async function eventsRequest<T>(path = '/api/events', init?: RequestInit): Promise<T> {
@@ -632,20 +680,16 @@ async function eventsRequest<T>(path = '/api/events', init?: RequestInit): Promi
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   })
-  const data = await response.json().catch(() => null) as T | { error?: string } | null
+  const data = (await response.json().catch(() => null)) as T | { error?: string } | null
   if (!response.ok) {
     throw new Error(
-      data &&
-        typeof data === 'object' &&
-        'error' in data &&
-        typeof data.error === 'string'
+      data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
         ? data.error
         : 'Data event tidak dapat diproses.',
     )
   }
   return data as T
 }
-
 
 function contactFromRow(value: Record<string, unknown>): Contact {
   return {
@@ -708,9 +752,9 @@ function eventFromRow(row: Record<string, unknown>): LocalEvent {
           contactInfo: null,
           npwp: ((organizerRow as Record<string, unknown>).npwp as string | null) ?? null,
           contacts: Array.isArray((organizerRow as Record<string, unknown>).contacts)
-            ? (
-                (organizerRow as Record<string, unknown>).contacts as Record<string, unknown>[]
-              ).map(contactFromRow)
+            ? ((organizerRow as Record<string, unknown>).contacts as Record<string, unknown>[]).map(
+                contactFromRow,
+              )
             : [],
           address: ((organizerRow as Record<string, unknown>).address as string | null) ?? null,
           website: ((organizerRow as Record<string, unknown>).website as string | null) ?? null,
@@ -737,7 +781,10 @@ function eventFromRow(row: Record<string, unknown>): LocalEvent {
     cancelledAt: cancellation?.cancelledAt ?? null,
     cancellation,
     picId: row.pic_id ? String(row.pic_id) : null,
-    picName: picRow && typeof picRow === 'object' ? String((picRow as Record<string, unknown>).full_name ?? '') || null : null,
+    picName:
+      picRow && typeof picRow === 'object'
+        ? String((picRow as Record<string, unknown>).full_name ?? '') || null
+        : null,
     venue,
     eventOrganizer,
   }
@@ -753,7 +800,7 @@ function exhibitorFromRow(row: Record<string, unknown>): LocalExhibitor {
     name: String(row.name),
     legalName: String(row.name),
     aliasName: null,
-    type: row.kind === 'LOCAL' ? 'LOCAL' as const : 'INTERNATIONAL' as const,
+    type: row.kind === 'LOCAL' ? ('LOCAL' as const) : ('INTERNATIONAL' as const),
     contact,
     email: contact.email,
     phone: contact.phone,
@@ -791,24 +838,58 @@ export async function listEventsWithExhibitors() {
   }
 }
 
-
 export async function listVenues(): Promise<LocalVenue[]> {
   const rows = await eventRecords<Array<Record<string, unknown>>>('venues')
-  return rows.map((row) => ({ id: String(row.id), name: String(row.name), officialName: String(row.name), aliasName: null, contacts: Array.isArray(row.contacts) ? (row.contacts as Record<string, unknown>[]).map(contactFromRow) : [], address: (row.address as string | null) ?? null, website: (row.website as string | null) ?? null, loadingAccessNotes: (row.loading_access_notes as string | null) ?? null, latitude: null, longitude: null, contactInfo: null, createdAt: String(row.created_at), updatedAt: String(row.updated_at) }))
+  return rows.map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    officialName: String(row.name),
+    aliasName: null,
+    contacts: Array.isArray(row.contacts)
+      ? (row.contacts as Record<string, unknown>[]).map(contactFromRow)
+      : [],
+    address: (row.address as string | null) ?? null,
+    website: (row.website as string | null) ?? null,
+    loadingAccessNotes: (row.loading_access_notes as string | null) ?? null,
+    latitude: null,
+    longitude: null,
+    contactInfo: null,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  }))
 }
 
 export async function listEos(): Promise<LocalEo[]> {
   const rows = await eventRecords<Array<Record<string, unknown>>>('event-organizers')
-  return rows.map((row) => ({ id: String(row.id), name: String(row.name), legalName: String(row.name), aliasName: null, contactInfo: null, npwp: (row.npwp as string | null) ?? null, contacts: Array.isArray(row.contacts) ? (row.contacts as Record<string, unknown>[]).map(contactFromRow) : [], address: (row.address as string | null) ?? null, website: (row.website as string | null) ?? null, createdAt: String(row.created_at), updatedAt: String(row.updated_at) }))
+  return rows.map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    legalName: String(row.name),
+    aliasName: null,
+    contactInfo: null,
+    npwp: (row.npwp as string | null) ?? null,
+    contacts: Array.isArray(row.contacts)
+      ? (row.contacts as Record<string, unknown>[]).map(contactFromRow)
+      : [],
+    address: (row.address as string | null) ?? null,
+    website: (row.website as string | null) ?? null,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  }))
 }
 
-export type VenueInput = Pick<Venue, 'name' | 'contacts' | 'address' | 'website' | 'loadingAccessNotes'>
+export type VenueInput = Pick<
+  Venue,
+  'name' | 'contacts' | 'address' | 'website' | 'loadingAccessNotes'
+>
 export type EoInput = Pick<EventOrganizer, 'name' | 'npwp' | 'contacts' | 'address' | 'website'>
-export type EventInput = Pick<EventRecord, 'name' | 'venueId' | 'eventOrganizerId' | 'startsOn' | 'endsOn'> & {
+export type EventInput = Pick<
+  EventRecord,
+  'name' | 'venueId' | 'eventOrganizerId' | 'startsOn' | 'endsOn'
+> & {
   /** PIC wajib saat pembuatan; berhak menghapus event. */
   picId: string
 }
-
 
 export type AgentInput = {
   name: string
@@ -826,7 +907,7 @@ export async function listAgents(): Promise<Agent[]> {
 export async function saveAgent(input: AgentInput, existingId?: string): Promise<Agent> {
   if (!input.name.trim()) throw new Error('Nama agent wajib diisi.')
   const existing = existingId
-    ? (await readAll<Agent>('agents')).find((agent) => agent.id === existingId) ?? null
+    ? ((await readAll<Agent>('agents')).find((agent) => agent.id === existingId) ?? null)
     : null
   const timestamp = now()
   return put('agents', {
@@ -854,7 +935,11 @@ export async function addAgentToEvent(eventId: string, agentId: string): Promise
   })
 }
 
-export async function setExhibitorAgent(eventId: string, exhibitorId: string, agentId: string | null) {
+export async function setExhibitorAgent(
+  eventId: string,
+  exhibitorId: string,
+  agentId: string | null,
+) {
   return eventsRequest(`/api/events/${encodeURIComponent(eventId)}/exhibitors`, {
     method: 'PATCH',
     body: JSON.stringify({ exhibitorId, agentId }),
@@ -886,9 +971,16 @@ export type SettingsUser = {
   isAdmin: boolean
   isActive?: boolean
 }
-export type SettingsVenue = Pick<LocalVenue, 'id' | 'name' | 'address' | 'website' | 'loadingAccessNotes'>
+export type SettingsVenue = Pick<
+  LocalVenue,
+  'id' | 'name' | 'address' | 'website' | 'loadingAccessNotes'
+>
 export type SettingsOrganizer = Pick<LocalEo, 'id' | 'name' | 'npwp' | 'address' | 'website'>
-export type SettingsData = { users: SettingsUser[]; venues: SettingsVenue[]; organizers: SettingsOrganizer[] }
+export type SettingsData = {
+  users: SettingsUser[]
+  venues: SettingsVenue[]
+  organizers: SettingsOrganizer[]
+}
 
 async function settingsRequest<T>(method: 'GET' | 'POST' | 'PATCH', body?: unknown): Promise<T> {
   const response = await fetch('/api/settings', {
@@ -897,8 +989,13 @@ async function settingsRequest<T>(method: 'GET' | 'POST' | 'PATCH', body?: unkno
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   })
-  const data = await response.json().catch(() => null) as T | { error?: string } | null
-  if (!response.ok) throw new Error(data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' ? data.error : 'Pengaturan tidak dapat diproses.')
+  const data = (await response.json().catch(() => null)) as T | { error?: string } | null
+  if (!response.ok)
+    throw new Error(
+      data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+        ? data.error
+        : 'Pengaturan tidak dapat diproses.',
+    )
   return data as T
 }
 
@@ -907,11 +1004,18 @@ export function getSettingsData() {
   return settingsRequest<SettingsData>('GET')
 }
 
-export function createSettingsRecord<T>(resource: 'users' | 'venues' | 'organizers', input: unknown) {
+export function createSettingsRecord<T>(
+  resource: 'users' | 'venues' | 'organizers',
+  input: unknown,
+) {
   return settingsRequest<T>('POST', { resource, input })
 }
 
-export function updateSettingsRecord<T>(resource: 'users' | 'venues' | 'organizers', id: string, input: unknown) {
+export function updateSettingsRecord<T>(
+  resource: 'users' | 'venues' | 'organizers',
+  id: string,
+  input: unknown,
+) {
   return settingsRequest<T>('PATCH', { resource, id, input })
 }
 
@@ -923,10 +1027,10 @@ export async function saveEvent(input: EventInput) {
 }
 
 export async function updateEvent(eventId: string, input: EventInput) {
-  return eventsRequest<{ id: string }>(
-    `/api/events/${encodeURIComponent(eventId)}`,
-    { method: 'PATCH', body: JSON.stringify(input) },
-  )
+  return eventsRequest<{ id: string }>(`/api/events/${encodeURIComponent(eventId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
 }
 
 /** Hapus permanen event beserta rekam operasional yang terikat padanya. */
@@ -940,7 +1044,7 @@ export async function deleteEvent(eventId: string) {
 export async function deleteJob(jobId: string) {
   const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' })
   if (response.ok) return
-  const data = await response.json().catch(() => null) as { error?: string } | null
+  const data = (await response.json().catch(() => null)) as { error?: string } | null
   throw new Error(data?.error ?? 'Job tidak dapat dihapus.')
 }
 
@@ -1020,20 +1124,22 @@ export async function saveJobDocument(
   const transport = transportExtraction ?? null
   const isTransportDocument = kind === 'BILL_OF_LADING' || kind === 'AIR_WAYBILL'
   const previous = invoice || (isTransportDocument && transport) ? await getJob(jobId) : null
-  if ((invoice || (isTransportDocument && transport)) && !previous) throw new Error('Job tidak ditemukan.')
+  if ((invoice || (isTransportDocument && transport)) && !previous)
+    throw new Error('Job tidak ditemukan.')
   const updatedJob = previous
     ? (() => {
         const operational = getOperationalDetails(previous)
-        const inbound = isTransportDocument && transport
-          ? {
-              ...operational.inbound,
-              mode: kind === 'BILL_OF_LADING' ? 'SEA' as const : 'AIR' as const,
-              documentType: kind === 'BILL_OF_LADING' ? 'BL' as const : 'AWB' as const,
-              documentNumber: transport.documentNumber,
-              carrier: transport.carrier,
-              scheduleAt: transport.eta ?? operational.inbound.scheduleAt,
-            }
-          : operational.inbound
+        const inbound =
+          isTransportDocument && transport
+            ? {
+                ...operational.inbound,
+                mode: kind === 'BILL_OF_LADING' ? ('SEA' as const) : ('AIR' as const),
+                documentType: kind === 'BILL_OF_LADING' ? ('BL' as const) : ('AWB' as const),
+                documentNumber: transport.documentNumber,
+                carrier: transport.carrier,
+                scheduleAt: transport.eta ?? operational.inbound.scheduleAt,
+              }
+            : operational.inbound
         return {
           ...previous,
           ...(isTransportDocument && transport
@@ -1042,9 +1148,15 @@ export async function saveJobDocument(
               : { awbNumber: transport.documentNumber }
             : {}),
           ...(isTransportDocument && transport ? { shippingLine: transport.carrier } : {}),
-          ...(isTransportDocument && transport?.shipper?.name ? { shipper: transport.shipper.name } : {}),
-          ...(isTransportDocument && transport?.consignee?.name ? { consignee: transport.consignee.name } : {}),
-          ...(isTransportDocument && transport?.notifyParty?.name ? { notifyParty: transport.notifyParty.name } : {}),
+          ...(isTransportDocument && transport?.shipper?.name
+            ? { shipper: transport.shipper.name }
+            : {}),
+          ...(isTransportDocument && transport?.consignee?.name
+            ? { consignee: transport.consignee.name }
+            : {}),
+          ...(isTransportDocument && transport?.notifyParty?.name
+            ? { notifyParty: transport.notifyParty.name }
+            : {}),
           operational: {
             ...operational,
             inbound,
@@ -1091,10 +1203,14 @@ export async function saveJobTransportExtraction(jobId: string, transport: JobTr
   const previous = await getJob(jobId)
   if (!previous) throw new Error('Job tidak ditemukan.')
   const operational = getOperationalDetails(previous)
-  const documentType = operational.inbound.documentType ?? (previous.blNumber ? 'BL' : previous.awbNumber ? 'AWB' : 'BL')
+  const documentType =
+    operational.inbound.documentType ??
+    (previous.blNumber ? 'BL' : previous.awbNumber ? 'AWB' : 'BL')
   const updated: LocalJob = {
     ...previous,
-    ...(documentType === 'BL' ? { blNumber: transport.documentNumber } : { awbNumber: transport.documentNumber }),
+    ...(documentType === 'BL'
+      ? { blNumber: transport.documentNumber }
+      : { awbNumber: transport.documentNumber }),
     shippingLine: transport.carrier,
     ...(transport.shipper?.name ? { shipper: transport.shipper.name } : {}),
     ...(transport.consignee?.name ? { consignee: transport.consignee.name } : {}),
@@ -1124,6 +1240,7 @@ export async function saveJobOperationalDetails(
   jobId: string,
   patch: Pick<
     LocalJob,
+    | 'jobNumber'
     | 'clientName'
     | 'agent'
     | 'shipper'
@@ -1142,7 +1259,6 @@ export async function saveJobOperationalDetails(
     ...previous,
     ...patch,
     id: previous.id,
-    jobNumber: previous.jobNumber,
     eventId: previous.eventId,
     createdAt: previous.createdAt,
     updatedAt: timestamp,
@@ -1189,7 +1305,9 @@ export type InternationalJobInitInput = {
  * Inisiasi job international: satu agent = satu job per event. Fase inisiasi
  * hanya mencatat jenis dan agent; exhibitor binaan dilekatkan belakangan di detail job.
  */
-export async function createInternationalJobInit(input: InternationalJobInitInput): Promise<LocalJob> {
+export async function createInternationalJobInit(
+  input: InternationalJobInitInput,
+): Promise<LocalJob> {
   const [jobs, agents] = await Promise.all([readAll<LocalJob>('jobs'), readAll<Agent>('agents')])
   const agent = agents.find((item) => item.id === input.agentId)
   if (!agent) throw new Error('Agent tidak ditemukan.')
@@ -1199,11 +1317,10 @@ export async function createInternationalJobInit(input: InternationalJobInitInpu
 
   await addAgentToEvent(input.eventId, input.agentId)
 
-  const nextSequence = nextJobSequence(jobs)
   const timestamp = now()
   const job: LocalJob = {
     id: `job-for-agent-${input.agentId}-${input.eventId}`,
-    jobNumber: `VSS-${String(nextSequence).padStart(4, '0')}`,
+    jobNumber: '',
     awbNumber: null,
     blNumber: null,
     shipper: null,
@@ -1242,11 +1359,10 @@ export async function createInternationalJobInit(input: InternationalJobInitInpu
  * dilekatkan belakangan di detail job.
  */
 export async function createLocalJobInit(eventId: string): Promise<LocalJob> {
-  const jobs = await readAll<LocalJob>('jobs')
   const timestamp = now()
   const job: LocalJob = {
     id: id(),
-    jobNumber: `VSS-${String(nextJobSequence(jobs)).padStart(4, '0')}`,
+    jobNumber: '',
     awbNumber: null,
     blNumber: null,
     shipper: null,
@@ -1278,13 +1394,6 @@ export async function createLocalJobInit(eventId: string): Promise<LocalJob> {
     documents: [],
   }
   return put('jobs', job)
-}
-
-function nextJobSequence(jobs: LocalJob[]) {
-  return jobs.reduce((max, job) => {
-    const match = /^VSS-(\d+)$/.exec(job.jobNumber ?? '')
-    return match ? Math.max(max, Number(match[1])) : max
-  }, 0) + 1
 }
 
 /** Simpan blok inward manifest (dokumen angkut, konfigurasi muatan, milestone, catatan). */

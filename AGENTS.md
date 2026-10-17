@@ -25,12 +25,46 @@
 
 ## Repository summary
 
-- **Purpose:** VSS Project Management is a browser-local operational workspace for exhibition events, exhibitors, shipments/customs jobs, CIPLs, and coordination tickets.
-- **Stack:** Next.js 14 App Router, React 18, TypeScript, Tailwind CSS, Zod, NextAuth Credentials, and dnd-kit. Path alias `@/` resolves from the repository root.
-- **UI:** Route entry points are in `app/`; reusable interactive UI is in `components/`. The dashboard covers events and operational timeline; dedicated routes cover events, jobs, kanban tickets, CIPL versions/shipments, and settings.
-- **Form feedback:** Every user-visible result after a form submission (create, update, delete, upload, or other mutation) MUST use a toast notification for success and failure. Toasts MUST render only at the bottom-right of the viewport. Keep field-level validation errors near their inputs; do not replace them with, or duplicate them as, toasts.
-- **Domain:** `domain/` holds entity types and validation rules. Keep it storage-agnostic and validate inputs with the existing Zod schemas.
-- **Data boundary:** UI code accesses application data through `@/lib/data-client`; storage-specific work belongs behind that façade. Do not import storage adapters from `app/` or `components/`. Attachments are addressed by ID rather than embedded as storage values in domain entities.
-- **Demo authentication:** `auth.ts` configures NextAuth's credentials provider. Its users live in server-only `lib/demo-users.ts`; the authenticated session carries `user.isAdmin`. Demo credentials are development-only and must not be treated as production authentication.
-- **Runtime data:** Documentation describes browser-runtime demo data seeded by `lib/mock-data.ts`, with CRUD and ticket state reset on reload. Verify the active adapter before changing persistence: `lib/data-client.ts` is the public contract, and its backing implementation can be replaced independently.
-- **Validation:** Run `npx tsc --noEmit` for type checking, `npm run domain:test` for domain validation, and `npm run build` for a production build. Use the narrowest relevant command for documentation-only changes.
+Detailed, verified conventions live in `.kiro/steering/`. Read those first — they supersede any
+older description in this file, in `README.md`, or in `docs/`:
+
+- `product.md` — what the system does, entity hierarchy, which routes are live
+- `tech.md` — stack, env vars, commands, test caveats
+- `structure.md` — real directory map and where new code belongs
+- `data-access.md` — the mandatory data flow (this is the one that matters most)
+- `conventions.md` — language, validation, toast, page/loading patterns
+- `pitfalls.md` — known landmines and anti-patterns not to propagate
+- `database.md`, `ceisa.md` — loaded when touching `supabase/**` or `**/ceisa/**`
+
+Business requirements reconstructed from the running code, plus open gaps `G-1`..`G-10`, are in
+`.kiro/requirements.md`.
+
+Quick orientation:
+
+- **Purpose:** internal operational workspace for a freight-forwarding company handling MICE
+  exhibition cargo in Indonesia — events, exhibitors, CIPLs, shipments, Indonesian customs (BC) jobs,
+  and coordination tickets.
+- **Stack:** Next.js 14 App Router, React 18, TypeScript 5.7, Tailwind 3.4, @base-ui/react, Zod,
+  NextAuth v5 Credentials, dnd-kit, Supabase. Path alias `@/` resolves from the repository root.
+- **Storage is Supabase only.** Postgres for data, a private `attachments` bucket for files. There is
+  no IndexedDB, no `lib/file.ts`, no `lib/mock-data.ts`, and no `app_records` table — statements to
+  the contrary elsewhere in the repo are obsolete.
+- **Data boundary:** UI code reads and writes data only through `@/lib/data-client`, which is a
+  `'use client'` module that calls `/api/*` route handlers. Route handlers are the only place that
+  touches Supabase, via `lib/supabase/*` (all `server-only`). Never import a storage adapter from
+  `app/**/page.tsx` or `components/**`. Attachments are referenced by ID; domain entities never hold
+  `Blob`/`File`.
+- **Mutations use route handlers, not Server Actions.** The only server actions in the repo are
+  sign-in and sign-out. There is no `revalidatePath`/`router.refresh()`; components refetch and
+  `setState` after a mutation.
+- **Auth:** `auth.ts` configures the credentials provider; the session carries `user.isAdmin`. There
+  is no `middleware.ts`, so every new route handler must guard itself. `lib/demo-users.ts` is a
+  non-production fallback used only when Supabase is unconfigured.
+- **Domain:** `domain/` holds storage-agnostic entity types and validation. `domain/v2/` is an
+  unused exploratory meta-model — do not build on it, and do not delete it (`domain:test` references it).
+- **Form feedback:** every mutation result MUST produce a toast for success and failure, rendered only
+  at the bottom-right of the viewport. Keep field-level validation errors near their inputs; do not
+  replace them with, or duplicate them as, toasts.
+- **Validation commands:** `npx tsc --noEmit` (currently clean — keep it that way),
+  `npm run domain:test` (bun, explicit file list; new test files must be added to the script or they
+  never run), `npm run build`. Use the narrowest relevant command for documentation-only changes.
