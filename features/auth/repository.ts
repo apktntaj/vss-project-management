@@ -78,6 +78,14 @@ export async function authenticateCredential(credential: Credential): Promise<Au
   const passwordMatches = await verifyPassword(validated.value.password, user.passwordHash)
   if (!passwordMatches) return null
 
-  // Reduksi ke identitas yang dibutuhkan otorisasi; hash dibuang di sini.
-  return { id: user.id, role: user.role, workspaceId: user.workspaceId, isAdmin: user.isAdmin }
+  // Reduksi ke identitas yang dicetak ke token sesi: klaim otorisasi + display (email, fullName);
+  // hash dibuang di sini.
+  return {
+    id: user.id,
+    email: user.email,
+    fullName: user.fullName,
+    role: user.role,
+    workspaceId: user.workspaceId,
+    isAdmin: user.isAdmin,
+  }
 }

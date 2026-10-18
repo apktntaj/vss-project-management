@@ -1,12 +1,15 @@
 import { redirect } from 'next/navigation'
-import { auth } from '@/auth'
+import { auth } from '@/features/auth'
 import { MOCK_USERS } from '@/lib/demo-users'
 import { isSupabaseConfigured } from '@/lib/supabase/admin'
 import { LoginForm } from './login-form'
 
 export default async function LoginPage() {
+  // Hanya anggap sesi valid bila klaim lengkap (id/role/workspaceId) hadir. Cookie pra-cutover
+  // hanya membawa `isAdmin` — sesi seperti itu TIDAK boleh memantulkan ke `/`, karena pemiliknya
+  // justru perlu form ini untuk login ulang dan mendapat token terpadu yang lengkap.
   const session = await auth()
-  if (session?.user) redirect('/')
+  if (session?.user?.id && session.user.role && session.user.workspaceId) redirect('/')
   const demoMode = !isSupabaseConfigured() && process.env.NODE_ENV !== 'production'
 
   return (

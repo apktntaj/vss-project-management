@@ -7,6 +7,13 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+// Route legacy master data venue/EO untuk `lib/data-client.ts` (listVenues/listEos/saveVenue/
+// saveEo). Skema redesign menyimpan nama di `legal_name` (tanpa kolom contacts/address/website/
+// npwp/payload), sedangkan mapper client masih membaca kontrak lama — perbedaan bentuk itu
+// didamai DI SINI lewat mapper baris→respons di bawah, bukan dengan mengubah client. Pengganti
+// resmi jalur ini adalah `/api/references/*` slice events; route ini tinggal menunggu konsumen
+// client dimigrasi lalu dibuang.
+
 type Resource = 'venues' | 'event-organizers'
 const resources: readonly Resource[] = ['venues', 'event-organizers']
 
@@ -32,15 +39,62 @@ function failure(error: unknown) {
   return NextResponse.json({ error: message }, { status: message === 'Autentikasi diperlukan.' ? 401 : 400 })
 }
 
+// Kolom yang benar-benar ada di tabel redesign; id-nya dipakai event sebagai FK.
+type ReferenceDbRow = {
+  id: string
+  legal_name: string
+  created_at: string
+  updated_at: string
+}
+
+// Proyeksi ke kontrak respons legacy (field `name` + timestamp snake_case). Kolom kaya (contacts,
+// address, website, dst.) tidak ada di skema redesign → diisi nilai kosong; mapper client membaca
+// semuanya secara defensif sehingga bentuk ini aman.
+function venueResponse(row: ReferenceDbRow) {
+  return {
+    id: row.id,
+    name: row.legal_name,
+    contacts: [],
+    address: null,
+    website: null,
+    loading_access_notes: null,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  }
+}
+
+function organizerResponse(row: ReferenceDbRow) {
+  return {
+    id: row.id,
+    name: row.legal_name,
+    npwp: null,
+    contacts: [],
+    address: null,
+    website: null,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  }
+}
+
+// Ternary diletakkan DI DALAM callback map: union fungsi sebagai callback membuat inferensi tipe
+// TS saling membebani kedua bentuk respons; union nilai per elemen tidak.
+function toResponses(resource: Resource, rows: ReferenceDbRow[]) {
+  return rows.map((row) => (resource === 'event-organizers' ? organizerResponse(row) : venueResponse(row)))
+}
+
 export async function GET(request: NextRequest) {
   const resource = resourceFrom(request.nextUrl.searchParams.get('resource'))
   if (!resource) return NextResponse.json({ error: 'Resource tidak valid.' }, { status: 400 })
   try {
     const { client, workspaceId } = await context()
-    const query = client.from(resource === 'event-organizers' ? 'event_organizers' : 'venues')
-    const { data, error } = await query.select('*').eq('workspace_id', workspaceId).order('name')
+    const table = resource === 'event-organizers' ? 'event_organizers' : 'venues'
+    const { data, error } = await client
+      .from(table)
+      .select('id, legal_name, created_at, updated_at')
+      .eq('workspace_id', workspaceId)
+      .order('legal_name')
     if (error) throw error
-    return NextResponse.json(data ?? [], { headers: { 'Cache-Control': 'no-store' } })
+    return NextResponse.json(toResponses(resource, data ?? []), { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     return failure(error)
   }
@@ -51,29 +105,23 @@ export async function POST(request: NextRequest) {
   if (!resource) return NextResponse.json({ error: 'Resource tidak valid.' }, { status: 400 })
   try {
     const body = await request.json()
-    const { client, workspaceId, userId } = await context()
-    const id = crypto.randomUUID()
-    const timestamp = new Date().toISOString()
-    if (resource === 'venues') {
-      const input = venueInputSchema.parse(body)
-      const row = { workspace_id: workspaceId, id, ...toSnake(input), created_at: timestamp, updated_at: timestamp, payload: input }
-      const { error } = await client.from('venues').insert(row)
-      if (error) throw error
-      return NextResponse.json({ id, ...input, createdAt: timestamp, updatedAt: timestamp })
-    }
-    if (resource === 'event-organizers') {
-      const input = eventOrganizerInputSchema.parse(body)
-      const row = { workspace_id: workspaceId, id, ...toSnake(input), created_at: timestamp, updated_at: timestamp, payload: input }
-      const { error } = await client.from('event_organizers').insert(row)
-      if (error) throw error
-      return NextResponse.json({ id, ...input, createdAt: timestamp, updatedAt: timestamp })
-    }
+    const { client, workspaceId } = await context()
+    const table = resource === 'event-organizers' ? 'event_organizers' : 'venues'
+    // Skema redesign hanya menyimpan legal_name (+ kolom opsional venue); field legacy di luar itu
+    // divalidasi skema input lalu tidak dipersist — tidak ada kolom tujuannya.
+    const legalName =
+      resource === 'venues' ? venueInputSchema.parse(body).name : eventOrganizerInputSchema.parse(body).name
+    const { data, error } = await client
+      .from(table)
+      .insert({ workspace_id: workspaceId, legal_name: legalName })
+      .select('id, legal_name, created_at, updated_at')
+      .single<ReferenceDbRow>()
+    if (error) throw error
+    return NextResponse.json(toResponses(resource, [data])[0], {
+      status: 201,
+      headers: { 'Cache-Control': 'no-store' },
+    })
   } catch (error) {
     return failure(error)
   }
-}
-
-
-function toSnake<T extends Record<string, unknown>>(value: T) {
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`), item]))
 }

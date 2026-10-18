@@ -32,8 +32,14 @@ export type User = {
 export type CurrentUser = { id: string; role: Role; workspaceId: string }
 
 // AuthenticatedPrincipal = identitas terautentikasi lengkap untuk dicetak ke token sesi.
-// Membawa CurrentUser plus `isAdmin` untuk keperluan administratif.
-export type AuthenticatedPrincipal = CurrentUser & { isAdmin: boolean }
+// Membawa CurrentUser plus `isAdmin` untuk keperluan administratif, serta `email`/`fullName`
+// untuk identitas tampilan dan lookup `app_users` by email di konsumen sesi (AppShell,
+// event-api). `CurrentUser` otorisasi TETAP minimal — display fields tidak ikut ke situ.
+export type AuthenticatedPrincipal = CurrentUser & {
+  isAdmin: boolean
+  email: string
+  fullName: string
+}
 
 // Sesi terotentikasi berbasis JWT (NextAuth v5). Membawa bentuk CurrentUser tanpa mempersist
 // tabel sesi. `expiresAt` adalah epoch milidetik kedaluwarsa token.

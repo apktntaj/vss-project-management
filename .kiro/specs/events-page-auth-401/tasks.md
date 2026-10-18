@@ -56,7 +56,7 @@
   - Tandai task selesai saat tests ditulis, dijalankan, dan lulus pada kode belum-diperbaiki.
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
-- [ ] 3. Perbaikan untuk 401 pada `/events` — satukan jalur cetak-token ke New Auth Slice (token terpadu)
+^- [x] 3. Perbaikan untuk 401 pada `/events` — satukan jalur cetak-token ke New Auth Slice (token terpadu)
 
   - [x] 3.1 Bawa `isAdmin` di domain + repository slice auth
     - `domain/auth/types.ts`: tambah `isAdmin: boolean` pada tipe `User`; deklarasikan
@@ -80,7 +80,7 @@
     - _Preservation: kegagalan kredensial tetap `null` → sign-in ditolak (Req 3.4)_
     - _Requirements: 2.2, 3.4_
 
-  - [ ] 3.3 Ekstrak callback murni + bawa `isAdmin` di token dan sesi
+  - [x] 3.3 Ekstrak callback murni + bawa `isAdmin` di token dan sesi
     - `features/auth/auth.config.ts`: ekstrak badan kedua callback menjadi fungsi murni bernama yang
       diekspor: `applyJwtClaims(token, user)` dan `projectSession(session, token)`, lalu rujuk dari
       objek config.
@@ -95,7 +95,7 @@
     - _Preservation: token tanpa klaim → `role`/`workspaceId` undefined (401 terjaga); `isAdmin` round-trip_
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 3.6_
 
-  - [ ] 3.4 Arahkan endpoint + jalur mint/clear sesi ke New Auth Slice
+  - [x] 3.4 Arahkan endpoint + jalur mint/clear sesi ke New Auth Slice
     - `app/api/auth/[...nextauth]/route.ts`: `import { handlers } from '@/features/auth'` menggantikan `@/auth`.
     - `app/(auth)/login/actions.ts`: `signIn` dari `@/features/auth`; pertahankan bentuk
       `loginAction(_state, formData)` dan pesan Indonesia `'Email atau password tidak cocok.'`
@@ -108,7 +108,7 @@
     - _Preservation: cookie/`AUTH_SECRET` sama → pembaca legacy `isAdmin` tetap berfungsi (Req 3.6)_
     - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
-  - [ ] 3.5 Verifikasi exploration test bug condition kini LULUS
+  - [x] 3.5 Verifikasi exploration test bug condition kini LULUS
     - **Property 1: Expected Behavior** - Sesi login membawa `role` dan `workspaceId`
     - **IMPORTANT**: Jalankan ulang test YANG SAMA dari task 1 — JANGAN tulis test baru.
     - Test dari task 1 meng-encode perilaku yang diharapkan; ketika lulus ia mengonfirmasi bug teratasi.
@@ -116,15 +116,49 @@
     - **EXPECTED OUTCOME**: Test LULUS (mengonfirmasi `role`/`workspaceId`/`isAdmin` kini terbawa).
     - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
-  - [ ] 3.6 Verifikasi preservation tests tetap LULUS
+  - [x] 3.6 Verifikasi preservation tests tetap LULUS
     - **Property 2: Preservation** - Perilaku non-bug tidak berubah
     - **IMPORTANT**: Jalankan ulang tests YANG SAMA dari task 2 — JANGAN tulis tests baru.
     - Jalankan `npm run domain:test`.
     - **EXPECTED OUTCOME**: Tests LULUS (tanpa regresi: 401 tanpa sesi, 403 peran, `isAdmin` utuh).
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
-- [ ] 4. Checkpoint - Pastikan semua validasi lulus
+^- [x] 4. Checkpoint - Pastikan semua validasi lulus
   - `npx tsc --noEmit` tetap BERSIH (tidak ada error baru).
   - `npm run domain:test` lulus, termasuk `features/auth/auth.config.test.ts` yang baru terdaftar.
   - `npm run build` sukses (menyentuh route `app/api/auth/[...nextauth]` dan server action login/logout).
   - Pastikan semua test lulus; tanyakan ke user bila muncul pertanyaan.
+
+## Catatan implementasi (penyelesaian 2026-10-19)
+
+Tiga penyelesaian di luar teks task, semuanya diperlukan agar validasi task 4 lulus:
+
+1. **Principal membawa `email` + `fullName`** (`domain/auth/types.ts`, `repository.ts`,
+   `nextauth.ts`). Spec hanya menjamin `isAdmin` untuk pembaca legacy, tetapi konsumen sesi juga
+   membaca `session.user.name` (AppShell) dan `session.user.email` (lookup `app_users` di
+   `app/api/event-records` + `lib/supabase/event-api.ts`). Tanpa ini, token terpadu justru
+   mematahkan jalur tersebut. `CurrentUser` otorisasi tetap minimal `{ id, role, workspaceId }`.
+2. **Tabel kapabilitas dipindah ke `features/auth/capabilities.ts`** (murni, tanpa
+   `server-only`); `authorize.ts` me-re-export-nya. Sebelumnya `auth.config.test.ts` gagal
+   dimuat bun test karena `import 'server-only'` di `authorize.ts`.
+3. **Guard narrowing `requireCurrentUser` dikembalikan** (sempat dikomentari saat debugging) dan
+   **simulasi test diberi `token.sub`** — NextAuth v5 menetapkan `token.sub = user.id` di luar
+   callback kustom; simulasi lama tidak memodelkannya sehingga `session.user.id` undefined.
+
+Akibat cutover: cookie lama (tanpa `role`/`workspaceId`) ditolak 401 oleh narrowing — pemiliknya
+cukup login ulang sekali. Pembaca `@/auth` legacy (layout, settings, guard CEISA, API routes)
+TIDAK diubah sesuai task 3.4; mereka tetap berfungsi karena secret dan cookie sama.
+
+### Tambahan pasca-verifikasi (2026-10-19, laporan "masih error" di /events)
+
+Cookie pra-cutover membuat user terjebak: `/events` meledak ApiError(401) tanpa penanganan,
+dan `/login` memantulkannya kembali ke `/` karena hanya mengecek `session?.user`. Dua perbaikan:
+
+- `app/(auth)/login/page.tsx`: ganti ke `auth` slice baru; hanya redirect ke `/` bila klaim
+  lengkap (id+role+workspaceId) — cookie basi tetap ditampilkan form untuk login ulang.
+- `app/(dashboard)/events/page.tsx`: tangkap `ApiError(401)` dari `requireCurrentUser` →
+  `redirect('/login')` alih-alih halaman error.
+
+Diverifikasi end-to-end (server uji + cookie tempaan): cookie lama → /events redirect ke
+/login + form tampil + API 401; cookie baru (role/workspaceId/email/name) → /events 200 dan
+API 200.

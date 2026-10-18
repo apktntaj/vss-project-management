@@ -32,10 +32,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!principal) return null
 
         // `id` dibawa lewat token.sub oleh NextAuth; `role`/`workspaceId`/`isAdmin` disalin di
-        // callback jwt yang didefinisikan bersama di `auth.config.ts`. Semua field dikembalikan
-        // di sini supaya objek user sign-in membawa klaim lengkap yang diharapkan konsumen
-        // (Req 3.4, Design: Expected_Behavior).
-        return { id: principal.id, role: principal.role, workspaceId: principal.workspaceId, isAdmin: principal.isAdmin }
+        // callback jwt yang didefinisikan bersama di `auth.config.ts`. `name`/`email` diisi dari
+        // principal agar token terpadu tetap membawa identitas tampilan yang dibaca konsumen sesi
+        // (AppShell, lookup userId by email) — NextAuth menyalin keduanya ke token secara default.
+        // Semua field dikembalikan di sini supaya objek user sign-in membawa klaim lengkap yang
+        // diharapkan konsumen (Req 3.4, Design: Expected_Behavior).
+        return {
+          id: principal.id,
+          name: principal.fullName,
+          email: principal.email,
+          role: principal.role,
+          workspaceId: principal.workspaceId,
+          isAdmin: principal.isAdmin,
+        }
       },
     }),
   ],

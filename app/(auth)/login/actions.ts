@@ -1,7 +1,7 @@
 'use server'
 
 import { AuthError } from 'next-auth'
-import { signIn } from '@/auth'
+import { signIn } from '@/features/auth'
 
 export type LoginState = { error: string | null }
 

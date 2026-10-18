@@ -11,63 +11,13 @@ import 'server-only'
 import { auth } from '@/features/auth/nextauth'
 import { ApiError } from '@/lib/server/errors'
 import type { CurrentUser, Role } from '@/domain/auth/types'
+import { can, type Capability } from '@/features/auth/capabilities'
 
-/**
- * Capability = tindakan berbutir yang dilindungi otorisasi. Union ini, bersama tabel pemetaan di
- * bawah, adalah sumber kebenaran tunggal untuk "peran mana boleh melakukan apa" (Req 7.3, 19.4).
- * Tambah capability baru di sini lalu daftarkan di `ROLE_CAPABILITIES` — tanpa percabangan ad-hoc
- * di tempat lain.
- */
-export type Capability =
-  | 'event:create'
-  | 'event:update'
-  | 'event:cancel'
-  | 'event:delete'
-  | 'event:read'
-  | 'reference:create'
-
-/**
- * Pemetaan peran → Capability: SATU tabel eksplisit, tanpa logika bercabang.
- *
- * Intent desain:
- * - `event:read` — semua peran boleh membaca.
- * - `event:create` / `event:update` — STAFF dan SUPERVISOR (operator utama pipeline).
- * - `event:cancel` / `event:delete` — digerbang di tingkat capability ke STAFF dan SUPERVISOR;
- *   pengecekan kepemilikan PIC-vs-SUPERVISOR adalah guard per-objek yang DISUPLAI use-case,
- *   bukan dibakar ke dalam `can`.
- * - `reference:create` — STAFF dan SUPERVISOR (pembuatan master data venue/EO inline).
- *
- * SUPERVISOR memegang set capability terluas. CUSTOMER_SERVICE dan DOCUMENT_ASSISTANT saat ini
- * hanya boleh membaca event.
- */
-const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
-  SUPERVISOR: new Set<Capability>([
-    'event:read',
-    'event:create',
-    'event:update',
-    'event:cancel',
-    'event:delete',
-    'reference:create',
-  ]),
-  STAFF: new Set<Capability>([
-    'event:read',
-    'event:create',
-    'event:update',
-    'event:cancel',
-    'event:delete',
-    'reference:create',
-  ]),
-  CUSTOMER_SERVICE: new Set<Capability>(['event:read']),
-  DOCUMENT_ASSISTANT: new Set<Capability>(['event:read']),
-}
-
-/**
- * Fungsi MURNI: true iff `role` dipetakan ke `capability` di tabel sumber-kebenaran tunggal.
- * Tanpa I/O, tanpa throw (Req 7.3, 19.4).
- */
-export function can(role: Role, capability: Capability): boolean {
-  return ROLE_CAPABILITIES[role].has(capability)
-}
+// Tabel peran → Capability hidup di `capabilities.ts` (murni, bebas `server-only`) agar dapat
+// diuji unit dan dipakai di edge; dire-ekspor di sini agar Authorizer tetap permukaan tunggal
+// untuk konsumen slice (Req 7.3, 19.4).
+export { can } from '@/features/auth/capabilities'
+export type { Capability } from '@/features/auth/capabilities'
 
 /**
  * Turunkan CurrentUser dari sesi terverifikasi (NextAuth v5 JWT). Bila tidak ada sesi, atau
@@ -80,10 +30,11 @@ export async function requireCurrentUser(): Promise<CurrentUser> {
   const user = session?.user
 
   // Narrow field opsional dari augmentasi: tanpa id/role/workspaceId lengkap, sesi tidak dapat
-  // dipakai untuk otorisasi — diperlakukan sebagai tidak terautentikasi.
-  // if (!user || !user.id || !user.role || !user.workspaceId) {
-  //   throw new ApiError(401, 'Autentikasi diperlukan.')
-  // }
+  // dipakai untuk otorisasi — diperlakukan sebagai tidak terautentikasi. (Token legacy yang
+  // dicetak sebelum cutover hanya membawa isAdmin; pemiliknya diminta login ulang sekali.)
+  if (!user || !user.id || !user.role || !user.workspaceId) {
+    throw new ApiError(401, 'Autentikasi diperlukan.')
+  }
 
   return { id: user.id, role: user.role, workspaceId: user.workspaceId }
 }

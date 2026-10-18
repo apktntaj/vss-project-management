@@ -68,8 +68,11 @@ const EVENT_COLUMNS =
 
 // Select bentuk daftar/ringkasan: kolom event + nama master data lewat foreign-table select.
 // `!inner` memastikan baris tanpa relasi valid tidak muncul (FK NOT NULL menjamin selalu ada).
+// Embed `pic` WAJIB menyebut FK secara eksplisit (`events_pic_id_fkey`): sejak redesign, `events`
+// punya DUA FK ke `app_users` (pic_id + created_by_id) — tanpa hint, PostgREST menolak dengan
+// PGRST201 (relasi ambigu) dan seluruh halaman /events gagal memuat.
 const EVENT_WITH_RELATIONS =
-  'id, name, alias, starts_on, ends_on, status, venue:venues!inner(legal_name), organizer:event_organizers!inner(legal_name), pic:app_users!inner(full_name)'
+  'id, name, alias, starts_on, ends_on, status, venue:venues!inner(legal_name), organizer:event_organizers!inner(legal_name), pic:app_users!events_pic_id_fkey!inner(full_name)'
 
 // Bentuk baris mentah dari Postgres (snake_case apa adanya). Dipakai internal untuk memetakan ke
 // `EventRow` camelCase.

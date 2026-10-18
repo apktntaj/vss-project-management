@@ -1,8 +1,11 @@
 import { AlertTriangle, MapPin } from 'lucide-react'
+import { redirect } from 'next/navigation'
 
 import { requireCurrentUser } from '@/features/auth'
 import { listEventsForDashboard } from '@/features/events'
 import type { EventListPage, EventListQuery } from '@/domain/event/types'
+import type { CurrentUser } from '@/domain/auth/types'
+import { ApiError } from '@/lib/server/errors'
 
 import { EventCreateButton } from '@/features/events/components/event-create-button'
 import { EventFilters } from '@/features/events/components/event-filters'
@@ -39,7 +42,15 @@ function toQuery(searchParams: EventsPageProps['searchParams']): EventListQuery 
 }
 
 export default async function EventsPage({ searchParams }: EventsPageProps) {
-  const currentUser = await requireCurrentUser()
+  // Sesi basi (cookie pra-cutover tanpa role/workspaceId) → arahkan ke login ulang, bukan
+  // biarkan ApiError(401) meledak jadi halaman error.
+  let currentUser: CurrentUser
+  try {
+    currentUser = await requireCurrentUser()
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) redirect('/login')
+    throw error
+  }
   const query = toQuery(searchParams)
 
   // Indikator error (Req 16.8): bila query agregat/daftar/attention gagal, use-case MELEMPAR.

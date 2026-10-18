@@ -65,6 +65,9 @@ type Session = {
  */
 function legacyJwtCallback(token: JwtToken, user?: JwtUser): JwtToken {
   if (user) {
+    // NextAuth v5 menetapkan token.sub = user.id secara default saat sign-in (di luar callback
+    // kustom); simulasi ikut memodelkannya agar sesuai alur nyata.
+    token.sub = user.id
     // BUG: Legacy callback HANYA menyalin isAdmin, tidak ada role/workspaceId
     token.isAdmin = user.isAdmin
   }
@@ -77,6 +80,9 @@ function legacyJwtCallback(token: JwtToken, user?: JwtUser): JwtToken {
  */
 function newAuthJwtCallback(token: JwtToken, user?: JwtUser): JwtToken {
   if (user) {
+    // NextAuth v5 menetapkan token.sub = user.id secara default saat sign-in (di luar callback
+    // kustom); simulasi ikut memodelkannya agar sesuai alur nyata.
+    token.sub = user.id
     token.role = user.role
     token.workspaceId = user.workspaceId
     token.isAdmin = user.isAdmin
@@ -344,9 +350,9 @@ describe('Bug Condition Exploration', () => {
 // =============================================================================
 
 // Import can function for preservation tests
-import { can } from './authorize'
-import { ROLES, type Role } from '@/domain/auth/types'
-import type { Capability } from './authorize'
+import { can } from './capabilities'
+import { ROLES } from '@/domain/auth/types'
+import type { Capability } from './capabilities'
 
 describe('Preservation Property Tests', () => {
   // ---------------------------------------------------------------------------
