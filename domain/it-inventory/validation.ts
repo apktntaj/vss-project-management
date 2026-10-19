@@ -75,6 +75,7 @@ export const journalEntrySchema = z.object({
   itemKey: z.string().min(1, 'Barang belum dipilih.'),
   hsCode: nullableText,
   description: z.string().min(1, 'Nama barang wajib diisi.'),
+  itemCode: nullableText,
   // Satuan wajib pada form manual, tapi entry hasil parse BUP bisa tanpa satuan — skema di
   // batas route harus menerima keduanya.
   unitCode: nullableText,

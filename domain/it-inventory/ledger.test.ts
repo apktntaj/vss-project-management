@@ -33,6 +33,7 @@ function entry(overrides: Partial<JournalEntry>): JournalEntry {
     hsCode: '9405.11.00',
     description: 'Lampu meja LED',
     unitCode: 'PCS',
+    itemCode: null,
     quantity: 1,
     unitPrice: null,
     value: null,
@@ -215,6 +216,7 @@ const bupDoc: BupDocument = {
   items: [
     line('Lampu meja LED', 1, {
       seri: 9,
+      itemCode: 'S.01/IDW-VPN/009',
       sourceDocumentCode: '23',
       sourceRegistrationNumber: '000973',
       sourceLineSeri: 52,
@@ -231,6 +233,9 @@ assert.equal(converted[0].sourceRef, 'BC 2.3 000973 seri 52', 'kolom asal BUP me
 assert.equal(converted[0].id, 'bup-25.xlsx#9', 'id entry bulk stabil dari file + seri')
 assert.equal(converted[0].invoiceNumber, 'S.01/IDW-VPN/2026', 'invoice dari sheet DOKUMEN menjadi bukti entry')
 assert.equal(converted[0].invoiceSeri, 9, 'seri barang BUP menjadi urutan bukti')
+assert.equal(converted[0].itemCode, 'S.01/IDW-VPN/009', 'kode barang per baris BUP terbawa ke entry')
+const kodeBarangItem = buildLedger(entries).items.find((item) => item.description === 'Lampu meja LED')!
+assert.equal(kodeBarangItem.itemCode, null, 'entry tanpa kode barang tidak mengarang kode akun')
 
 // -- Invariant saldo: keluar melebihi saldo ditolak; tepat sama diizinkan. --
 const saldoBannerSaatIni = 20 - 4

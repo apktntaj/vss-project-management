@@ -68,6 +68,7 @@ export function entriesFromBupDocument(document: BupDocument): JournalEntry[] {
     hsCode: line.hsCode,
     description: line.description,
     unitCode: line.unitCode,
+    itemCode: line.itemCode,
     quantity: line.quantity,
     unitPrice: line.unitPrice,
     value: line.lineValue ?? line.cifValue ?? null,
@@ -112,7 +113,7 @@ export function buildLedger(entries: JournalEntry[]): Ledger {
         hsCode: entry.hsCode,
         description: entry.description,
         unitCode: entry.unitCode,
-        itemCode: null,
+        itemCode: entry.itemCode,
         brand: null,
         balanceQty: 0,
         balanceValue: entry.value != null ? 0 : null,
@@ -126,6 +127,9 @@ export function buildLedger(entries: JournalEntry[]): Ledger {
     item.balanceQty += sign * entry.quantity
     if (item.balanceValue != null && entry.value != null) {
       item.balanceValue += sign * entry.value
+    }
+    if (!item.itemCode && entry.itemCode) {
+      item.itemCode = entry.itemCode
     }
 
     if (entry.direction === 'IN') {

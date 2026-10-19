@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     const ledger = buildLedger(entries)
 
     const journalRows: (string | number | null)[][] = [
-      ['Tanggal Entry', 'Waktu Input', 'Sumber', 'Dokumen', 'Nomor Daftar', 'Tanggal Daftar', 'Nomor AJU', 'Bukti (Invoice/BA)', 'Seri', 'Nama Barang', 'HS', 'Satuan', 'Arus', 'Jumlah', 'Harga Satuan', 'Total', 'Keterangan'],
+      ['Tanggal Entry', 'Waktu Input', 'Sumber', 'Dokumen', 'Nomor Daftar', 'Tanggal Daftar', 'Nomor AJU', 'Kode Barang', 'Bukti (Invoice/BA)', 'Seri', 'Nama Barang', 'HS', 'Satuan', 'Arus', 'Jumlah', 'Harga Satuan', 'Total', 'Keterangan'],
     ]
     for (const entry of ledger.entries) {
       journalRows.push([
@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
         entry.nomorDaftar ?? '',
         entry.tanggalDaftar ?? '',
         entry.nomorAju ?? '',
+        entry.itemCode ?? '',
         entry.invoiceNumber ?? entry.beritaAcaraNumber ?? '',
         entry.invoiceSeri ?? '',
         entry.description,
@@ -115,7 +116,7 @@ export async function POST(request: NextRequest) {
     }
 
     const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, aoaSheet(journalRows, [13, 20, 12, 9, 12, 13, 26, 22, 7, 40, 12, 8, 9, 9, 12, 12, 24]), 'Jurnal')
+    XLSX.utils.book_append_sheet(workbook, aoaSheet(journalRows, [13, 20, 12, 9, 12, 13, 26, 20, 22, 7, 38, 12, 8, 9, 9, 12, 12, 24]), 'Jurnal')
     XLSX.utils.book_append_sheet(workbook, aoaSheet(kartuRows, [5, 40, 12, 8, 12, 10, 12, 22, 7, 9, 9, 10, 13]), 'Kartu Stok')
     XLSX.utils.book_append_sheet(workbook, aoaSheet(recapRows, [9, 26, 13, 14, 9, 30, 13, 15, 14]), 'Rekap Dokumen')
 

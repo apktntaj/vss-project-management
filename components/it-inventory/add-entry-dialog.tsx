@@ -177,6 +177,7 @@ export function AddEntryDialog({ open, onOpenChange, entries, onAdd }: AddEntryD
       hsCode,
       description,
       unitCode,
+      itemCode: null,
       quantity,
       unitPrice,
       value: unitPrice != null ? unitPrice * quantity : null,

@@ -132,6 +132,11 @@ export type JournalEntry = {
   hsCode: string | null
   description: string
   unitCode: string | null
+  /**
+   * Kode barang per baris dari BUP (kolom KODE BARANG, mis. S.01/IDW-VPN/086) — identitas
+   * barang versi badan usaha; null untuk barang yang belum punya kode.
+   */
+  itemCode: string | null
   /** Jumlah selalu positif; arah efek ke saldo ditentukan `direction`. */
   quantity: number
   unitPrice: number | null
