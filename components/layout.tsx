@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import {
   LayoutDashboard,
+  BookOpenText,
   BriefcaseBusiness,
   CalendarDays,
   ChevronsLeft,
@@ -31,6 +32,7 @@ const links = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/events', label: 'Events', icon: CalendarDays },
   { href: '/jobs', label: 'Jobs', icon: BriefcaseBusiness, available: false },
+  { href: '/it-inventory', label: 'IT Inventory', icon: BookOpenText },
   { href: '/kanban', label: 'Tickets', icon: FolderKanban },
   { href: '/ceisa', label: 'CEISA', icon: Landmark, available: false },
   { href: '/general-cargo', label: 'General Cargo', icon: Package, available: false },
