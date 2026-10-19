@@ -3,16 +3,22 @@ import * as XLSX from 'xlsx'
 import { z } from 'zod'
 
 import { requireCurrentUser } from '@/features/auth'
-import { bupDocumentSchema } from '@/domain/it-inventory/validation'
+import { journalEntrySchema } from '@/domain/it-inventory/validation'
 import { buildItemLedgerRows, buildLedger } from '@/domain/it-inventory/ledger'
-import { bupDocumentLabels } from '@/domain/it-inventory/types'
+import {
+  adjustmentReasonLabels,
+  bupDocumentLabels,
+  journalSourceLabels,
+  movementDirectionLabels,
+  type JournalEntry,
+} from '@/domain/it-inventory/types'
 import { toErrorResponse } from '@/lib/server/errors'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 const bodySchema = z.object({
-  documents: z.array(bupDocumentSchema).min(1, 'Belum ada dokumen untuk diekspor.'),
+  entries: z.array(journalEntrySchema).min(1, 'Jurnal masih kosong — tidak ada yang diekspor.'),
 })
 
 function aoaSheet(rows: (string | number | null)[][], widths: number[]): XLSX.WorkSheet {
@@ -21,61 +27,78 @@ function aoaSheet(rows: (string | number | null)[][], widths: number[]): XLSX.Wo
   return sheet
 }
 
+/** Keterangan satu entry: alasan+berita acara untuk penyesuaian, jejak dokumen asal untuk BUP. */
+function entryNote(entry: JournalEntry): string {
+  if (entry.source === 'ADJUSTMENT') {
+    const reason = entry.adjustmentReason ? adjustmentReasonLabels[entry.adjustmentReason] : null
+    return [reason, entry.beritaAcaraNumber].filter(Boolean).join(' · ')
+  }
+  return entry.sourceRef ?? ''
+}
+
 /**
- * Susun laporan Excel dari buku arus barang di sesi klien: Jurnal Mutasi (kronologis per
- * dokumen), Kartu Stok (saldo berjalan per jenis barang), dan Rekap Dokumen. Kolom mengikuti
- * elemen data Lampiran R PER-6/BC/2023 (jenis dokumen, nomor & tanggal pendaftaran, jumlah,
- * satuan). Workbook dibangun dari payload — tidak ada data yang disimpan server.
+ * Susun laporan Excel dari jurnal di sesi klien: sheet Jurnal (buku kas barang per entry),
+ * Kartu Stok (saldo berjalan per barang), dan Rekap Dokumen. Kolom mengikuti elemen data
+ * Lampiran R PER-6/BC/2023 (jenis dokumen, nomor & tanggal pendaftaran, jumlah, satuan).
+ * Workbook dibangun dari payload — tidak ada data yang disimpan server.
  */
 export async function POST(request: NextRequest) {
   try {
     await requireCurrentUser()
-    const { documents } = bodySchema.parse(await request.json())
-    const ledger = buildLedger(documents)
+    const { entries } = bodySchema.parse(await request.json())
+    const ledger = buildLedger(entries)
 
     const journalRows: (string | number | null)[][] = [
-      ['Tanggal Daftar', 'Waktu Input', 'Dokumen', 'Nomor Daftar', 'Nomor AJU', 'Jenis Barang', 'HS', 'Satuan', 'Masuk', 'Keluar', 'Harga Satuan', 'Total', 'Dokumen Asal'],
+      ['Tanggal Entry', 'Waktu Input', 'Sumber', 'Dokumen', 'Nomor Daftar', 'Tanggal Daftar', 'Nomor AJU', 'Bukti (Invoice/BA)', 'Seri', 'Nama Barang', 'HS', 'Satuan', 'Arus', 'Jumlah', 'Harga Satuan', 'Total', 'Keterangan'],
     ]
-    for (const row of ledger.journal) {
+    for (const entry of ledger.entries) {
       journalRows.push([
-        row.tanggalDaftar ?? '',
-        row.uploadedAt ?? '',
-        bupDocumentLabels[row.documentCode],
-        row.nomorDaftar ?? '',
-        row.nomorAju ?? '',
-        row.description,
-        row.hsCode ?? '',
-        row.unitCode ?? '',
-        row.quantityIn || '',
-        row.quantityOut || '',
-        row.unitPrice ?? '',
-        row.value ?? '',
-        row.sourceRef ?? '',
+        entry.entryDate ?? '',
+        entry.uploadedAt ?? '',
+        journalSourceLabels[entry.source],
+        entry.documentCode ? bupDocumentLabels[entry.documentCode] : '',
+        entry.nomorDaftar ?? '',
+        entry.tanggalDaftar ?? '',
+        entry.nomorAju ?? '',
+        entry.invoiceNumber ?? entry.beritaAcaraNumber ?? '',
+        entry.invoiceSeri ?? '',
+        entry.description,
+        entry.hsCode ?? '',
+        entry.unitCode ?? '',
+        movementDirectionLabels[entry.direction],
+        entry.quantity,
+        entry.unitPrice ?? '',
+        entry.value ?? '',
+        entryNote(entry),
       ])
     }
 
     const kartuRows: (string | number | null)[][] = [
-      ['Jenis Barang', 'HS', 'Satuan', 'Tanggal', 'Dokumen', 'Nomor Daftar', 'Masuk', 'Keluar', 'Saldo', 'Nilai Saldo'],
+      ['No', 'Nama Barang', 'Kode Barang', 'Satuan', 'Tanggal', 'Dokumen', 'Nomor Daftar', 'Bukti (Invoice/BA)', 'Seri', 'Masuk', 'Keluar', 'Saldo', 'Nilai Saldo'],
     ]
     for (const item of ledger.items) {
-      for (const row of buildItemLedgerRows(ledger, item.key)) {
+      const rows = buildItemLedgerRows(ledger, item.key)
+      rows.forEach((row, index) => {
         kartuRows.push([
+          index + 1,
           item.description,
           item.hsCode ?? '',
           item.unitCode ?? '',
-          row.tanggalDaftar ?? '',
-          bupDocumentLabels[row.documentCode],
+          row.entryDate ?? '',
+          row.documentCode ? bupDocumentLabels[row.documentCode] : row.source === 'ADJUSTMENT' ? 'Penyesuaian' : '',
           row.nomorDaftar ?? '',
-          row.quantityIn || '',
-          row.quantityOut || '',
+          row.invoiceNumber ?? row.beritaAcaraNumber ?? '',
+          row.invoiceSeri ?? '',
+          row.direction === 'IN' ? row.quantity : '',
+          row.direction === 'OUT' ? row.quantity : '',
           row.runningQty,
           row.runningValue ?? '',
         ])
-      }
+      })
     }
 
     const recapRows: (string | number | null)[][] = [
-      ['Dokumen', 'Nomor AJU', 'Nomor Daftar', 'Tanggal Daftar', 'Arah', 'Pemilik Barang', 'Jumlah Baris', 'Total Kuantitas', 'Total Nilai'],
+      ['Dokumen', 'Nomor AJU', 'Nomor Daftar', 'Tanggal Daftar', 'Arah', 'Pemilik Barang', 'Jumlah Entry', 'Total Kuantitas', 'Total Nilai'],
     ]
     for (const doc of ledger.documents) {
       recapRows.push([
@@ -83,7 +106,7 @@ export async function POST(request: NextRequest) {
         doc.nomorAju ?? '',
         doc.nomorDaftar ?? '',
         doc.tanggalDaftar ?? '',
-        doc.direction === 'IN' ? 'Masuk' : 'Keluar',
+        movementDirectionLabels[doc.direction],
         doc.ownerName ?? '',
         doc.lineCount,
         doc.totalQty,
@@ -92,9 +115,9 @@ export async function POST(request: NextRequest) {
     }
 
     const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, aoaSheet(journalRows, [14, 18, 9, 12, 26, 44, 12, 9, 10, 10, 13, 13, 24]), 'Jurnal Mutasi')
-    XLSX.utils.book_append_sheet(workbook, aoaSheet(kartuRows, [44, 12, 9, 12, 9, 12, 10, 10, 10, 13]), 'Kartu Stok')
-    XLSX.utils.book_append_sheet(workbook, aoaSheet(recapRows, [9, 26, 12, 14, 8, 30, 12, 15, 14]), 'Rekap Dokumen')
+    XLSX.utils.book_append_sheet(workbook, aoaSheet(journalRows, [13, 20, 12, 9, 12, 13, 26, 22, 7, 40, 12, 8, 9, 9, 12, 12, 24]), 'Jurnal')
+    XLSX.utils.book_append_sheet(workbook, aoaSheet(kartuRows, [5, 40, 12, 8, 12, 10, 12, 22, 7, 9, 9, 10, 13]), 'Kartu Stok')
+    XLSX.utils.book_append_sheet(workbook, aoaSheet(recapRows, [9, 26, 13, 14, 9, 30, 13, 15, 14]), 'Rekap Dokumen')
 
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer
     return new NextResponse(new Uint8Array(buffer), {

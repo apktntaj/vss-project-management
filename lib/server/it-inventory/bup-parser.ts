@@ -158,6 +158,26 @@ function parseOwnerName(matrix: Matrix): string | null {
 }
 
 /**
+ * Bukti pemasukan/pengeluaran dari sheet DOKUMEN: commercial invoice (kode dokumen 380) menjadi
+ * referensi bukti utama — nomor + tanggal. Fallback kode 7XX dokumen transport bila 380 absen.
+ */
+function parseInvoice(matrix: Matrix): { number: string | null; date: string | null } {
+  if (!matrix.length) return { number: null, date: null }
+  const map = columnMap(matrix[0] ?? [])
+  const rows = matrix.slice(1)
+  const invoiceRow = rows.find((row) => text(cell(row, map, 'KODE DOKUMEN')) === '380')
+  const fallbackRow = invoiceRow ?? rows.find((row) => {
+    const kode = text(cell(row, map, 'KODE DOKUMEN'))
+    return kode != null && /^7\d\d$/.test(kode)
+  })
+  if (!fallbackRow) return { number: null, date: null }
+  return {
+    number: text(cell(fallbackRow, map, 'NOMOR DOKUMEN')),
+    date: isoDate(cell(fallbackRow, map, 'TANGGAL DOKUMEN')),
+  }
+}
+
+/**
  * Parse buffer file BUP menjadi `BupDocument` (belum tervalidasi — route memvalidasi dengan
  * `bupDocumentSchema` di batas). Gagal fatal berupa `ApiError(400)` dengan pesan Indonesia.
  */
@@ -166,6 +186,7 @@ export function parseBupWorkbook(fileName: string, buffer: Buffer): BupDocument 
   const headerMatrix = sheetMatrix(workbook, 'HEADER')
   const { code, row } = parseHeaderRow(headerMatrix, fileName)
   const headerMap = columnMap(headerMatrix[0] ?? [])
+  const invoice = parseInvoice(sheetMatrix(workbook, 'DOKUMEN'))
 
   return {
     fileName,
@@ -179,6 +200,8 @@ export function parseBupWorkbook(fileName: string, buffer: Buffer): BupDocument 
     cif: num(cell(row, headerMap, 'CIF')),
     currency: text(cell(row, headerMap, 'KODE VALUTA')),
     ownerName: parseOwnerName(sheetMatrix(workbook, 'ENTITAS')),
+    invoiceNumber: invoice.number,
+    invoiceDate: invoice.date,
     // Stempel waktu posting diisi route import (jam server), bukan dari isi file.
     uploadedAt: null,
     items: parseBarangLines(sheetMatrix(workbook, 'BARANG'), fileName),

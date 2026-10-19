@@ -1,159 +1,173 @@
-// Mengapa: jantung demo ini — pembukuan arus barang sebagai fungsi MURNI. Semua tampilan
-// (jurnal, kartu stok, rekap dokumen) adalah turunan dari hasil `buildLedger`; tidak ada saldo
-// yang disimpan atau diedit langsung. Selaras semangat Pasal 39 PER-6/BC/2023: pencatatan
-// berkelanjutan atas mutasi, dan laporan dihitung dari mutasi tersebut.
+// Mengapa: jantung pembukuan arus barang sebagai fungsi MURNI. Jurnal adalah DAFTAR ENTRY —
+// satu-satunya sumber kebenaran; saldo barang, kartu stok, dan rekap dokumen semuanya turunan.
+// Selaras Pasal 39 PER-6/BC/2023: pencatatan berkelanjutan atas mutasi, laporan dihitung dari
+// mutasi tersebut, dan penyesuaian adalah entry di dalam jurnal (bukan di luarnya).
 
 import {
   bupDocumentLabels,
   movementDirectionOf,
   type BupBarangLine,
   type BupDocument,
+  type JournalEntry,
   type Ledger,
   type LedgerDocumentRecap,
   type LedgerItem,
   type LedgerItemMovementRow,
-  type LedgerJournalRow,
 } from './types'
 
+/** Toleransi pembulatan angka pecahan (kg, nilai) saat membandingkan saldo dengan nol. */
+const QTY_EPSILON = 1e-9
+
 /**
- * Identitas "akun" (jenis barang): HS + uraian + satuan yang dinormalisasi. Pasal 39 huruf f–g
- * mensyaratkan pencatatan per jenis barang dengan kode berbeda — fungsi ini adalah "kode" itu.
- * Uraian dinormalisasi (trim, spasi ganda dirapatkan, huruf besar) agar baris yang sama dari
- * dokumen berbeda (mis. BC 2.3 lalu BC 2.5) jatuh ke akun yang sama.
+ * Identitas "akun" (jenis barang): HS + nama + satuan yang dinormalisasi. Uraian dinormalisasi
+ * (trim, spasi ganda dirapatkan, huruf besar) agar barang yang sama dari dokumen berbeda
+ * (mis. BC 2.3 lalu BC 2.5) jatuh ke akun yang sama.
  */
 export function itemKeyOf(hsCode: string | null, description: string, unitCode: string | null): string {
   const hs = hsCode?.trim() || '-'
-  const uraian = description.trim().replace(/\s+/g, ' ').toUpperCase()
+  const nama = description.trim().replace(/\s+/g, ' ').toUpperCase()
   const satuan = (unitCode?.trim() || '-').toUpperCase()
-  return `${hs}|${uraian}|${satuan}`
-}
-
-function lineKeyOf(line: BupBarangLine): string {
-  return itemKeyOf(line.hsCode, line.description, line.unitCode)
-}
-
-function lineValueOf(line: BupBarangLine): number | null {
-  return line.lineValue ?? line.cifValue ?? null
+  return `${hs}|${nama}|${satuan}`
 }
 
 function sourceRefOf(line: BupBarangLine): string | null {
   if (!line.sourceDocumentCode) return null
   const label = bupDocumentLabels[line.sourceDocumentCode as keyof typeof bupDocumentLabels]
   const parts = [label ?? `BC ${line.sourceDocumentCode}`, line.sourceRegistrationNumber]
-  if (line.sourceLineSeri != null) parts.push(`seri ${line.sourceLineSeri}`)
+  if (line.sourceLineSeri != null && line.sourceLineSeri > 0) {
+    parts.push(`seri ${line.sourceLineSeri}`)
+  }
   const ref = parts.filter(Boolean).join(' ')
   return ref || null
 }
 
-/** Dokumen diurutkan kronologis per tanggal daftar (null terakhir), stabil terhadap urutan unggah. */
-function sortDocuments(documents: BupDocument[]): BupDocument[] {
-  return [...documents].sort((a, b) => {
-    const ta = a.tanggalDaftar ?? '9999-12-31'
-    const tb = b.tanggalDaftar ?? '9999-12-31'
-    if (ta !== tb) return ta < tb ? -1 : 1
-    return 0
-  })
+/**
+ * Konversi satu dokumen BUP menjadi sekumpulan entry jurnal (mode BULK). Tanggal entry diambil
+ * dari tanggal daftar dokumen — itulah tanggal perpindahan yang sebenarnya — sehingga urutan
+ * buku tetap kronologis meski unggahan tidak berurutan.
+ */
+export function entriesFromBupDocument(document: BupDocument): JournalEntry[] {
+  const direction = movementDirectionOf(document.documentCode)
+  const fallbackDate = document.uploadedAt?.slice(0, 10) ?? null
+  return document.items.map((line, index) => ({
+    id: `${document.fileName}#${line.seri ?? index + 1}`,
+    entryDate: document.tanggalDaftar ?? fallbackDate,
+    uploadedAt: document.uploadedAt,
+    source: 'DOCUMENT',
+    direction,
+    documentKey: document.fileName,
+    documentCode: document.documentCode,
+    nomorDaftar: document.nomorDaftar,
+    tanggalDaftar: document.tanggalDaftar,
+    nomorAju: document.nomorAju,
+    invoiceNumber: document.invoiceNumber,
+    invoiceSeri: line.seri,
+    adjustmentReason: null,
+    beritaAcaraNumber: null,
+    itemKey: itemKeyOf(line.hsCode, line.description, line.unitCode),
+    hsCode: line.hsCode,
+    description: line.description,
+    unitCode: line.unitCode,
+    quantity: line.quantity,
+    unitPrice: line.unitPrice,
+    value: line.lineValue ?? line.cifValue ?? null,
+    currency: document.currency,
+    ownerName: document.ownerName,
+    sourceRef: sourceRefOf(line),
+  }))
+}
+
+function entrySortKey(entry: JournalEntry): string {
+  // Kronologis per tanggal perpindahan; tanggal kosong diakhir; tie-break stempel log lalu id.
+  return `${entry.entryDate ?? '9999-12-31'}|${entry.uploadedAt ?? ''}|${entry.id}`
 }
 
 /**
- * Bangun buku arus barang dari kumpulan dokumen BUP: jurnal kronologis, saldo per jenis barang,
- * rekap per dokumen, dan ringkasan. Satu-satunya sumber kebenaran untuk seluruh tampilan.
+ * Bangun buku dari daftar entry: jurnal terurut kronologis, saldo per jenis barang, rekap per
+ * dokumen pabean (penyesuaian tidak masuk rekap — ia bukan dokumen pabean), dan ringkasan.
  */
-export function buildLedger(documents: BupDocument[]): Ledger {
-  const journal: LedgerJournalRow[] = []
+export function buildLedger(entries: JournalEntry[]): Ledger {
+  const sorted = [...entries].sort((a, b) => {
+    const ka = entrySortKey(a)
+    const kb = entrySortKey(b)
+    return ka < kb ? -1 : ka > kb ? 1 : 0
+  })
+
   const items = new Map<string, LedgerItem>()
-  const docs: LedgerDocumentRecap[] = []
+  const documents = new Map<string, LedgerDocumentRecap>()
   let totalQtyIn = 0
   let totalQtyOut = 0
   let valueIn: number | null = null
   let valueOut: number | null = null
   let currency: string | null = null
 
-  for (const doc of sortDocuments(documents)) {
-    const direction = movementDirectionOf(doc.documentCode)
-    if (!currency && doc.currency) currency = doc.currency
+  for (const entry of sorted) {
+    const sign = entry.direction === 'IN' ? 1 : -1
+    if (!currency && entry.currency) currency = entry.currency
 
-    let docQty = 0
-    let docValue: number | null = null
-    for (const line of doc.items) {
-      const itemKey = lineKeyOf(line)
-      const value = lineValueOf(line)
-      const existing = items.get(itemKey)
-      if (!existing) {
-        items.set(itemKey, {
-          key: itemKey,
-          hsCode: line.hsCode,
-          description: line.description,
-          unitCode: line.unitCode,
-          itemCode: line.itemCode,
-          brand: line.brand,
-          balanceQty: 0,
-          balanceValue: value != null ? 0 : null,
-        })
-      } else if (existing.balanceValue != null && value == null) {
-        // Nilai tidak diketahui untuk salah satu mutasi akun ini → saldo nilai tak bisa dihitung penuh.
-        existing.balanceValue = null
-      }
-
-      const quantityIn = direction === 'IN' ? line.quantity : 0
-      const quantityOut = direction === 'OUT' ? line.quantity : 0
-      journal.push({
-        documentKey: doc.fileName,
-        fileName: doc.fileName,
-        tanggalDaftar: doc.tanggalDaftar,
-        uploadedAt: doc.uploadedAt,
-        documentCode: doc.documentCode,
-        nomorDaftar: doc.nomorDaftar,
-        nomorAju: doc.nomorAju,
-        direction,
-        itemKey,
-        hsCode: line.hsCode,
-        description: line.description,
-        unitCode: line.unitCode,
-        quantityIn,
-        quantityOut,
-        unitPrice: line.unitPrice,
-        value,
-        sourceRef: sourceRefOf(line),
+    const existing = items.get(entry.itemKey)
+    if (!existing) {
+      items.set(entry.itemKey, {
+        key: entry.itemKey,
+        hsCode: entry.hsCode,
+        description: entry.description,
+        unitCode: entry.unitCode,
+        itemCode: null,
+        brand: null,
+        balanceQty: 0,
+        balanceValue: entry.value != null ? 0 : null,
       })
-
-      const item = items.get(itemKey)!
-      item.balanceQty += quantityIn - quantityOut
-      if (item.balanceValue != null && value != null) item.balanceValue += value * (direction === 'IN' ? 1 : -1)
-
-      totalQtyIn += quantityIn
-      totalQtyOut += quantityOut
-      if (value != null) {
-        if (direction === 'IN') valueIn = (valueIn ?? 0) + value
-        else valueOut = (valueOut ?? 0) + value
-      }
-      docQty += line.quantity
-      docValue = value != null ? (docValue ?? 0) + value : docValue
+    } else if (existing.balanceValue != null && entry.value == null) {
+      // Nilai tidak diketahui untuk salah satu mutasi akun ini → saldo nilai tak bisa dihitung penuh.
+      existing.balanceValue = null
     }
 
-    docs.push({
-      documentKey: doc.fileName,
-      fileName: doc.fileName,
-      documentCode: doc.documentCode,
-      direction,
-      nomorAju: doc.nomorAju,
-      nomorDaftar: doc.nomorDaftar,
-      tanggalDaftar: doc.tanggalDaftar,
-      ownerName: doc.ownerName,
-      lineCount: doc.items.length,
-      totalQty: docQty,
-      totalValue: docValue,
-    })
+    const item = items.get(entry.itemKey)!
+    item.balanceQty += sign * entry.quantity
+    if (item.balanceValue != null && entry.value != null) {
+      item.balanceValue += sign * entry.value
+    }
+
+    if (entry.direction === 'IN') {
+      totalQtyIn += entry.quantity
+      if (entry.value != null) valueIn = (valueIn ?? 0) + entry.value
+    } else {
+      totalQtyOut += entry.quantity
+      if (entry.value != null) valueOut = (valueOut ?? 0) + entry.value
+    }
+
+    if (entry.source === 'DOCUMENT' && entry.documentCode) {
+      const recap = documents.get(entry.documentKey)
+      if (!recap) {
+        documents.set(entry.documentKey, {
+          documentKey: entry.documentKey,
+          documentCode: entry.documentCode,
+          direction: entry.direction,
+          nomorAju: entry.nomorAju,
+          nomorDaftar: entry.nomorDaftar,
+          tanggalDaftar: entry.tanggalDaftar,
+          ownerName: entry.ownerName,
+          lineCount: 1,
+          totalQty: entry.quantity,
+          totalValue: entry.value,
+        })
+      } else {
+        recap.lineCount += 1
+        recap.totalQty += entry.quantity
+        if (entry.value != null) recap.totalValue = (recap.totalValue ?? 0) + entry.value
+        if (!recap.nomorAju && entry.nomorAju) recap.nomorAju = entry.nomorAju
+        if (!recap.ownerName && entry.ownerName) recap.ownerName = entry.ownerName
+      }
+    }
   }
 
   return {
-    journal,
+    entries: sorted,
     items: [...items.values()].sort((a, b) => a.description.localeCompare(b.description, 'id')),
-    documents: docs,
+    documents: [...documents.values()],
     summary: {
-      totalDocuments: docs.length,
+      totalEntries: sorted.length,
       itemTypes: items.size,
-      movementLines: journal.length,
       totalQtyIn,
       totalQtyOut,
       valueIn,
@@ -165,30 +179,68 @@ export function buildLedger(documents: BupDocument[]): Ledger {
 
 /**
  * Kartu stok satu jenis barang: mutasi kronologis dengan saldo berjalan — analogi buku besar
- * per akun pada pembukuan kas. `runningValue` null bila ada mutasi tanpa nilai.
+ * per akun. `runningValue` null bila ada mutasi tanpa nilai.
  */
 export function buildItemLedgerRows(ledger: Ledger, itemKey: string): LedgerItemMovementRow[] {
   const rows: LedgerItemMovementRow[] = []
   let runningQty = 0
   let runningValue: number | null = 0
-  for (const row of ledger.journal) {
-    if (row.itemKey !== itemKey) continue
-    runningQty += row.quantityIn - row.quantityOut
-    if (row.value != null && runningValue != null) {
-      runningValue += row.value * (row.direction === 'IN' ? 1 : -1)
+  for (const entry of ledger.entries) {
+    if (entry.itemKey !== itemKey) continue
+    const sign = entry.direction === 'IN' ? 1 : -1
+    runningQty += sign * entry.quantity
+    if (entry.value != null && runningValue != null) {
+      runningValue += sign * entry.value
     } else {
       runningValue = null
     }
     rows.push({
-      tanggalDaftar: row.tanggalDaftar,
-      documentCode: row.documentCode,
-      nomorDaftar: row.nomorDaftar,
-      quantityIn: row.quantityIn,
-      quantityOut: row.quantityOut,
+      entryDate: entry.entryDate,
+      source: entry.source,
+      documentCode: entry.documentCode,
+      nomorDaftar: entry.nomorDaftar,
+      invoiceNumber: entry.invoiceNumber,
+      invoiceSeri: entry.invoiceSeri,
+      beritaAcaraNumber: entry.beritaAcaraNumber,
+      adjustmentReason: entry.adjustmentReason,
+      direction: entry.direction,
+      quantity: entry.quantity,
       runningQty,
-      value: row.value,
+      value: entry.value,
       runningValue,
     })
   }
   return rows
+}
+
+export type ValidationIssue = { message: string }
+
+export type Validation<T> = { ok: true; value: T } | { ok: false; issues: ValidationIssue[] }
+
+/**
+ * Invariant "kondisi ideal": entry keluar (dokumen maupun penyesuaian) tidak boleh membuat
+ * saldo akun barang menjadi negatif. Fungsi MURNI — dipanggil UI sebelum menambah entry.
+ */
+export function validateEntryBalance(
+  entries: JournalEntry[],
+  entry: JournalEntry,
+): Validation<JournalEntry> {
+  const sign = entry.direction === 'IN' ? 1 : -1
+  const current = entries
+    .filter((existing) => existing.itemKey === entry.itemKey)
+    .reduce((sum, existing) => sum + (existing.direction === 'IN' ? 1 : -1) * existing.quantity, 0)
+  const next = current + sign * entry.quantity
+  if (next < -QTY_EPSILON) {
+    const unit = entry.unitCode ? ` ${entry.unitCode}` : ''
+    const nama = entry.description
+    return {
+      ok: false,
+      issues: [
+        {
+          message: `Saldo ${nama} tidak cukup: tersedia ${current}${unit}, dicatat keluar ${entry.quantity}${unit}.`,
+        },
+      ],
+    }
+  }
+  return { ok: true, value: entry }
 }

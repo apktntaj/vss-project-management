@@ -1,32 +1,31 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Download, Info, Loader2 } from 'lucide-react'
+import { Download, Info, Loader2, Plus } from 'lucide-react'
 
 import { toast } from '@/components/toast'
-import { BupUpload } from '@/components/it-inventory/bup-upload'
+import { AddEntryDialog } from '@/components/it-inventory/add-entry-dialog'
 import { LedgerViews } from '@/components/it-inventory/ledger-views'
 import { buildLedger } from '@/domain/it-inventory/ledger'
-import type { BupDocument } from '@/domain/it-inventory/types'
+import type { JournalEntry } from '@/domain/it-inventory/types'
 
-// Demo tampilan: IT Inventory sebagai PEMBUKUAN arus barang. Dokumen BUP diunggah, diparse di
-// server, lalu dibukukan di sesi ini — tidak ada penyimpanan (segar ulang mengosongkan buku).
+// Demo tampilan: IT Inventory sebagai PEMBUKUAN arus barang. Jurnal = daftar entry; entry
+// ditambahkan manual atau massal (unggah BUP) lalu dibukukan di sesi ini — tidak ada
+// penyimpanan (segar ulang mengosongkan buku).
 
 const numberFormat = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 })
 
 export default function ItInventoryPage() {
-  const [documents, setDocuments] = useState<BupDocument[]>([])
+  const [entries, setEntries] = useState<JournalEntry[]>([])
+  const [dialogOpen, setDialogOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
-  const ledger = useMemo(() => buildLedger(documents), [documents])
+  const ledger = useMemo(() => buildLedger(entries), [entries])
 
-  function addDocument(document: BupDocument) {
-    setDocuments((current) =>
-      current.some((doc) => doc.fileName === document.fileName) ? current : [...current, document],
-    )
-  }
-
-  function removeDocument(fileName: string) {
-    setDocuments((current) => current.filter((doc) => doc.fileName !== fileName))
+  function addEntries(incoming: JournalEntry[]) {
+    setEntries((current) => {
+      const seen = new Set(current.map((entry) => entry.id))
+      return [...current, ...incoming.filter((entry) => !seen.has(entry.id))]
+    })
   }
 
   async function downloadReport() {
@@ -35,7 +34,7 @@ export default function ItInventoryPage() {
       const response = await fetch('/api/it-inventory/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documents }),
+        body: JSON.stringify({ entries }),
         cache: 'no-store',
       })
       if (!response.ok) {
@@ -65,33 +64,50 @@ export default function ItInventoryPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">IT Inventory</h1>
           <p className="mt-2 text-sm text-slate-500">
-            Buku arus barang — setiap perpindahan dicatat sebagai transaksi, dan saldo selalu
-            dihitung dari jurnal; tidak ada stok yang diedit langsung.
+            Jurnal arus barang — setiap entry adalah satu perpindahan; saldo selalu dihitung dari
+            jurnal, tidak ada stok yang diedit langsung.
           </p>
         </div>
-        <button
-          type="button"
-          className="btn-secondary inline-flex items-center gap-2"
-          onClick={() => void downloadReport()}
-          disabled={!documents.length || exporting}
-        >
-          {exporting ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
-          Unduh laporan (Excel)
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            className="btn-primary inline-flex items-center gap-2"
+            onClick={() => setDialogOpen(true)}
+          >
+            <Plus size={16} />
+            Tambah Entry
+          </button>
+          <button
+            type="button"
+            className="btn-secondary inline-flex items-center gap-2"
+            onClick={() => void downloadReport()}
+            disabled={!entries.length || exporting}
+          >
+            {exporting ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
+            Unduh laporan (Excel)
+          </button>
+        </div>
       </header>
 
-      <BupUpload documents={documents} onAdd={addDocument} onRemove={removeDocument} />
-
-      {documents.length === 0 ? (
+      {entries.length === 0 ? (
         <section className="card p-12 text-center">
           <Info className="mx-auto text-slate-400" size={28} aria-hidden="true" />
-          <p className="mt-3 font-semibold text-slate-800">Buku masih kosong.</p>
+          <p className="mt-3 font-semibold text-slate-800">Jurnal masih kosong.</p>
           <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-            Unggah export BUP dokumen pabean untuk mulai membukukan arus barang. BC 2.3 tercatat
-            sebagai pemasukan; BC 2.5 dan BC 3.0 sebagai pengeluaran. Setiap jenis barang menjadi
-            satu akun dengan kartu stok dan saldo berjalan — meniru pembukuan kas, bukan tabel
-            stok gudang.
+            Entry dokumen pabean hanya dibuat dengan mengunggah export BUP — BC 2.3 tercatat
+            sebagai arus masuk, BC 2.5 dan BC 3.0 sebagai arus keluar. Penyesuaian di luar
+            dokumen (stock opname, rusak, hilang, koreksi) dicatat manual sebagai entry
+            penyesuaian. Setiap barang menjadi satu akun dengan kartu stok dan saldo berjalan —
+            meniru pembukuan kas, bukan tabel stok gudang.
           </p>
+          <button
+            type="button"
+            className="btn-primary mt-6 inline-flex items-center gap-2"
+            onClick={() => setDialogOpen(true)}
+          >
+            <Plus size={16} />
+            Tambah Entry pertama
+          </button>
           <p className="mt-4 text-xs text-slate-400">
             Demo tampilan: data hidup di sesi ini saja dan tidak disimpan.
           </p>
@@ -100,24 +116,23 @@ export default function ItInventoryPage() {
         <>
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4" aria-label="Ringkasan buku">
             <article className="card p-5">
-              <p className="text-sm text-slate-500">Dokumen pabean</p>
-              <p className="mt-2 text-3xl font-bold text-slate-700">{summary.totalDocuments}</p>
+              <p className="text-sm text-slate-500">Entry</p>
+              <p className="mt-2 text-3xl font-bold text-slate-700">{summary.totalEntries}</p>
             </article>
             <article className="card p-5">
               <p className="text-sm text-slate-500">Jenis barang</p>
               <p className="mt-2 text-3xl font-bold text-blue-700">{summary.itemTypes}</p>
             </article>
             <article className="card p-5">
-              <p className="text-sm text-slate-500">Baris mutasi</p>
-              <p className="mt-2 text-3xl font-bold text-orange-700">{summary.movementLines}</p>
-            </article>
-            <article className="card p-5">
-              <p className="text-sm text-slate-500">Arus kuantitas</p>
+              <p className="text-sm text-slate-500">Arus masuk</p>
               <p className="mt-2 text-3xl font-bold text-emerald-700">
                 {numberFormat.format(summary.totalQtyIn)}
               </p>
-              <p className="mt-1 text-xs text-slate-500">
-                masuk · {numberFormat.format(summary.totalQtyOut)} keluar
+            </article>
+            <article className="card p-5">
+              <p className="text-sm text-slate-500">Arus keluar</p>
+              <p className="mt-2 text-3xl font-bold text-rose-700">
+                {numberFormat.format(summary.totalQtyOut)}
               </p>
             </article>
           </div>
@@ -130,6 +145,13 @@ export default function ItInventoryPage() {
           </p>
         </>
       )}
+
+      <AddEntryDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        entries={entries}
+        onAdd={addEntries}
+      />
     </div>
   )
 }

@@ -1,7 +1,7 @@
 // Mengapa: skema Zod di batas route (konvensi repo — komponen tidak pernah menjalankan Zod).
-// Parser server menghasilkan BupDocument; skema ini memastikan bentuknya valid sebelum dipakai
-// membangun buku atau dikembalikan ke klien. Toleran terhadap kolom opsional yang kosong
-// (export BUP antar instalasi bervariasi), tapi tegas untuk identitas dokumen dan baris barang.
+// Dua bentuk divalidasi di sini: hasil parse BUP (route import) dan kumpulan entry jurnal
+// (route export). Form manual bersifat sesi-klien; aturan bisnisnya (saldo tidak minus)
+// dijalankan fungsi murni `validateEntryBalance` di ledger.ts.
 
 import { z } from 'zod'
 
@@ -49,8 +49,42 @@ export const bupDocumentSchema = z.object({
   cif: nullableNumber,
   currency: nullableText,
   ownerName: nullableText,
+  invoiceNumber: nullableText,
+  invoiceDate: nullableDate,
   uploadedAt: nullableTimestamp,
   items: z.array(bupBarangLineSchema).min(1, 'Dokumen tidak memiliki baris barang.'),
 })
 
+export const journalEntrySchema = z.object({
+  id: z.string().min(1),
+  entryDate: nullableDate,
+  uploadedAt: nullableTimestamp,
+  source: z.enum(['DOCUMENT', 'ADJUSTMENT']),
+  direction: z.enum(['IN', 'OUT']),
+  documentKey: z.string().min(1),
+  documentCode: z.enum(['23', '25', '30']).nullable(),
+  nomorDaftar: nullableText,
+  tanggalDaftar: nullableDate,
+  nomorAju: nullableText,
+  invoiceNumber: nullableText,
+  invoiceSeri: z.number().int().min(0).nullable(),
+  adjustmentReason: z
+    .enum(['STOCK_OPNAME', 'RUSAK', 'HILANG', 'KOREKSI', 'LAINNYA'])
+    .nullable(),
+  beritaAcaraNumber: nullableText,
+  itemKey: z.string().min(1, 'Barang belum dipilih.'),
+  hsCode: nullableText,
+  description: z.string().min(1, 'Nama barang wajib diisi.'),
+  // Satuan wajib pada form manual, tapi entry hasil parse BUP bisa tanpa satuan — skema di
+  // batas route harus menerima keduanya.
+  unitCode: nullableText,
+  quantity: z.number().finite().positive('Jumlah harus lebih dari 0.'),
+  unitPrice: nullableNumber,
+  value: nullableNumber,
+  currency: nullableText,
+  ownerName: nullableText,
+  sourceRef: nullableText,
+})
+
 export type BupDocumentInput = z.infer<typeof bupDocumentSchema>
+export type JournalEntryInput = z.infer<typeof journalEntrySchema>
