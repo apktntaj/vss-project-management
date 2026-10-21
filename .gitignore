@@ -15,6 +15,7 @@ public/uploads/*
 /docs/RENCANA_DEMO_DRAFT_BC23.md
 /docs/openapi_swagger.json
 /docs/supabase/
+/remotion-demo/
 .env.example
 
 # Vss-A64A5BDB8ACA

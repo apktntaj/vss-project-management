@@ -59,6 +59,32 @@ export async function findUserByEmail(email: string): Promise<User | null> {
   }
 }
 
+// Opsi anggota workspace untuk picker (mis. PIC pada form event) — identitas minimal saja.
+type MemberOptionRow = { id: string; full_name: string }
+
+/**
+ * Daftar anggota workspace AKTIF (id + nama) untuk keperluan picker seperti pilihan PIC event.
+ * Disaring ke anggota workspace aktif lewat inner join `workspace_members` (pola
+ * `findUserByEmail`), hanya `is_active`, diurutkan nama agar pilihan di UI stabil. Tidak membawa
+ * email/klaim lain — pemanggil hanya butuh opsi nama.
+ */
+export async function listWorkspaceMembers(): Promise<{ id: string; fullName: string }[]> {
+  const { client, workspaceId } = await withWorkspace()
+
+  const { data, error } = await client
+    .from('app_users')
+    .select('id, full_name, workspace_members!inner(workspace_id)')
+    .eq('workspace_members.workspace_id', workspaceId)
+    .eq('is_active', true)
+    .order('full_name')
+    .returns<MemberOptionRow[]>()
+
+  if (error) {
+    throw new Error(`Daftar anggota tidak dapat dimuat: ${error.message}`)
+  }
+  return (data ?? []).map((row) => ({ id: row.id, fullName: row.full_name }))
+}
+
 /**
  * Verifikasi kredensial sign-in dan turunkan AuthenticatedPrincipal. Mengembalikan
  * `{ id, role, workspaceId, isAdmin }` pada sukses — tidak pernah menyertakan `passwordHash`.

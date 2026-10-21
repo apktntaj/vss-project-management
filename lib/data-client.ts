@@ -971,11 +971,13 @@ export type SettingsUser = {
   isAdmin: boolean
   isActive?: boolean
 }
-export type SettingsVenue = Pick<
-  LocalVenue,
-  'id' | 'name' | 'address' | 'website' | 'loadingAccessNotes'
->
-export type SettingsOrganizer = Pick<LocalEo, 'id' | 'name' | 'npwp' | 'address' | 'website'>
+export type SettingsVenue = {
+  id: string
+  legalName: string
+  aliasName: string | null
+  city: string | null
+}
+export type SettingsOrganizer = { id: string; legalName: string }
 export type SettingsData = {
   users: SettingsUser[]
   venues: SettingsVenue[]

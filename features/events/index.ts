@@ -22,6 +22,7 @@ export { createEventOrganizer } from '@/features/events/use-cases/create-event-o
 export {
   listVenueReferences,
   listEventOrganizerReferences,
+  listUserReferences,
 } from '@/features/events/use-cases/list-references'
 
 // Tipe hasil yang relevan bagi konsumen (bentuk baris mentah + ringkasan kartu). Tipe daftar/input

@@ -2,7 +2,12 @@ import { AlertTriangle, MapPin } from 'lucide-react'
 import { redirect } from 'next/navigation'
 
 import { requireCurrentUser } from '@/features/auth'
-import { listEventsForDashboard } from '@/features/events'
+import {
+  listEventOrganizerReferences,
+  listEventsForDashboard,
+  listUserReferences,
+  listVenueReferences,
+} from '@/features/events'
 import type { EventListPage, EventListQuery } from '@/domain/event/types'
 import type { CurrentUser } from '@/domain/auth/types'
 import { ApiError } from '@/lib/server/errors'
@@ -63,6 +68,31 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
     loadFailed = true
   }
 
+  // Opsi master data untuk form buat/edit event (venue/EO/PIC). Kegagalan memuat opsi TIDAK
+  // mematikan halaman: EventFormModal memang dirancang menerima daftar kosong dan jatuh ke input
+  // id teks, jadi daftar event tetap tampil.
+  let venues: { id: string; name: string }[] | undefined
+  let organizers: { id: string; name: string }[] | undefined
+  let pics: { id: string; name: string }[] | undefined
+  try {
+    const [venueRecords, organizerRecords, users] = await Promise.all([
+      listVenueReferences(currentUser),
+      listEventOrganizerReferences(currentUser),
+      listUserReferences(currentUser),
+    ])
+    venues = venueRecords.map((venue) => ({
+      id: venue.id,
+      name: venue.aliasName ? `${venue.legalName} (${venue.aliasName})` : venue.legalName,
+    }))
+    organizers = organizerRecords.map((organizer) => ({
+      id: organizer.id,
+      name: organizer.legalName,
+    }))
+    pics = users.map((user) => ({ id: user.id, name: user.fullName }))
+  } catch {
+    // Opsi dibiarkan undefined — form tetap fungsional dengan input id.
+  }
+
   return (
     <div className="space-y-8">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -70,7 +100,7 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
           <h1 className="text-3xl font-bold tracking-tight">Events</h1>
           <p className="mt-2 text-sm text-slate-500">Pantau kesiapan dan jadwal pameran.</p>
         </div>
-        <EventCreateButton />
+        <EventCreateButton venues={venues} organizers={organizers} pics={pics} />
       </header>
 
       {loadFailed || !page ? (
@@ -146,7 +176,12 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
 
           <section>
             <EventFilters />
-            <EventList items={page.items} />
+            <EventList
+              items={page.items}
+              venues={venues}
+              organizers={organizers}
+              pics={pics}
+            />
           </section>
         </>
       )}
