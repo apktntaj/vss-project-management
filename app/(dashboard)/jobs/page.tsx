@@ -6,10 +6,8 @@ import {
   ChevronDown,
   ChevronRight,
   CircleAlert,
-  FileWarning,
   Plus,
   Search,
-  SlidersHorizontal,
   Upload,
 } from 'lucide-react'
 import {
@@ -397,18 +395,6 @@ export default function JobsPage() {
       }, {}),
     [filtered],
   )
-  const waitingCipl = filtered.filter(
-    (job) => getOperationalDetails(job).cipl.status === 'MISSING',
-  ).length
-  const needsAction = filtered.filter((job) =>
-    Object.values(getOperationalDetails(job).customs).some(
-      (item) => item.applicable && item.status !== 'COMPLETED',
-    ),
-  ).length
-  const activeJobs = jobs.filter((job) => job.status === 'IN_PROGRESS').length
-  const pendingJobs = jobs.filter(
-    (job) => job.status === 'DRAFT' || job.status === 'ON_HOLD',
-  ).length
   const hasFilters = Boolean(search || status || scope !== 'active')
   const clearFilters = () => {
     setSearch('')
@@ -419,16 +405,6 @@ export default function JobsPage() {
 
   return (
     <div className="space-y-6">
-      <section className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight">Jobs</h1>
-          <p className="mt-2 text-sm text-slate-500">Kelola milestone job berdasarkan tenggatnya.</p>
-        </div>
-        <Button type="button" onClick={() => setShowNewJob(true)}>
-          <Plus data-icon="inline-start" />
-          Job baru
-        </Button>
-      </section>
       <section aria-label="Kategori job">
         <div className="inline-flex rounded-lg bg-slate-100 p-1 text-sm font-medium">
           {(Object.keys(segmentLabels) as JobSegment[]).map((value) => (
@@ -446,46 +422,6 @@ export default function JobsPage() {
       </section>
       {segment === 'EVENT' ? (
         <>
-        <section className="grid gap-3 lg:grid-cols-3">
-        <div className="card p-5" aria-labelledby="jobs-summary-title">
-          <h2 id="jobs-summary-title" className="text-lg font-semibold">
-            Summary
-          </h2>
-          <div className="mt-4 grid grid-cols-3 gap-3 text-center">
-            <div>
-              <p className="text-2xl font-bold text-blue-700">{activeJobs}</p>
-              <p className="mt-1 text-xs text-slate-500">Job aktif</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-amber-700">{pendingJobs}</p>
-              <p className="mt-1 text-xs text-slate-500">Job pending</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-700">{jobs.length}</p>
-              <p className="mt-1 text-xs text-slate-500">Total job</p>
-            </div>
-          </div>
-        </div>
-        <div className="card p-5">
-          <h2 className="text-lg font-semibold">Checkpoint event</h2>
-          <p className="mt-3 text-sm leading-6 text-slate-500">Soon.</p>
-        </div>
-        <div className="card p-5">
-          <h2 className="text-lg font-semibold">Attention</h2>
-          <div className="mt-4 grid grid-cols-2 gap-3 text-center">
-            <div>
-              <FileWarning className="mx-auto text-amber-700" size={18} />
-              <p className="mt-1 text-2xl font-bold text-amber-700">{waitingCipl}</p>
-              <p className="mt-1 text-xs text-slate-500">Menunggu CIPL</p>
-            </div>
-            <div>
-              <SlidersHorizontal className="mx-auto text-orange-700" size={18} />
-              <p className="mt-1 text-2xl font-bold text-orange-700">{needsAction}</p>
-              <p className="mt-1 text-xs text-slate-500">Perlu tindak lanjut</p>
-            </div>
-          </div>
-        </div>
-      </section>
       <section>
         <div className="mb-5 p-0">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -533,6 +469,10 @@ export default function JobsPage() {
                 Semua
               </button>
             </div>
+            <Button type="button" onClick={() => setShowNewJob(true)} className="lg:ml-auto">
+              <Plus data-icon="inline-start" />
+              Job baru
+            </Button>
           </div>
           {hasFilters && (
             <button
