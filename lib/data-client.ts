@@ -1024,8 +1024,8 @@ export function updateSettingsRecord<T>(
   return settingsRequest<T>('PATCH', { resource, id, input })
 }
 
-export function deleteSettingsUser(id: string) {
-  return settingsRequest<void>('DELETE', { resource: 'users', id })
+export function deleteSettingsRecord(resource: 'users' | 'venues' | 'organizers', id: string) {
+  return settingsRequest<void>('DELETE', { resource, id })
 }
 
 export async function changePassword(input: { currentPassword: string; newPassword: string }) {

@@ -140,23 +140,36 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
+function deleteFailure(error: { code?: string; message: string }, label: string): Error {
+  if (error.code === '23503') return new Error(`${label} masih dirujuk data lain sehingga tidak dapat dihapus.`)
+  return new Error(`${label} tidak dapat dihapus: ${error.message}`)
+}
+
 export async function DELETE(request: NextRequest) {
   try {
     const session = await requireAdmin()
     const body = await request.json()
     const resource = resourceSchema.parse(body.resource)
     const id = z.string().min(1).parse(body.id)
-    if (resource !== 'users') throw new Error('Hanya user yang dapat dihapus.')
-    if (!isSupabaseConfigured()) throw new Error('Penghapusan user memerlukan Supabase.')
-    if (session.user.id === id) throw new Error('Akun sendiri tidak dapat dihapus.')
+    if (!isSupabaseConfigured()) throw new Error('Penghapusan memerlukan Supabase.')
     const client = getSupabaseAdmin()
-    const { count } = await client.from('events').select('id', { count: 'exact', head: true }).eq('pic_id', id)
-    if (count && count > 0) throw new Error(`User masih PIC dari ${count} event — ganti PIC event tersebut terlebih dahulu.`)
-    const { error } = await client.from('app_users').delete().eq('id', id)
-    if (error) {
-      if (error.code === '23503') throw new Error('User masih dirujuk data lain (mis. pembuat event atau penulis komentar) sehingga tidak dapat dihapus.')
-      throw new Error(`User tidak dapat dihapus: ${error.message}`)
+
+    if (resource === 'users') {
+      if (session.user.id === id) throw new Error('Akun sendiri tidak dapat dihapus.')
+      const { count } = await client.from('events').select('id', { count: 'exact', head: true }).eq('pic_id', id)
+      if (count && count > 0) throw new Error(`User masih PIC dari ${count} event — ganti PIC event tersebut terlebih dahulu.`)
+      const { error } = await client.from('app_users').delete().eq('id', id)
+      if (error) throw deleteFailure(error, 'User')
+      return new NextResponse(null, { status: 204 })
     }
+
+    const table = resource === 'venues' ? 'venues' : 'event_organizers'
+    const column = resource === 'venues' ? 'venue_id' : 'event_organizer_id'
+    const label = resource === 'venues' ? 'Venue' : 'Event organizer'
+    const { count } = await client.from('events').select('id', { count: 'exact', head: true }).eq(column, id)
+    if (count && count > 0) throw new Error(`${label} masih dipakai ${count} event — pindahkan event tersebut ke tempat/penyelenggara lain terlebih dahulu.`)
+    const { error } = await client.from(table).delete().eq('id', id)
+    if (error) throw deleteFailure(error, label)
     return new NextResponse(null, { status: 204 })
   } catch (error) {
     return failure(error)

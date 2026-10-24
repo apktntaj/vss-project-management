@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Pencil, Trash2 } from 'lucide-react'
 import {
   createSettingsRecord,
-  deleteSettingsUser,
+  deleteSettingsRecord,
   getSettingsData,
   updateSettingsRecord,
   type SettingsData,
@@ -16,6 +16,15 @@ import { CeisaConnectionSettings } from '@/components/ceisa/connection-settings'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 type Editor = { resource: 'users' | 'venues' | 'organizers'; id?: string } | null
+type PendingDelete = { resource: 'users' | 'venues' | 'organizers'; id: string; name: string; detail?: string }
+
+const DELETE_LABELS = { users: 'User', venues: 'Venue', organizers: 'Event organizer' } as const
+
+const DELETE_NOTES = {
+  users: 'User yang masih dirujuk data lain (mis. PIC event) tidak dapat dihapus.',
+  venues: 'Venue yang masih dipakai event tidak dapat dihapus.',
+  organizers: 'Event organizer yang masih dipakai event tidak dapat dihapus.',
+} as const
 
 function notify(message: string, tone: 'success' | 'error') {
   window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
@@ -33,7 +42,7 @@ function nullable(form: FormData, name: string) {
 export function SettingsManager({ currentUserId }: { currentUserId: string }) {
   const [data, setData] = useState<SettingsData | null>(null)
   const [editor, setEditor] = useState<Editor>(null)
-  const [pendingDelete, setPendingDelete] = useState<SettingsUser | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -92,13 +101,13 @@ export function SettingsManager({ currentUserId }: { currentUserId: string }) {
     if (!pendingDelete) return
     setDeleting(true)
     try {
-      await deleteSettingsUser(pendingDelete.id)
+      await deleteSettingsRecord(pendingDelete.resource, pendingDelete.id)
       const updated = await getSettingsData()
       setData(updated)
-      notify(`User ${pendingDelete.nama} berhasil dihapus.`, 'success')
+      notify(`${DELETE_LABELS[pendingDelete.resource]} ${pendingDelete.name} berhasil dihapus.`, 'success')
       setPendingDelete(null)
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : 'User tidak dapat dihapus.'
+      const message = caught instanceof Error ? caught.message : 'Data tidak dapat dihapus.'
       notify(message, 'error')
     } finally {
       setDeleting(false)
@@ -114,24 +123,24 @@ export function SettingsManager({ currentUserId }: { currentUserId: string }) {
     <div className="space-y-8">
       <section className="card overflow-hidden">
         <div className="flex items-center justify-between gap-4 border-b border-black/10 px-5 py-4"><div><h2 className="text-xl font-bold">Manajemen user</h2><p className="mt-1 text-sm text-slate-500">Tambah dan perbarui akses akun.</p></div><button className="btn-primary" onClick={() => setEditor({ resource: 'users' })}>Tambah user</button></div>
-        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Nama</th><th className="px-5 py-3">Email</th><th className="px-5 py-3">Akses</th><th className="px-5 py-3" /></tr></thead><tbody className="divide-y divide-black/5">{data.users.map((user) => <tr key={user.id}><td className="px-5 py-4 font-medium">{user.nama}</td><td className="px-5 py-4 text-slate-600">{user.email}</td><td className="px-5 py-4">{user.isAdmin ? 'Admin' : 'User'}</td><td className="px-5 py-4 text-right"><div className="flex justify-end gap-1"><button aria-label={`Edit ${user.nama}`} title="Edit" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" onClick={() => setEditor({ resource: 'users', id: user.id })}><Pencil size={16} /></button>{user.id !== currentUserId && <button aria-label={`Hapus ${user.nama}`} title="Hapus" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" onClick={() => setPendingDelete(user)}><Trash2 size={16} /></button>}</div></td></tr>)}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Nama</th><th className="px-5 py-3">Email</th><th className="px-5 py-3">Akses</th><th className="px-5 py-3" /></tr></thead><tbody className="divide-y divide-black/5">{data.users.map((user) => <tr key={user.id}><td className="px-5 py-4 font-medium">{user.nama}</td><td className="px-5 py-4 text-slate-600">{user.email}</td><td className="px-5 py-4">{user.isAdmin ? 'Admin' : 'User'}</td><td className="px-5 py-4 text-right"><div className="flex justify-end gap-1"><button aria-label={`Edit ${user.nama}`} title="Edit" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" onClick={() => setEditor({ resource: 'users', id: user.id })}><Pencil size={16} /></button>{user.id !== currentUserId && <button aria-label={`Hapus ${user.nama}`} title="Hapus" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" onClick={() => setPendingDelete({ resource: 'users', id: user.id, name: user.nama, detail: user.email })}><Trash2 size={16} /></button>}</div></td></tr>)}</tbody></table></div>
       </section>
       <section className="card overflow-hidden">
         <div className="flex items-center justify-between gap-4 border-b border-black/10 px-5 py-4"><div><h2 className="text-xl font-bold">Venue</h2><p className="mt-1 text-sm text-slate-500">Kelola venue yang dipilih saat membuat event.</p></div><button className="btn-primary" onClick={() => setEditor({ resource: 'venues' })}>Tambah venue</button></div>
-        <div className="divide-y divide-black/5">{data.venues.length ? data.venues.map((venue) => <div key={venue.id} className="flex items-center justify-between gap-4 px-5 py-4"><div><p className="font-medium">{venue.legalName}{venue.aliasName ? <span className="font-normal text-slate-500"> · {venue.aliasName}</span> : null}</p><p className="text-sm text-slate-500">{venue.city ?? 'Kota belum diisi'}</p></div><button aria-label={`Edit ${venue.legalName}`} title="Edit" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" onClick={() => setEditor({ resource: 'venues', id: venue.id })}><Pencil size={16} /></button></div>) : <p className="px-5 py-6 text-sm text-slate-500">Belum ada venue.</p>}</div>
+        <div className="divide-y divide-black/5">{data.venues.length ? data.venues.map((venue) => <div key={venue.id} className="flex items-center justify-between gap-4 px-5 py-4"><div><p className="font-medium">{venue.legalName}{venue.aliasName ? <span className="font-normal text-slate-500"> · {venue.aliasName}</span> : null}</p><p className="text-sm text-slate-500">{venue.city ?? 'Kota belum diisi'}</p></div><div className="flex items-center justify-end gap-1"><button aria-label={`Edit ${venue.legalName}`} title="Edit" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" onClick={() => setEditor({ resource: 'venues', id: venue.id })}><Pencil size={16} /></button><button aria-label={`Hapus ${venue.legalName}`} title="Hapus" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" onClick={() => setPendingDelete({ resource: 'venues', id: venue.id, name: venue.legalName })}><Trash2 size={16} /></button></div></div>) : <p className="px-5 py-6 text-sm text-slate-500">Belum ada venue.</p>}</div>
       </section>
       <section className="card overflow-hidden">
         <div className="flex items-center justify-between gap-4 border-b border-black/10 px-5 py-4"><div><h2 className="text-xl font-bold">Event organizer</h2><p className="mt-1 text-sm text-slate-500">Kelola penyelenggara event.</p></div><button className="btn-primary" onClick={() => setEditor({ resource: 'organizers' })}>Tambah organizer</button></div>
-        <div className="divide-y divide-black/5">{data.organizers.length ? data.organizers.map((organizer) => <div key={organizer.id} className="flex items-center justify-between gap-4 px-5 py-4"><div><p className="font-medium">{organizer.legalName}</p></div><button aria-label={`Edit ${organizer.legalName}`} title="Edit" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" onClick={() => setEditor({ resource: 'organizers', id: organizer.id })}><Pencil size={16} /></button></div>) : <p className="px-5 py-6 text-sm text-slate-500">Belum ada event organizer.</p>}</div>
+        <div className="divide-y divide-black/5">{data.organizers.length ? data.organizers.map((organizer) => <div key={organizer.id} className="flex items-center justify-between gap-4 px-5 py-4"><div><p className="font-medium">{organizer.legalName}</p></div><div className="flex items-center justify-end gap-1"><button aria-label={`Edit ${organizer.legalName}`} title="Edit" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" onClick={() => setEditor({ resource: 'organizers', id: organizer.id })}><Pencil size={16} /></button><button aria-label={`Hapus ${organizer.legalName}`} title="Hapus" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" onClick={() => setPendingDelete({ resource: 'organizers', id: organizer.id, name: organizer.legalName })}><Trash2 size={16} /></button></div></div>) : <p className="px-5 py-6 text-sm text-slate-500">Belum ada event organizer.</p>}</div>
       </section>
       <CeisaConnectionSettings />
       {editor && <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"><form onSubmit={submit} className="card w-full max-w-xl space-y-4 p-6"><div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-bold">{editor.id ? 'Edit' : 'Tambah'} {editor.resource === 'users' ? 'user' : editor.resource === 'venues' ? 'venue' : 'event organizer'}</h2><p className="mt-1 text-sm text-slate-500">Field bertanda wajib harus diisi.</p></div><button type="button" className="btn-secondary" onClick={() => { setEditor(null); setError('') }}>Tutup</button></div>{editor.resource === 'users' ? <><label className="label">Nama<input name="nama" required defaultValue={selectedUser?.nama} className="input" /></label><label className="label">Email<input name="email" type="email" required defaultValue={selectedUser?.email} className="input" /></label><label className="label">Password<input name="password" type="password" required={!editor.id} className="input" /></label><label className="flex items-center gap-3 text-sm font-medium"><input name="isAdmin" type="checkbox" defaultChecked={selectedUser?.isAdmin} />Akses admin</label></> : editor.resource === 'venues' ? <><label className="label">Nama venue<input name="legalName" required defaultValue={selectedVenue?.legalName} className="input" /></label><label className="label">Alias <span className="font-normal text-slate-400">(opsional)</span><input name="aliasName" defaultValue={selectedVenue?.aliasName ?? ''} className="input" /></label><label className="label">Kota<input name="city" defaultValue={selectedVenue?.city ?? ''} className="input" /></label></> : <><label className="label">Nama organizer<input name="legalName" required defaultValue={selectedOrganizer?.legalName} className="input" /></label></>}{error && <p className="text-sm font-medium text-rose-700">{error}</p>}<div className="flex justify-end gap-3"><button type="button" className="btn-secondary" onClick={() => { setEditor(null); setError('') }}>Batal</button><button disabled={saving} className="btn-primary">{saving ? 'Menyimpan…' : 'Simpan'}</button></div></form></div>}
       <Dialog open={pendingDelete !== null} onOpenChange={(next) => { if (!next) setPendingDelete(null) }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Hapus user ini?</DialogTitle>
+            <DialogTitle>Hapus {pendingDelete ? DELETE_LABELS[pendingDelete.resource].toLowerCase() : ''} ini?</DialogTitle>
             <DialogDescription>
-              {pendingDelete ? <>User <strong>{pendingDelete.nama}</strong> ({pendingDelete.email}) akan dihapus permanen. User yang masih dirujuk data lain (mis. PIC event) tidak dapat dihapus.</> : null}
+              {pendingDelete ? <><strong>{pendingDelete.name}</strong>{pendingDelete.detail ? ` (${pendingDelete.detail})` : ''} akan dihapus permanen. {DELETE_NOTES[pendingDelete.resource]}</> : null}
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-3">
