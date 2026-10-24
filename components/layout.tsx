@@ -19,7 +19,6 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { ChangePasswordDialog } from '@/components/change-password-dialog'
 import {
   Dialog,
   DialogContent,
@@ -175,16 +174,14 @@ export function AppShell({
         <div
           className={`mt-auto border-t border-white/10 p-3 ${collapsed ? 'md:text-center' : ''}`}
         >
-          {user.isAdmin && (
-            <Link
-              href="/settings"
-              title={collapsed ? 'Settings' : undefined}
-              className={`mb-3 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${collapsed ? 'md:justify-center' : ''} ${pathname.startsWith('/settings') ? 'bg-orange-600 text-white shadow-lg shadow-orange-950/40' : 'hover:bg-slate-700 hover:text-white'}`}
-            >
-              <Settings size={18} />
-              <span className={collapsed ? 'md:hidden' : ''}>Settings</span>
-            </Link>
-          )}
+          <Link
+            href="/settings"
+            title={collapsed ? 'Settings' : undefined}
+            className={`mb-3 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${collapsed ? 'md:justify-center' : ''} ${pathname.startsWith('/settings') ? 'bg-orange-600 text-white shadow-lg shadow-orange-950/40' : 'hover:bg-slate-700 hover:text-white'}`}
+          >
+            <Settings size={18} />
+            <span className={collapsed ? 'md:hidden' : ''}>Settings</span>
+          </Link>
           <form action={logoutAction}>
             <button
               type="submit"
@@ -237,16 +234,14 @@ export function AppShell({
                         </Link>
                       )
                     })}
-                  {user.isAdmin && (
-                    <Link
-                      href="/settings"
-                      onClick={() => setMobileOpen(false)}
-                      className="workspace-nav workspace-nav-idle"
-                    >
-                      <Settings size={18} />
-                      Settings
-                    </Link>
-                  )}
+                  <Link
+                    href="/settings"
+                    onClick={() => setMobileOpen(false)}
+                    className="workspace-nav workspace-nav-idle"
+                  >
+                    <Settings size={18} />
+                    Settings
+                  </Link>
                 </nav>
                 <p className="truncate text-sm text-muted-foreground">{user.name ?? 'Pengguna'}</p>
                 <form action={logoutAction}>
@@ -266,7 +261,6 @@ export function AppShell({
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <ChangePasswordDialog />
             <span className="hidden text-sm font-medium text-slate-700 lg:inline">
               {user.name ?? 'Pengguna'}
             </span>
