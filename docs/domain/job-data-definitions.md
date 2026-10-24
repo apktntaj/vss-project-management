@@ -103,20 +103,25 @@ Status mati (cancel) dihapus dari produk 2026-10; penghapusan job bersifat hard 
 **Definisi**
 
 ```text
-JenisInternational adalah salah satu dari VENUE, ROAD_SHIPMENT, PERMANENT_IMPORT,
-ATA_CARNET, TEMPORARY_EXPORT.
+JenisInternational adalah salah satu dari TEMPORARY, ATA_CARNET, ROAD_SHIPMENT,
+PERMANENT_IMPORT.
 ```
 
-**Interpretasi** — sub-jenis job international, mengikuti grup pengiriman pada inward manifest:
-VENUE barang turun dan disimpan di gudang venue; ROAD_SHIPMENT pengangkutan darat/pengalihan
-antar tempat (terkait BC 2.7); PERMANENT_IMPORT barang dijual/dipakai tetap di Indonesia
-(BC 3.0); ATA_CARNET barang masuk dengan paspor barang ATA; TEMPORARY_EXPORT barang Indonesia
-diekspor sementara untuk pameran di luar negeri.
+**Interpretasi** — sub-jenis job international pada event, menurut rezim kepabeanan
+pengirimannya: TEMPORARY impor sementara untuk event (BC 2.3, barang wajib keluar kembali);
+ATA_CARNET impor sementara dengan paspor barang ATA; ROAD_SHIPMENT pengangkutan
+darat/pengalihan antar tempat (BC 2.7); PERMANENT_IMPORT barang dijual/dipakai tetap di
+Indonesia (BC 3.0).
 
-**Contoh** — `VENUE`; `ATA_CARNET`.
+Keputusan domain expert 2026-10-24: nilai `VENUE` (lama) diganti nama menjadi `TEMPORARY`
+(data lama dimigrasi), `TEMPORARY_EXPORT` (ekspor sementara barang Indonesia ke luar) dihapus
+dari taksonomi. Job Local tidak butuh agent; SEMUA jenis boleh dengan atau tanpa agent
+(biasanya dengan agent).
 
-**Open question (penting):** ada indikasi beberapa jenis membawa data berbeda — ATA_CARNET
-memiliki nomor carnet, TEMPORARY_EXPORT memiliki tenggat kepulangan. Jika terbukti, bentuk yang
+**Contoh** — `TEMPORARY`; `ATA_CARNET`.
+
+**Open question:** ada indikasi beberapa jenis membawa data berbeda — ATA_CARNET
+memiliki nomor carnet, TEMPORARY memiliki tenggat kepulangan. Jika terbukti, bentuk yang
 benar adalah **itemization dengan structure per alternatif**, bukan enumeration (aturan: jangan
 pakai enumeration jika tiap alternatif membawa data berbeda). Tentukan sebelum implementasi.
 
@@ -182,6 +187,7 @@ Job adalah salah satu dari:
 JobLocal
   event : EventId
   klien : ExhibitorId
+  agent : AgentId, atau kosong
   pic   : UserId, atau kosong
   status: StatusJob
 
@@ -198,19 +204,19 @@ JobInternational
 ```
 
 **Interpretasi** — JobLocal adalah pekerjaan logistik **tanpa** dokumen kepabeanan (angkutan
-lokal, venue-ke-venue) sehingga **tidak memiliki dan tidak dapat memiliki** agent maupun dokumen
-BC; bentuk data membuat keadaan itu tidak dapat direpresentasikan. JobInternational adalah
-pekerjaan lintas negara melalui jalur kepabeanan. Agent opsional karena exhibitor kadang
-bertindak sebagai agent-nya sendiri; jika ada, agent adalah pemilik dokumen sumber (CIPL, B/L,
+lokal, venue-ke-venue) sehingga **tidak memiliki dan tidak dapat memiliki** dokumen BC;
+JobInternational adalah pekerjaan lintas negara melalui jalur kepabeanan. Agent opsional pada
+kedua varian (keputusan domain expert 2026-10-24): JobLocal tidak membutuhkannya, JobInternational
+biasanya memakainya; jika ada, agent adalah pemilik dokumen sumber (CIPL, B/L,
 AWB) sementara job adalah pemilik dokumen proses (BC). Klien tepat satu: job melayani satu
 exhibitor. Manifest dan kepulangan hanya menempel pada jalur international (definisi di dokumen
 manifest). PIC opsional sampai ditetapkan; pemilik event adalah PIC default koordinasi.
 
 **Contoh (semua varian dan boundary):**
 
-1. JobLocal — event JIE-2026, klien Dinas Pariwisata, pic kosong, status DRAFT.
+1. JobLocal — event JIE-2026, klien Dinas Pariwisata, agent kosong, pic kosong, status DRAFT.
 2. JobInternational dengan agent — event JIE-2026, klien Kementerian Koperasi, agent ALLPACK,
-   jenis VENUE, dokumenBc `[BC_2_3 terdaftar]`, manifest terisi, kepulangan kosong.
+   jenis TEMPORARY, dokumenBc `[BC_2_3 terdaftar]`, manifest terisi, kepulangan kosong.
 3. JobInternational tanpa agent (exhibitor bertindak sendiri) — jenis PERMANENT_IMPORT,
    dokumenBc kosong (boundary: baru dibuat, belum diajukan).
 4. JobInternational ROAD_SHIPMENT dengan dokumen BC 2.7 dan kepulangan terisi.
@@ -218,7 +224,6 @@ manifest). PIC opsional sampai ditetapkan; pemilik event adalah PIC default koor
 Invalid (tidak dapat dibentuk dari definisi — inilah tujuannya):
 
 - JobLocal dengan dokumen BC → tidak ada field untuk itu pada varian Local.
-- JobLocal dengan agent → tidak ada field untuk itu.
 - Job tanpa kind ("Job lama" pada data sekarang) → definisi memaksa tepat satu varian.
 - JobInternational tanpa klien → kedua varian mewajibkan klien.
 
@@ -254,7 +259,7 @@ tolak — perbaiki mapping, bukan tambahi flag.
 ```text
 dokumenBcUmum : JenisInternational -> Daftar JenisDokumenBC
   // PROPOSAL (evidence: pola inward manifest): PERMANENT_IMPORT → [BC_3_0];
-  // TEMPORARY_EXPORT → [BC_2_5]; ROAD_SHIPMENT → [BC_2_7]; VENUE → [BC_2_3, BC_2_5].
+  // TEMPORARY → [BC_2_3, BC_2_5]; ROAD_SHIPMENT → [BC_2_7].
   // Bukan aturan mutlak — user tetap dapat menambah/mengurangi per job.
 
 bisaDihapus : Job -> Bool
@@ -288,7 +293,7 @@ mengizinkan keadaan ketiga ini.
 
 1. **Status kepabeanan** menempel pada DokumenBC atau JobInternational? (konflik requirements
    lama vs model unified — keputusan terbesar yang tersisa.)
-2. **JenisInternational → itemization?** ATA_CARNET (nomor carnet) dan TEMPORARY_EXPORT
+2. **JenisInternational → itemization?** ATA_CARNET (nomor carnet) dan TEMPORARY
    (tenggat kepulangan) berindikasi membawa data sendiri.
 3. **Billing** (requirements J-11: NOT_READY … PAID dengan nominal/invoice) — masuk model job
    yang baru atau menjadi konsep terpisah?

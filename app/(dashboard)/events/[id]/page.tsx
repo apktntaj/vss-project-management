@@ -47,11 +47,10 @@ type JobJenisGroup = InternationalJobJenis | 'LOCAL' | 'LEGACY'
 
 /** Urutan dasar grup jenis; dipakai sebagai tie-break saat jumlah job sama. */
 const jobJenisOrder: ReadonlyArray<JobJenisGroup> = [
-  'VENUE',
+  'TEMPORARY',
+  'ATA_CARNET',
   'ROAD_SHIPMENT',
   'PERMANENT_IMPORT',
-  'ATA_CARNET',
-  'TEMPORARY_EXPORT',
   'LOCAL',
   'LEGACY',
 ]
@@ -117,6 +116,11 @@ export default function EventDetailPage() {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  // Routing "Job baru" dari halaman /jobs: ?newJob=1 langsung membuka form inisiasi job.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('newJob') === '1') setShowNewJob(true)
+  }, [])
 
   const showToast = (message: string, tone: 'info' | 'error' = 'info') => {
     window.dispatchEvent(

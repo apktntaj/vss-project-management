@@ -371,10 +371,24 @@ export async function checkReferences(input: EventInput): Promise<EventReference
     return (count ?? 0) > 0
   }
 
+  // app_users tidak punya kolom workspace_id — keanggotaan lewat workspace_members (pola
+  // features/auth/repository, sumber yang sama dengan daftar PIC di form).
+  const memberExists = async (userId: string): Promise<boolean> => {
+    const { count, error } = await client
+      .from('app_users')
+      .select('id, workspace_members!inner(workspace_id)', { count: 'exact', head: true })
+      .eq('id', userId)
+      .eq('workspace_members.workspace_id', workspaceId)
+    if (error) {
+      throw new Error(`Gagal memeriksa referensi app_users: ${error.message}`)
+    }
+    return (count ?? 0) > 0
+  }
+
   const [venueExists, eventOrganizerExists, picExists] = await Promise.all([
     existsIn('venues', input.venueId),
     existsIn('event_organizers', input.eventOrganizerId),
-    existsIn('app_users', input.picId),
+    memberExists(input.picId),
   ])
 
   return { venueExists, eventOrganizerExists, picExists }
@@ -584,6 +598,57 @@ async function queryEventAttention(
     throw new Error(`Gagal memuat data perhatian event: ${error.message}`)
   }
   return computeAttention(data ?? [])
+}
+
+/**
+ * Baris event dalam bentuk legacy (snake_case + embed venues/event_organizers/
+ * event_cancellations/exhibitors) untuk klien lama lewat GET /api/events — halaman
+ * detail event dan detail CIPL masih memetakannya via `eventFromRow`/`exhibitorFromRow`
+ * di lib/data-client sampai keduanya pindah ke bentuk features.
+ */
+export async function listLegacyEventRows(): Promise<Record<string, unknown>[]> {
+  const { client, workspaceId } = await withWorkspace()
+
+  // exhibitors TIDAK bisa di-embed: tabel legacy ini tidak punya FK ke events,
+  // jadi diambil terpisah lalu dijahit per event_id (pola /api/jobs).
+  const [eventsResult, exhibitorsResult] = await Promise.all([
+    client
+      .from('events')
+      .select(
+        'id, name, alias, venue_id, event_organizer_id, pic_id, starts_on, ends_on, status, created_at, created_by_id, updated_at, ' +
+          'venues(id, legal_name, alias_name, city, created_at, updated_at), ' +
+          'event_organizers(id, legal_name, created_at, updated_at), ' +
+          'event_cancellations(event_id, reason, cancelled_at, cancelled_by_id)',
+      )
+      .eq('workspace_id', workspaceId)
+      .order('starts_on')
+      .returns<Record<string, unknown>[]>(),
+    client
+      .from('exhibitors')
+      .select('id, event_id, name, kind, contact, agent_id, npwp, created_at, created_by_id, updated_at')
+      .eq('workspace_id', workspaceId)
+      .order('name')
+      .returns<Record<string, unknown>[]>(),
+  ])
+
+  if (eventsResult.error) {
+    throw new Error(`Gagal memuat event: ${eventsResult.error.message}`)
+  }
+  if (exhibitorsResult.error) {
+    throw new Error(`Gagal memuat exhibitor: ${exhibitorsResult.error.message}`)
+  }
+
+  const exhibitorsByEvent = new Map<string, Record<string, unknown>[]>()
+  for (const exhibitor of exhibitorsResult.data ?? []) {
+    const key = String(exhibitor.event_id)
+    const bucket = exhibitorsByEvent.get(key)
+    if (bucket) bucket.push(exhibitor)
+    else exhibitorsByEvent.set(key, [exhibitor])
+  }
+  return (eventsResult.data ?? []).map((row) => ({
+    ...row,
+    exhibitors: exhibitorsByEvent.get(String(row.id)) ?? [],
+  }))
 }
 
 // ── Master data venue/EO (create-inline + select existing) ────────────────────────────────────

@@ -7,6 +7,7 @@ import {
   ChevronRight,
   CircleAlert,
   FileWarning,
+  Plus,
   Search,
   SlidersHorizontal,
   Upload,
@@ -25,6 +26,7 @@ import {
   type EditableJobDocument,
 } from '@/components/job-document-editor-dialog'
 import { Button } from '@/components/ui/button'
+import { NewJobDialog } from '@/components/new-job-dialog'
 import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
 import { getNextEventJobView, type EventJobViews } from '@/lib/event-job-view'
 import {
@@ -46,6 +48,14 @@ import {
 } from '@/components/job-row'
 
 type Scope = 'active' | 'all'
+
+type JobSegment = 'EVENT' | 'GENERAL_CARGO' | 'PROJECT'
+
+const segmentLabels: Record<JobSegment, string> = {
+  EVENT: 'Event',
+  GENERAL_CARGO: 'General Cargo',
+  PROJECT: 'Project',
+}
 
 const activeEvent = (event: LocalEvent | undefined) =>
   !!event && new Date(`${event.endsOn}T23:59:59`) >= new Date()
@@ -296,6 +306,8 @@ function JobPhaseChunk({
 export default function JobsPage() {
   const [jobs, setJobs] = useState<LocalJob[]>([])
   const [events, setEvents] = useState<LocalEvent[]>([])
+  const [segment, setSegment] = useState<JobSegment>('EVENT')
+  const [showNewJob, setShowNewJob] = useState(false)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [scope, setScope] = useState<Scope>('active')
@@ -407,11 +419,34 @@ export default function JobsPage() {
 
   return (
     <div className="space-y-6">
-      <section>
-        <h1 className="mt-1 text-3xl font-bold tracking-tight">Jobs</h1>
-        <p className="mt-2 text-sm text-slate-500">Kelola milestone job berdasarkan tenggatnya.</p>
+      <section className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight">Jobs</h1>
+          <p className="mt-2 text-sm text-slate-500">Kelola milestone job berdasarkan tenggatnya.</p>
+        </div>
+        <Button type="button" onClick={() => setShowNewJob(true)}>
+          <Plus data-icon="inline-start" />
+          Job baru
+        </Button>
       </section>
-      <section className="grid gap-3 lg:grid-cols-3">
+      <section aria-label="Kategori job">
+        <div className="inline-flex rounded-lg bg-slate-100 p-1 text-sm font-medium">
+          {(Object.keys(segmentLabels) as JobSegment[]).map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setSegment(value)}
+              aria-pressed={segment === value}
+              className={`rounded-md px-3 py-1.5 ${segment === value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+            >
+              {segmentLabels[value]}
+            </button>
+          ))}
+        </div>
+      </section>
+      {segment === 'EVENT' ? (
+        <>
+        <section className="grid gap-3 lg:grid-cols-3">
         <div className="card p-5" aria-labelledby="jobs-summary-title">
           <h2 id="jobs-summary-title" className="text-lg font-semibold">
             Summary
@@ -641,6 +676,18 @@ export default function JobsPage() {
           </p>
         </section>
       )}
+        </>
+      ) : (
+        <section className="card p-12 text-center">
+          <p className="font-semibold text-slate-800">
+            Belum ada job {segmentLabels[segment]}
+          </p>
+          <p className="mt-2 text-sm text-slate-500">
+            Modul {segmentLabels[segment]} menyusul — saat ini job dikelola per event.
+          </p>
+        </section>
+      )}
+      {showNewJob && <NewJobDialog events={events} onClose={() => setShowNewJob(false)} />}
       <JobDocumentEditorDialog
         job={editingDocument?.job ?? null}
         kind={editingDocument?.kind ?? 'INVOICE'}

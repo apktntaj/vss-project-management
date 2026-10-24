@@ -28,6 +28,7 @@ export {
 // Tipe hasil yang relevan bagi konsumen (bentuk baris mentah + ringkasan kartu). Tipe daftar/input
 // domain (EventListPage, EventListQuery, EventInput) diimpor konsumen langsung dari `@/domain/event/types`.
 export type { EventRow, EventSummary } from '@/features/events/repository'
+export { listLegacyEventRows } from '@/features/events/repository'
 export type {
   VenueRecord,
   EventOrganizerRecord,

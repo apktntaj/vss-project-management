@@ -15,12 +15,27 @@ import { NextRequest, NextResponse } from 'next/server'
 // adalah pilihan cutover yang jujur; baca pindah ke RSC.
 
 import { requireCurrentUser } from '@/features/auth'
-import { createEvent } from '@/features/events'
+import { createEvent, listLegacyEventRows } from '@/features/events'
 import { eventInputSchema } from '@/domain/event/validation'
 import { toErrorResponse } from '@/lib/server/errors'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+/**
+ * Daftar event dalam bentuk legacy (snake_case + embed) untuk halaman klien lama
+ * (detail event, detail CIPL) yang memetakan via lib/data-client. Cutover redesign
+ * pernah menghapus GET ini; pemanggil klien ternyata masih ada, jadi dikembalikan.
+ */
+export async function GET() {
+  try {
+    await requireCurrentUser()
+    const rows = await listLegacyEventRows()
+    return NextResponse.json(rows, { headers: { 'Cache-Control': 'no-store' } })
+  } catch (error) {
+    return toErrorResponse(error)
+  }
+}
 
 /**
  * Buat event. Parse `eventInputSchema` (format + invariant tanggal di Zod), delegasi ke use-case

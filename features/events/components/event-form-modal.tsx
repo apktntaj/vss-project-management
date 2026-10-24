@@ -23,12 +23,12 @@ export type EventFormOptions = {
   pics?: { id: string; name: string }[]
 }
 
-// Nilai awal form. Tanpa `id` → mode buat; dengan `id` → mode edit. Bentuk sejajar `EventInput`
-// domain (alias boleh null; referensi dipegang sebagai id).
+// Nilai awal form. Tanpa `id` → mode buat; dengan `id` → mode edit. `alias` tidak lagi diedit di
+// UI, tapi tetap dibawa saat edit agar PATCH tidak menghapus alias event lama.
 export type EventFormValues = {
   id?: string
   name: string
-  alias: string | null
+  alias?: string | null
   venueId: string
   eventOrganizerId: string
   picId: string
@@ -45,17 +45,24 @@ type EventFormModalProps = EventFormOptions & {
 
 // Field yang bisa membawa error validasi per-field dari server (path Zod/invariant).
 type FieldErrors = Partial<
-  Record<'name' | 'alias' | 'venueId' | 'eventOrganizerId' | 'picId' | 'startsOn' | 'endsOn', string>
+  Record<'name' | 'venueId' | 'eventOrganizerId' | 'picId' | 'startsOn' | 'endsOn', string>
 >
 
 const EMPTY: EventFormValues = {
   name: '',
-  alias: null,
   venueId: '',
   eventOrganizerId: '',
   picId: '',
   startsOn: '',
   endsOn: '',
+}
+
+// Aritmetika tanggal-saja tanpa lib: komponen lokal agar hasil tak bergeser zona waktu.
+function plusDays(isoDate: string, days: number): string {
+  const [year, month, day] = isoDate.split('-').map(Number)
+  const result = new Date(year, month - 1, day + days)
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${result.getFullYear()}-${pad(result.getMonth() + 1)}-${pad(result.getDate())}`
 }
 
 /**
@@ -88,11 +95,9 @@ export function EventFormModal({
     setErrors({})
     setSubmitting(true)
 
-    // Normalisasi alias: kosong-setelah-trim → null (sejalan dengan skema Zod di server).
-    const trimmedAlias = (values.alias ?? '').trim()
     const payload = {
       name: values.name.trim(),
-      alias: trimmedAlias.length > 0 ? trimmedAlias : null,
+      alias: values.alias ?? null,
       venueId: values.venueId.trim(),
       eventOrganizerId: values.eventOrganizerId.trim(),
       picId: values.picId.trim(),
@@ -150,7 +155,7 @@ export function EventFormModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-black/10 bg-white p-6 shadow-2xl"
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-black/10 bg-white p-6 shadow-2xl"
       >
         <div className="flex items-start justify-between gap-4">
           <h2 id={titleId} className="text-lg font-bold">
@@ -175,26 +180,12 @@ export function EventFormModal({
             <input
               id={`${titleId}-name`}
               value={values.name}
-              onChange={(inputEvent) => update('name', inputEvent.target.value)}
-              className="input"
+              onChange={(inputEvent) => update('name', inputEvent.target.value.toUpperCase())}
+              className="input uppercase"
               aria-invalid={Boolean(errors.name)}
               autoFocus
             />
             {errors.name ? <p className="mt-1 text-sm text-rose-600">{errors.name}</p> : null}
-          </div>
-
-          <div>
-            <label htmlFor={`${titleId}-alias`} className="label">
-              Alias <span className="font-normal text-slate-400">(opsional)</span>
-            </label>
-            <input
-              id={`${titleId}-alias`}
-              value={values.alias ?? ''}
-              onChange={(inputEvent) => update('alias', inputEvent.target.value)}
-              className="input"
-              aria-invalid={Boolean(errors.alias)}
-            />
-            {errors.alias ? <p className="mt-1 text-sm text-rose-600">{errors.alias}</p> : null}
           </div>
 
           <ReferenceField
@@ -234,7 +225,18 @@ export function EventFormModal({
                 id={`${titleId}-starts`}
                 type="date"
                 value={values.startsOn}
-                onChange={(inputEvent) => update('startsOn', inputEvent.target.value)}
+                onChange={(inputEvent) => {
+                  const nextStart = inputEvent.target.value
+                  // Tanggal akhir otomatis H+3 saat masih kosong atau terlanjur sebelum mulai.
+                  setValues((current) => ({
+                    ...current,
+                    startsOn: nextStart,
+                    endsOn:
+                      nextStart && (!current.endsOn || current.endsOn < nextStart)
+                        ? plusDays(nextStart, 3)
+                        : current.endsOn,
+                  }))
+                }}
                 className="input"
                 aria-invalid={Boolean(errors.startsOn)}
               />
@@ -317,8 +319,8 @@ function ReferenceField({
         <input
           id={id}
           value={value}
-          onChange={(inputEvent) => onChange(inputEvent.target.value)}
-          className="input"
+          onChange={(inputEvent) => onChange(inputEvent.target.value.toUpperCase())}
+          className="input uppercase"
           placeholder={placeholder}
           aria-invalid={Boolean(error)}
         />

@@ -31,7 +31,7 @@ import { logoutAction } from '@/app/(dashboard)/actions'
 const links = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/events', label: 'Events', icon: CalendarDays },
-  { href: '/jobs', label: 'Jobs', icon: BriefcaseBusiness, available: false },
+  { href: '/jobs', label: 'Jobs', icon: BriefcaseBusiness },
   { href: '/it-inventory', label: 'IT Inventory', icon: BookOpenText },
   { href: '/kanban', label: 'Tickets', icon: FolderKanban },
   { href: '/ceisa', label: 'CEISA', icon: Landmark, available: false },

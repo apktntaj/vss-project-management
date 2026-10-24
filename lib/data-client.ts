@@ -719,47 +719,40 @@ function eventFromRow(row: Record<string, unknown>): LocalEvent {
           cancelledById: String((cancellationRow as Record<string, unknown>).cancelled_by_id),
         }
       : null
+  const venueSource = (venueRow ?? {}) as Record<string, unknown>
   const venue =
     venueRow && typeof venueRow === 'object'
       ? {
           id: String(row.venue_id),
-          name: String((venueRow as Record<string, unknown>).name),
-          officialName: String((venueRow as Record<string, unknown>).name),
-          aliasName: null,
-          contacts: Array.isArray((venueRow as Record<string, unknown>).contacts)
-            ? ((venueRow as Record<string, unknown>).contacts as Record<string, unknown>[]).map(
-                contactFromRow,
-              )
-            : [],
-          address: ((venueRow as Record<string, unknown>).address as string | null) ?? null,
-          website: ((venueRow as Record<string, unknown>).website as string | null) ?? null,
-          loadingAccessNotes:
-            ((venueRow as Record<string, unknown>).loading_access_notes as string | null) ?? null,
+          name: String(venueSource.legal_name ?? venueSource.name),
+          officialName: String(venueSource.legal_name ?? venueSource.name),
+          aliasName: (venueSource.alias_name as string | null) ?? null,
+          contacts: [],
+          address: null,
+          website: null,
+          loadingAccessNotes: null,
           latitude: null,
           longitude: null,
           contactInfo: null,
-          createdAt: String((venueRow as Record<string, unknown>).created_at),
-          updatedAt: String((venueRow as Record<string, unknown>).updated_at),
+          createdAt: String(venueSource.created_at),
+          updatedAt: String(venueSource.updated_at),
         }
       : undefined
+  const organizerSource = (organizerRow ?? {}) as Record<string, unknown>
   const eventOrganizer =
     organizerRow && typeof organizerRow === 'object'
       ? {
           id: String(row.event_organizer_id),
-          name: String((organizerRow as Record<string, unknown>).name),
-          legalName: String((organizerRow as Record<string, unknown>).name),
+          name: String(organizerSource.legal_name ?? organizerSource.name),
+          legalName: String(organizerSource.legal_name ?? organizerSource.name),
           aliasName: null,
           contactInfo: null,
-          npwp: ((organizerRow as Record<string, unknown>).npwp as string | null) ?? null,
-          contacts: Array.isArray((organizerRow as Record<string, unknown>).contacts)
-            ? ((organizerRow as Record<string, unknown>).contacts as Record<string, unknown>[]).map(
-                contactFromRow,
-              )
-            : [],
-          address: ((organizerRow as Record<string, unknown>).address as string | null) ?? null,
-          website: ((organizerRow as Record<string, unknown>).website as string | null) ?? null,
-          createdAt: String((organizerRow as Record<string, unknown>).created_at),
-          updatedAt: String((organizerRow as Record<string, unknown>).updated_at),
+          npwp: null,
+          contacts: [],
+          address: null,
+          website: null,
+          createdAt: String(organizerSource.created_at),
+          updatedAt: String(organizerSource.updated_at),
         }
       : undefined
   return {
@@ -1321,43 +1314,44 @@ export async function saveJobOperationalDetails(
 
 export type InternationalJobInitInput = {
   eventId: string
-  agentId: string
+  agentId: string | null
   internationalJenis: InternationalJobJenis
 }
 
 /**
- * Inisiasi job international: satu agent = satu job per event. Fase inisiasi
- * hanya mencatat jenis dan agent; exhibitor binaan dilekatkan belakangan di detail job.
+ * Inisiasi job international: biasanya satu agent = satu job per event, tetapi agent
+ * opsional (exhibitor dapat bertindak sendiri). Fase inisiasi hanya mencatat jenis
+ * dan agent; exhibitor binaan dilekatkan belakangan di detail job.
  */
 export async function createInternationalJobInit(
   input: InternationalJobInitInput,
 ): Promise<LocalJob> {
   const [jobs, agents] = await Promise.all([readAll<LocalJob>('jobs'), readAll<Agent>('agents')])
-  const agent = agents.find((item) => item.id === input.agentId)
-  if (!agent) throw new Error('Agent tidak ditemukan.')
-  if (jobs.some((job) => job.agentId === input.agentId && job.eventId === input.eventId)) {
+  const agent = input.agentId ? (agents.find((item) => item.id === input.agentId) ?? null) : null
+  if (input.agentId && !agent) throw new Error('Agent tidak ditemukan.')
+  if (agent && jobs.some((job) => job.agentId === agent.id && job.eventId === input.eventId)) {
     throw new Error('Agent ini sudah memiliki job di event ini.')
   }
 
-  await addAgentToEvent(input.eventId, input.agentId)
+  if (agent) await addAgentToEvent(input.eventId, agent.id)
 
   const timestamp = now()
   const job: LocalJob = {
-    id: `job-for-agent-${input.agentId}-${input.eventId}`,
+    id: agent ? `job-for-agent-${agent.id}-${input.eventId}` : id(),
     jobNumber: '',
     awbNumber: null,
     blNumber: null,
     shipper: null,
     consignee: null,
     notifyParty: null,
-    agent: agent.name,
+    agent: agent?.name ?? null,
     shippingLine: null,
     cargoDescription: null,
     shipmentMode: null,
     cargoDetails: null,
     journeyDetails: null,
     type: 'IMPORT',
-    clientName: agent.name,
+    clientName: agent?.name ?? '',
     clientInfo: null,
     status: 'DRAFT',
     notes: null,
@@ -1366,7 +1360,7 @@ export async function createInternationalJobInit(
     createdById: null,
     eventId: input.eventId,
     exhibitorId: null,
-    agentId: input.agentId,
+    agentId: agent?.id ?? null,
     kind: 'INTERNATIONAL',
     internationalJenis: input.internationalJenis,
     sourceDocumentName: null,
@@ -1379,27 +1373,38 @@ export async function createInternationalJobInit(
 }
 
 /**
- * Inisiasi job Local: tanpa agent dan tanpa dokumen kepabeanan; exhibitor lokal
- * dilekatkan belakangan di detail job.
+ * Inisiasi job Local: tanpa dokumen kepabeanan; agent opsional (job local tidak
+ * membutuhkan agent). Exhibitor lokal dilekatkan belakangan di detail job.
  */
-export async function createLocalJobInit(eventId: string): Promise<LocalJob> {
+export async function createLocalJobInit(eventId: string, agentId?: string | null): Promise<LocalJob> {
+  let agent: Agent | null = null
+  if (agentId) {
+    const [jobs, agents] = await Promise.all([readAll<LocalJob>('jobs'), readAll<Agent>('agents')])
+    agent = agents.find((item) => item.id === agentId) ?? null
+    if (!agent) throw new Error('Agent tidak ditemukan.')
+    if (jobs.some((job) => job.agentId === agent!.id && job.eventId === eventId)) {
+      throw new Error('Agent ini sudah memiliki job di event ini.')
+    }
+    await addAgentToEvent(eventId, agent.id)
+  }
+
   const timestamp = now()
   const job: LocalJob = {
-    id: id(),
+    id: agent ? `job-for-agent-${agent.id}-${eventId}` : id(),
     jobNumber: '',
     awbNumber: null,
     blNumber: null,
     shipper: null,
     consignee: null,
     notifyParty: null,
-    agent: null,
+    agent: agent?.name ?? null,
     shippingLine: null,
     cargoDescription: null,
     shipmentMode: null,
     cargoDetails: null,
     journeyDetails: null,
     type: 'IMPORT',
-    clientName: 'Local',
+    clientName: agent?.name ?? 'Local',
     clientInfo: null,
     status: 'DRAFT',
     notes: null,
@@ -1408,7 +1413,7 @@ export async function createLocalJobInit(eventId: string): Promise<LocalJob> {
     createdById: null,
     eventId,
     exhibitorId: null,
-    agentId: null,
+    agentId: agent?.id ?? null,
     kind: 'LOCAL',
     internationalJenis: null,
     sourceDocumentName: null,

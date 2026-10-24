@@ -40,11 +40,11 @@ export async function GET() {
         .order('starts_on'),
       client
         .from('venues')
-        .select('id, name, contacts, address, website, loading_access_notes, created_at, updated_at')
+        .select('id, legal_name, alias_name, city, created_at, updated_at')
         .eq('workspace_id', workspaceId),
       client
         .from('event_organizers')
-        .select('id, name, npwp, contacts, address, website, created_at, updated_at')
+        .select('id, legal_name, created_at, updated_at')
         .eq('workspace_id', workspaceId),
       client
         .from('event_cancellations')

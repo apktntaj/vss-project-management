@@ -1,50 +1,54 @@
 'use client'
 
 import { useEffect, useState, type FormEvent } from 'react'
-import { Plus, X } from 'lucide-react'
+import { Upload, X } from 'lucide-react'
 
 import {
   createInternationalJobInit,
   createLocalJobInit,
   listAgents,
   saveAgent,
+  saveJobDocument,
   type Agent,
   type InternationalJobJenis,
   type LocalEvent,
   type LocalJob,
 } from '@/lib/data-client'
 import { internationalJobJenisLabels } from '@/domain/job/types'
+import {
+  isAcceptedJobDocument,
+  jobDocumentAccept,
+  type DocumentClassification,
+  type JobDocumentExtraction,
+} from '@/components/job-row'
 
 function toast(message: string, tone: 'success' | 'error') {
   window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
 }
 
 type JobTypeSelection = 'LOCAL' | InternationalJobJenis
+type AgentMode = 'existing' | 'new' | 'none'
 
 const jobTypeOptions: Array<{ value: JobTypeSelection; description: string }> = [
   {
-    value: 'LOCAL',
-    description: 'Barang dibawa langsung oleh exhibitor lokal tanpa dokumen kepabeanan.',
-  },
-  {
-    value: 'VENUE',
-    description: 'Pengiriman barang terkait kebutuhan venue event.',
-  },
-  {
-    value: 'ROAD_SHIPMENT',
-    description: 'Pengiriman darat antar wilayah, seperti grup ROAD SHIPMENT pada inward manifest.',
-  },
-  {
-    value: 'PERMANENT_IMPORT',
-    description: 'Impor tetap; barang menjadi milik impor dan tidak wajib diekspor kembali.',
+    value: 'TEMPORARY',
+    description: 'Impor sementara untuk event (BC 2.3); barang wajib keluar kembali.',
   },
   {
     value: 'ATA_CARNET',
-    description: 'Impor sementara dengan dokumen ATA Carnet.',
+    description: 'Impor sementara dengan paspor barang ATA Carnet.',
   },
   {
-    value: 'TEMPORARY_EXPORT',
-    description: 'Ekspor sementara; barang wajib dipulangkan kembali.',
+    value: 'ROAD_SHIPMENT',
+    description: 'Pengangkutan darat / pengalihan barang antar tempat (BC 2.7).',
+  },
+  {
+    value: 'PERMANENT_IMPORT',
+    description: 'Impor tetap; barang tetap berada di Indonesia (BC 3.0).',
+  },
+  {
+    value: 'LOCAL',
+    description: 'Barang pihak lokal tanpa dokumen kepabeanan.',
   },
 ]
 
@@ -52,8 +56,13 @@ function jobTypeLabel(value: JobTypeSelection) {
   return value === 'LOCAL' ? 'Local' : internationalJobJenisLabels[value]
 }
 
+/** Semua jenis boleh dengan atau tanpa agent; Local tidak membutuhkannya. */
+function defaultAgentMode(selection: JobTypeSelection): AgentMode {
+  return selection === 'LOCAL' ? 'none' : 'existing'
+}
+
 /**
- * Inisiasi job dalam satu form: jenis job (dropdown, default Venue) + agent.
+ * Inisiasi job dalam satu form: jenis job (dropdown, default Temporary) + agent opsional.
  * Exhibitor binaan tidak diisi di sini — menyusul di detail job.
  */
 export function JobInitModal({
@@ -65,10 +74,10 @@ export function JobInitModal({
   onCreated: (job: LocalJob) => void
   onCancel: () => void
 }) {
-  const [selection, setSelection] = useState<JobTypeSelection>('VENUE')
+  const [selection, setSelection] = useState<JobTypeSelection>('TEMPORARY')
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
-  const [agentMode, setAgentMode] = useState<'existing' | 'new'>('existing')
+  const [agentMode, setAgentMode] = useState<AgentMode>('existing')
   const [selectedAgentId, setSelectedAgentId] = useState('')
   const [newAgentName, setNewAgentName] = useState('')
   const [newAgentContactName, setNewAgentContactName] = useState('')
@@ -76,7 +85,55 @@ export function JobInitModal({
   const [newAgentPhone, setNewAgentPhone] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const isLocal = selection === 'LOCAL'
+  const [files, setFiles] = useState<File[]>([])
+
+  function addFiles(fileList: FileList | null) {
+    const incoming = Array.from(fileList ?? [])
+    if (!incoming.length) return
+    const accepted = incoming.filter(isAcceptedJobDocument)
+    if (accepted.length !== incoming.length) {
+      toast('File harus berupa PDF atau Excel.', 'error')
+    }
+    if (accepted.length) setFiles((current) => [...current, ...accepted])
+  }
+
+  // Job sudah tersimpan dulu; kegagalan per-dokumen tidak membatalkan job.
+  async function uploadDocuments(jobId: string) {
+    let uploaded = 0
+    for (const file of files) {
+      try {
+        const formData = new FormData()
+        formData.set('file', file)
+        const response = await fetch('/api/classify-job-document', {
+          method: 'POST',
+          body: formData,
+        })
+        const payload = (await response.json().catch(() => null)) as
+          | ({ classification?: DocumentClassification; error?: string } & JobDocumentExtraction)
+          | null
+        if (!response.ok || !payload || !payload.classification) {
+          throw new Error(payload?.error || 'Dokumen tidak dapat diperiksa.')
+        }
+        const kind =
+          payload.classification.documentType === 'UNREADABLE'
+            ? 'OTHER'
+            : payload.classification.documentType
+        await saveJobDocument(jobId, file, kind, payload.invoice, payload.transport)
+        uploaded += 1
+      } catch {
+        await saveJobDocument(jobId, file, 'OTHER').catch(() => undefined)
+        uploaded += 1
+      }
+    }
+    if (files.length) {
+      toast(
+        uploaded === files.length
+          ? `${uploaded} dokumen terunggah dan diperiksa AI.`
+          : `${uploaded}/${files.length} dokumen terunggah — sisanya gagal dan bisa diunggah ulang di detail job.`,
+        uploaded === files.length ? 'success' : 'error',
+      )
+    }
+  }
 
   useEffect(() => {
     let active = true
@@ -90,28 +147,24 @@ export function JobInitModal({
     }
   }, [])
 
+  function changeSelection(next: JobTypeSelection) {
+    setSelection(next)
+    setAgentMode(defaultAgentMode(next))
+  }
+
   async function submit(formEvent: FormEvent<HTMLFormElement>) {
     formEvent.preventDefault()
-    if (!isLocal && agentMode === 'new' && !newAgentName.trim()) {
-      setError('Nama agent wajib diisi.')
-      return
-    }
-    if (!isLocal && agentMode === 'existing' && !selectedAgentId) {
-      setError('Pilih agent atau buat agent baru.')
-      return
-    }
     setSaving(true)
     setError('')
     try {
-      if (isLocal) {
-        const job = await createLocalJobInit(event.id)
-        toast('Job Local dibuat.', 'success')
-        onCreated(job)
-        return
-      }
-      let agentId = selectedAgentId
-      let agentName = agents.find((agent) => agent.id === agentId)?.name ?? ''
-      if (agentMode === 'new') {
+      // Agent opsional penuh: satu-satunya syarat submit adalah jenis job terpilih.
+      // Pilihan kosong / nama agent baru kosong → job dibuat tanpa agent.
+      let agentId: string | null = null
+      let agentName = ''
+      if (agentMode === 'existing' && selectedAgentId) {
+        agentId = selectedAgentId
+        agentName = agents.find((agent) => agent.id === agentId)?.name ?? ''
+      } else if (agentMode === 'new' && newAgentName.trim()) {
         const created = await saveAgent({
           name: newAgentName,
           contact: {
@@ -126,12 +179,21 @@ export function JobInitModal({
         agentId = created.id
         agentName = created.name
       }
-      const job = await createInternationalJobInit({
-        eventId: event.id,
-        agentId,
-        internationalJenis: selection,
-      })
-      toast(`Job (${jobTypeLabel(selection)}) dibuat untuk agent ${agentName}.`, 'success')
+      const job =
+        selection === 'LOCAL'
+          ? await createLocalJobInit(event.id, agentId)
+          : await createInternationalJobInit({
+              eventId: event.id,
+              agentId,
+              internationalJenis: selection,
+            })
+      await uploadDocuments(job.id)
+      toast(
+        agentName
+          ? `Job (${jobTypeLabel(selection)}) dibuat untuk agent ${agentName}.`
+          : `Job (${jobTypeLabel(selection)}) dibuat.`,
+        'success',
+      )
       onCreated(job)
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Job tidak dapat dibuat.'
@@ -179,7 +241,7 @@ export function JobInitModal({
             Jenis job
             <select
               value={selection}
-              onChange={(selectEvent) => setSelection(selectEvent.target.value as JobTypeSelection)}
+              onChange={(selectEvent) => changeSelection(selectEvent.target.value as JobTypeSelection)}
               className="input mt-1"
             >
               {jobTypeOptions.map((option) => (
@@ -193,83 +255,142 @@ export function JobInitModal({
             </span>
           </label>
 
-          {isLocal ? (
-            <p className="rounded-xl border border-dashed border-black/15 px-4 py-3 text-sm text-slate-500">
-              Job Local tidak memakai agent. Exhibitor lokal dilekatkan belakangan di detail job.
-            </p>
-          ) : (
-            <section>
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-500">
-                  Agent
-                </h3>
+          <section>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-500">
+                Agent <span className="font-normal normal-case tracking-normal">(opsional)</span>
+              </h3>
+            </div>
+            <div className="mt-3 inline-flex rounded-lg bg-slate-100 p-1 text-sm font-medium" role="group" aria-label="Mode agent">
+              {(
+                [
+                  ['existing', 'Agent tersimpan'],
+                  ['new', 'Agent baru'],
+                  ['none', 'Tanpa agent'],
+                ] as Array<[AgentMode, string]>
+              ).map(([mode, modeLabel]) => (
                 <button
+                  key={mode}
                   type="button"
-                  onClick={() => setAgentMode((mode) => (mode === 'new' ? 'existing' : 'new'))}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-orange-700 hover:text-orange-800"
+                  onClick={() => setAgentMode(mode)}
+                  aria-pressed={agentMode === mode}
+                  className={`rounded-md px-3 py-1.5 ${agentMode === mode ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
                 >
-                  <Plus size={13} />
-                  {agentMode === 'new' ? 'Pilih agent tersimpan' : 'Agent baru'}
+                  {modeLabel}
                 </button>
-              </div>
-              {agentMode === 'existing' ? (
-                <label className="label mt-3">
-                  <select
-                    value={selectedAgentId}
-                    onChange={(selectEvent) => setSelectedAgentId(selectEvent.target.value)}
+              ))}
+            </div>
+            {agentMode === 'existing' ? (
+              <label className="label mt-3">
+                <select
+                  value={selectedAgentId}
+                  onChange={(selectEvent) => setSelectedAgentId(selectEvent.target.value)}
+                  className="input mt-1"
+                  disabled={loading}
+                >
+                  <option value="">{loading ? 'Memuat agent...' : 'Pilih agent (opsional)...'}</option>
+                  {agents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : agentMode === 'new' ? (
+              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                <label className="label sm:col-span-2">
+                  Nama agent
+                  <input
+                    value={newAgentName}
+                    onChange={(inputEvent) =>
+                      setNewAgentName(inputEvent.target.value.toLocaleUpperCase('id-ID'))
+                    }
                     className="input mt-1"
-                    disabled={loading}
-                  >
-                    <option value="">{loading ? 'Memuat agent...' : 'Pilih agent...'}</option>
-                    {agents.map((agent) => (
-                      <option key={agent.id} value={agent.id}>
-                        {agent.name}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="cth. JS LOGISTICS"
+                  />
                 </label>
-              ) : (
-                <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <label className="label sm:col-span-2">
-                    Nama agent
-                    <input
-                      value={newAgentName}
-                      onChange={(inputEvent) =>
-                        setNewAgentName(inputEvent.target.value.toLocaleUpperCase('id-ID'))
-                      }
-                      className="input mt-1"
-                      placeholder="cth. JS LOGISTICS"
-                    />
-                  </label>
-                  <label className="label">
-                    Nama PIC
-                    <input
-                      value={newAgentContactName}
-                      onChange={(inputEvent) => setNewAgentContactName(inputEvent.target.value)}
-                      className="input mt-1"
-                    />
-                  </label>
-                  <label className="label">
-                    Telepon PIC
-                    <input
-                      value={newAgentPhone}
-                      onChange={(inputEvent) => setNewAgentPhone(inputEvent.target.value)}
-                      className="input mt-1"
-                    />
-                  </label>
-                  <label className="label sm:col-span-2">
-                    Email PIC
-                    <input
-                      type="email"
-                      value={newAgentEmail}
-                      onChange={(inputEvent) => setNewAgentEmail(inputEvent.target.value)}
-                      className="input mt-1"
-                    />
-                  </label>
-                </div>
-              )}
-            </section>
-          )}
+                <label className="label">
+                  Nama PIC
+                  <input
+                    value={newAgentContactName}
+                    onChange={(inputEvent) => setNewAgentContactName(inputEvent.target.value)}
+                    className="input mt-1"
+                  />
+                </label>
+                <label className="label">
+                  Telepon PIC
+                  <input
+                    value={newAgentPhone}
+                    onChange={(inputEvent) => setNewAgentPhone(inputEvent.target.value)}
+                    className="input mt-1"
+                  />
+                </label>
+                <label className="label sm:col-span-2">
+                  Email PIC
+                  <input
+                    type="email"
+                    value={newAgentEmail}
+                    onChange={(inputEvent) => setNewAgentEmail(inputEvent.target.value)}
+                    className="input mt-1"
+                  />
+                </label>
+              </div>
+            ) : (
+              <p className="mt-3 rounded-xl border border-dashed border-black/15 px-4 py-3 text-sm text-slate-500">
+                Job dibuat tanpa agent — exhibitor bertindak untuk dirinya sendiri. Exhibitor
+                dilekatkan belakangan di detail job.
+              </p>
+            )}
+          </section>
+
+          <section>
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-500">
+              Dokumen <span className="font-normal normal-case tracking-normal">(opsional)</span>
+            </h3>
+            <label className="mt-3 flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-black/20 px-4 py-3 text-sm text-slate-500 hover:border-orange-300 hover:bg-orange-50">
+              <span className="min-w-0 truncate">Unggah B/L, AWB, atau Invoice (PDF/Excel)</span>
+              <Upload size={16} className="shrink-0 text-slate-400" aria-hidden="true" />
+              <input
+                type="file"
+                multiple
+                accept={jobDocumentAccept}
+                className="sr-only"
+                onChange={(inputEvent) => {
+                  addFiles(inputEvent.target.files)
+                  inputEvent.target.value = ''
+                }}
+              />
+            </label>
+            {files.length > 0 && (
+              <ul className="mt-2 space-y-1.5">
+                {files.map((file, index) => (
+                  <li
+                    key={`${file.name}-${index}`}
+                    className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-1.5 text-sm text-slate-700"
+                  >
+                    <span className="min-w-0 truncate">
+                      {file.name}
+                      <span className="ml-2 text-xs text-slate-400">
+                        {Math.max(1, Math.round(file.size / 1024))} KB
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}
+                      aria-label={`Hapus ${file.name} dari daftar`}
+                      className="shrink-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-200 hover:text-black"
+                    >
+                      <X size={14} aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-2 text-xs text-slate-500">
+              Dokumen diperiksa AI saat job dibuat — klasifikasi dan isinya (nomor, shipper,
+              consignee, ETA) mengisi field job otomatis.
+            </p>
+          </section>
         </div>
 
         <div className="shrink-0 border-t px-6 py-4 sm:px-8">
@@ -278,7 +399,7 @@ export function JobInitModal({
             <button type="button" onClick={onCancel} className="btn-secondary">
               Batal
             </button>
-            <button type="submit" disabled={saving || loading} className="btn-primary">
+            <button type="submit" disabled={saving} className="btn-primary">
               {saving ? 'Menyimpan...' : 'Buat job'}
             </button>
           </div>
