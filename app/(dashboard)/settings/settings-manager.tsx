@@ -13,6 +13,7 @@ import {
   type SettingsVenue,
 } from '@/lib/data-client'
 import { CeisaConnectionSettings } from '@/components/ceisa/connection-settings'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 type Editor = { resource: 'users' | 'venues' | 'organizers'; id?: string } | null
 
@@ -32,6 +33,8 @@ function nullable(form: FormData, name: string) {
 export function SettingsManager({ currentUserId }: { currentUserId: string }) {
   const [data, setData] = useState<SettingsData | null>(null)
   const [editor, setEditor] = useState<Editor>(null)
+  const [pendingDelete, setPendingDelete] = useState<SettingsUser | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -85,15 +88,20 @@ export function SettingsManager({ currentUserId }: { currentUserId: string }) {
     }
   }
 
-  async function hapusUser(user: SettingsUser) {
+  async function konfirmasiHapus() {
+    if (!pendingDelete) return
+    setDeleting(true)
     try {
-      await deleteSettingsUser(user.id)
+      await deleteSettingsUser(pendingDelete.id)
       const updated = await getSettingsData()
       setData(updated)
-      notify(`User ${user.nama} berhasil dihapus.`, 'success')
+      notify(`User ${pendingDelete.nama} berhasil dihapus.`, 'success')
+      setPendingDelete(null)
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'User tidak dapat dihapus.'
       notify(message, 'error')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -106,7 +114,7 @@ export function SettingsManager({ currentUserId }: { currentUserId: string }) {
     <div className="space-y-8">
       <section className="card overflow-hidden">
         <div className="flex items-center justify-between gap-4 border-b border-black/10 px-5 py-4"><div><h2 className="text-xl font-bold">Manajemen user</h2><p className="mt-1 text-sm text-slate-500">Tambah dan perbarui akses akun.</p></div><button className="btn-primary" onClick={() => setEditor({ resource: 'users' })}>Tambah user</button></div>
-        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Nama</th><th className="px-5 py-3">Email</th><th className="px-5 py-3">Akses</th><th className="px-5 py-3" /></tr></thead><tbody className="divide-y divide-black/5">{data.users.map((user) => <tr key={user.id}><td className="px-5 py-4 font-medium">{user.nama}</td><td className="px-5 py-4 text-slate-600">{user.email}</td><td className="px-5 py-4">{user.isAdmin ? 'Admin' : 'User'}</td><td className="px-5 py-4 text-right"><div className="flex justify-end gap-1"><button aria-label={`Edit ${user.nama}`} title="Edit" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" onClick={() => setEditor({ resource: 'users', id: user.id })}><Pencil size={16} /></button>{user.id !== currentUserId && <button aria-label={`Hapus ${user.nama}`} title="Hapus" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" onClick={() => hapusUser(user)}><Trash2 size={16} /></button>}</div></td></tr>)}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Nama</th><th className="px-5 py-3">Email</th><th className="px-5 py-3">Akses</th><th className="px-5 py-3" /></tr></thead><tbody className="divide-y divide-black/5">{data.users.map((user) => <tr key={user.id}><td className="px-5 py-4 font-medium">{user.nama}</td><td className="px-5 py-4 text-slate-600">{user.email}</td><td className="px-5 py-4">{user.isAdmin ? 'Admin' : 'User'}</td><td className="px-5 py-4 text-right"><div className="flex justify-end gap-1"><button aria-label={`Edit ${user.nama}`} title="Edit" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" onClick={() => setEditor({ resource: 'users', id: user.id })}><Pencil size={16} /></button>{user.id !== currentUserId && <button aria-label={`Hapus ${user.nama}`} title="Hapus" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" onClick={() => setPendingDelete(user)}><Trash2 size={16} /></button>}</div></td></tr>)}</tbody></table></div>
       </section>
       <section className="card overflow-hidden">
         <div className="flex items-center justify-between gap-4 border-b border-black/10 px-5 py-4"><div><h2 className="text-xl font-bold">Venue</h2><p className="mt-1 text-sm text-slate-500">Kelola venue yang dipilih saat membuat event.</p></div><button className="btn-primary" onClick={() => setEditor({ resource: 'venues' })}>Tambah venue</button></div>
@@ -118,6 +126,20 @@ export function SettingsManager({ currentUserId }: { currentUserId: string }) {
       </section>
       <CeisaConnectionSettings />
       {editor && <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"><form onSubmit={submit} className="card w-full max-w-xl space-y-4 p-6"><div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-bold">{editor.id ? 'Edit' : 'Tambah'} {editor.resource === 'users' ? 'user' : editor.resource === 'venues' ? 'venue' : 'event organizer'}</h2><p className="mt-1 text-sm text-slate-500">Field bertanda wajib harus diisi.</p></div><button type="button" className="btn-secondary" onClick={() => { setEditor(null); setError('') }}>Tutup</button></div>{editor.resource === 'users' ? <><label className="label">Nama<input name="nama" required defaultValue={selectedUser?.nama} className="input" /></label><label className="label">Email<input name="email" type="email" required defaultValue={selectedUser?.email} className="input" /></label><label className="label">Password<input name="password" type="password" required={!editor.id} className="input" /></label><label className="flex items-center gap-3 text-sm font-medium"><input name="isAdmin" type="checkbox" defaultChecked={selectedUser?.isAdmin} />Akses admin</label></> : editor.resource === 'venues' ? <><label className="label">Nama venue<input name="legalName" required defaultValue={selectedVenue?.legalName} className="input" /></label><label className="label">Alias <span className="font-normal text-slate-400">(opsional)</span><input name="aliasName" defaultValue={selectedVenue?.aliasName ?? ''} className="input" /></label><label className="label">Kota<input name="city" defaultValue={selectedVenue?.city ?? ''} className="input" /></label></> : <><label className="label">Nama organizer<input name="legalName" required defaultValue={selectedOrganizer?.legalName} className="input" /></label></>}{error && <p className="text-sm font-medium text-rose-700">{error}</p>}<div className="flex justify-end gap-3"><button type="button" className="btn-secondary" onClick={() => { setEditor(null); setError('') }}>Batal</button><button disabled={saving} className="btn-primary">{saving ? 'Menyimpan…' : 'Simpan'}</button></div></form></div>}
+      <Dialog open={pendingDelete !== null} onOpenChange={(next) => { if (!next) setPendingDelete(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Hapus user ini?</DialogTitle>
+            <DialogDescription>
+              {pendingDelete ? <>User <strong>{pendingDelete.nama}</strong> ({pendingDelete.email}) akan dihapus permanen. User yang masih dirujuk data lain (mis. PIC event) tidak dapat dihapus.</> : null}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-3">
+            <button type="button" className="btn-secondary" disabled={deleting} onClick={() => setPendingDelete(null)}>Batal</button>
+            <button type="button" className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60" disabled={deleting} onClick={konfirmasiHapus}>{deleting ? 'Menghapus…' : 'Hapus'}</button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
