@@ -59,11 +59,12 @@ export function ChangePasswordDialog() {
             type="button"
             aria-label="Ganti kata sandi"
             title="Ganti kata sandi"
-            className="flex size-8 items-center justify-center rounded-full border border-black/10 text-slate-600 hover:bg-slate-100"
+            className="flex items-center gap-2 rounded-full border border-black/10 py-1.5 pl-3 pr-3.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
           />
         }
       >
         <KeyRound size={14} />
+        <span className="hidden sm:inline">Ganti sandi</span>
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>
