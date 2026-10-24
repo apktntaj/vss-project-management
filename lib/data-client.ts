@@ -984,7 +984,10 @@ export type SettingsData = {
   organizers: SettingsOrganizer[]
 }
 
-async function settingsRequest<T>(method: 'GET' | 'POST' | 'PATCH', body?: unknown): Promise<T> {
+async function settingsRequest<T>(
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  body?: unknown,
+): Promise<T> {
   const response = await fetch('/api/settings', {
     method,
     cache: 'no-store',
@@ -1019,6 +1022,25 @@ export function updateSettingsRecord<T>(
   input: unknown,
 ) {
   return settingsRequest<T>('PATCH', { resource, id, input })
+}
+
+export function deleteSettingsUser(id: string) {
+  return settingsRequest<void>('DELETE', { resource: 'users', id })
+}
+
+export async function changePassword(input: { currentPassword: string; newPassword: string }) {
+  const response = await fetch('/api/account/password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  const data = (await response.json().catch(() => null)) as { error?: string } | null
+  if (!response.ok)
+    throw new Error(
+      data && typeof data === 'object' && typeof data.error === 'string'
+        ? data.error
+        : 'Kata sandi tidak dapat diganti.',
+    )
 }
 
 export async function saveEvent(input: EventInput) {

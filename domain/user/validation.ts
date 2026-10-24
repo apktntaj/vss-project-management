@@ -6,3 +6,10 @@ export const UserSchema = z.object({
   password: z.string().min(1, 'Password wajib diisi.'),
   isAdmin: z.boolean(),
 })
+
+export const PasswordChangeSchema = z.object({
+  currentPassword: z.string().min(1, 'Kata sandi saat ini wajib diisi.'),
+  newPassword: z.string().min(8, 'Kata sandi baru minimal 8 karakter.'),
+})
+
+export type PasswordChangeInput = z.infer<typeof PasswordChangeSchema>

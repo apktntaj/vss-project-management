@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import {
   createSettingsRecord,
+  deleteSettingsUser,
   getSettingsData,
   updateSettingsRecord,
   type SettingsData,
@@ -27,7 +28,7 @@ function nullable(form: FormData, name: string) {
   return value || null
 }
 
-export function SettingsManager() {
+export function SettingsManager({ currentUserId }: { currentUserId: string }) {
   const [data, setData] = useState<SettingsData | null>(null)
   const [editor, setEditor] = useState<Editor>(null)
   const [saving, setSaving] = useState(false)
@@ -83,6 +84,18 @@ export function SettingsManager() {
     }
   }
 
+  async function hapusUser(user: SettingsUser) {
+    try {
+      await deleteSettingsUser(user.id)
+      const updated = await getSettingsData()
+      setData(updated)
+      notify(`User ${user.nama} berhasil dihapus.`, 'success')
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : 'User tidak dapat dihapus.'
+      notify(message, 'error')
+    }
+  }
+
   if (!data) return <div className="card p-6 text-sm text-slate-500">Memuat pengaturan…</div>
   const selectedUser = editor?.resource === 'users' && editor.id ? data.users.find((user) => user.id === editor.id) : undefined
   const selectedVenue = editor?.resource === 'venues' && editor.id ? data.venues.find((venue) => venue.id === editor.id) : undefined
@@ -92,7 +105,7 @@ export function SettingsManager() {
     <div className="space-y-8">
       <section className="card overflow-hidden">
         <div className="flex items-center justify-between gap-4 border-b border-black/10 px-5 py-4"><div><h2 className="text-xl font-bold">Manajemen user</h2><p className="mt-1 text-sm text-slate-500">Tambah dan perbarui akses akun.</p></div><button className="btn-primary" onClick={() => setEditor({ resource: 'users' })}>Tambah user</button></div>
-        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Nama</th><th className="px-5 py-3">Email</th><th className="px-5 py-3">Akses</th><th className="px-5 py-3" /></tr></thead><tbody className="divide-y divide-black/5">{data.users.map((user) => <tr key={user.id}><td className="px-5 py-4 font-medium">{user.nama}</td><td className="px-5 py-4 text-slate-600">{user.email}</td><td className="px-5 py-4">{user.isAdmin ? 'Admin' : 'User'}</td><td className="px-5 py-4 text-right"><button className="text-sm font-semibold text-orange-700" onClick={() => setEditor({ resource: 'users', id: user.id })}>Edit</button></td></tr>)}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Nama</th><th className="px-5 py-3">Email</th><th className="px-5 py-3">Akses</th><th className="px-5 py-3" /></tr></thead><tbody className="divide-y divide-black/5">{data.users.map((user) => <tr key={user.id}><td className="px-5 py-4 font-medium">{user.nama}</td><td className="px-5 py-4 text-slate-600">{user.email}</td><td className="px-5 py-4">{user.isAdmin ? 'Admin' : 'User'}</td><td className="px-5 py-4 text-right space-x-3"><button className="text-sm font-semibold text-orange-700" onClick={() => setEditor({ resource: 'users', id: user.id })}>Edit</button>{user.id !== currentUserId && <button className="text-sm font-semibold text-rose-700" onClick={() => hapusUser(user)}>Hapus</button>}</td></tr>)}</tbody></table></div>
       </section>
       <section className="card overflow-hidden">
         <div className="flex items-center justify-between gap-4 border-b border-black/10 px-5 py-4"><div><h2 className="text-xl font-bold">Venue</h2><p className="mt-1 text-sm text-slate-500">Kelola venue yang dipilih saat membuat event.</p></div><button className="btn-primary" onClick={() => setEditor({ resource: 'venues' })}>Tambah venue</button></div>

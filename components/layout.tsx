@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { ChangePasswordDialog } from '@/components/change-password-dialog'
 import {
   Dialog,
   DialogContent,
@@ -265,6 +266,7 @@ export function AppShell({
             </span>
           </div>
           <div className="flex items-center gap-3">
+            <ChangePasswordDialog />
             <span className="hidden text-sm font-medium text-slate-700 lg:inline">
               {user.name ?? 'Pengguna'}
             </span>

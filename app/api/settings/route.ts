@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
-import { auth } from '@/auth'
+import { auth } from '@/features/auth'
 import { hashPassword } from '@/lib/auth/password'
 import { UserSchema } from '@/domain/user/validation'
 import { referenceEventOrganizerInputSchema, referenceVenueInputSchema } from '@/domain/event/validation'
@@ -18,6 +18,7 @@ async function requireAdmin() {
   const session = await auth()
   if (!session?.user) throw new Error('Autentikasi diperlukan.')
   if (!session.user.isAdmin) throw new Error('Hanya admin yang dapat mengelola pengaturan.')
+  return session
 }
 
 function failure(error: unknown) {
@@ -71,6 +72,10 @@ export async function POST(request: NextRequest) {
         email: input.email, full_name: input.nama, role: 'STAFF', job_role: 'STAFF', is_admin: input.isAdmin, access_level: input.isAdmin ? 'ADMIN' : 'MEMBER', password_hash: await hashPassword(input.password),
       }).select('id, full_name, email, job_role, access_level, is_active').single()
       if (error) throw new Error(`Pengguna tidak dapat dibuat: ${error.message}`)
+      const { data: workspace, error: workspaceError } = await getSupabaseAdmin().from('workspaces').select('id').eq('slug', 'default').single<{ id: string }>()
+      if (workspaceError || !workspace) throw new Error('Workspace tidak dapat dimuat: user dibuat tanpa keanggotaan workspace.')
+      const { error: memberError } = await getSupabaseAdmin().from('workspace_members').insert({ workspace_id: workspace.id, user_id: data.id, role: 'MEMBER' })
+      if (memberError) throw new Error(`Keanggotaan workspace tidak dapat dibuat: ${memberError.message}`)
       return NextResponse.json({ id: data.id, nama: data.full_name, email: data.email, jobRole: data.job_role, isAdmin: data.access_level === 'ADMIN', isActive: data.is_active })
     }
 
@@ -130,6 +135,29 @@ export async function PATCH(request: NextRequest) {
     }).eq('id', id).select('id, legal_name').single()
     if (error || !data) throw new Error(`Event organizer tidak dapat diperbarui: ${error?.message ?? 'tidak ditemukan'}`)
     return NextResponse.json({ id: data.id, legalName: data.legal_name })
+  } catch (error) {
+    return failure(error)
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = await requireAdmin()
+    const body = await request.json()
+    const resource = resourceSchema.parse(body.resource)
+    const id = z.string().min(1).parse(body.id)
+    if (resource !== 'users') throw new Error('Hanya user yang dapat dihapus.')
+    if (!isSupabaseConfigured()) throw new Error('Penghapusan user memerlukan Supabase.')
+    if (session.user.id === id) throw new Error('Akun sendiri tidak dapat dihapus.')
+    const client = getSupabaseAdmin()
+    const { count } = await client.from('events').select('id', { count: 'exact', head: true }).eq('pic_id', id)
+    if (count && count > 0) throw new Error(`User masih PIC dari ${count} event — ganti PIC event tersebut terlebih dahulu.`)
+    const { error } = await client.from('app_users').delete().eq('id', id)
+    if (error) {
+      if (error.code === '23503') throw new Error('User masih dirujuk data lain (mis. pembuat event atau penulis komentar) sehingga tidak dapat dihapus.')
+      throw new Error(`User tidak dapat dihapus: ${error.message}`)
+    }
+    return new NextResponse(null, { status: 204 })
   } catch (error) {
     return failure(error)
   }

@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { auth } from '@/auth'
+import { auth } from '@/features/auth'
 import { SettingsManager } from './settings-manager'
 
 export default async function SettingsPage() {
@@ -16,7 +16,7 @@ export default async function SettingsPage() {
           Kelola user, venue, dan event organizer.
         </p>
       </div>
-      <SettingsManager />
+      <SettingsManager currentUserId={session.user.id} />
     </div>
   )
 }
