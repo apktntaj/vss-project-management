@@ -14,6 +14,19 @@ export const dynamic = 'force-dynamic'
 const userUpdateSchema = UserSchema.extend({ password: z.string().min(1, 'Password wajib diisi.').optional() })
 const resourceSchema = z.enum(['users', 'venues', 'organizers'])
 
+// Mengapa: fallback demo-user (penyimpanan in-memory) hanya sah di luar produksi. Di produksi,
+// Supabase yang tak terkonfigurasi adalah kesalahan deploy (mis. env var hilang di container) —
+// menulis user ke memori yang menguap tiap restart adalah kegagalan senyap. Jalur login di
+// `auth.ts` sudah menegakkan aturan yang sama; helper ini menyamakannya untuk /api/settings.
+// Mengembalikan true berarti pemanggil boleh memakai jalur demo; melempar berarti harus berhenti.
+function demoFallbackAllowed(): boolean {
+  if (isSupabaseConfigured()) return false
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Supabase belum dikonfigurasi di server. Hubungi admin sistem.')
+  }
+  return true
+}
+
 async function requireAdmin() {
   const session = await auth()
   if (!session?.user) throw new Error('Autentikasi diperlukan.')
@@ -29,7 +42,7 @@ function failure(error: unknown) {
 export async function GET() {
   try {
     await requireAdmin()
-    if (!isSupabaseConfigured()) return NextResponse.json({ users: listDemoUsers().map((user) => ({ ...user, id: user.email })), venues: [], organizers: [] })
+    if (demoFallbackAllowed()) return NextResponse.json({ users: listDemoUsers().map((user) => ({ ...user, id: user.email })), venues: [], organizers: [] })
 
     const client = getSupabaseAdmin()
     const [{ data: users, error: usersError }, { data: workspace, error: workspaceError }] = await Promise.all([
@@ -63,7 +76,7 @@ export async function POST(request: NextRequest) {
     const resource = resourceSchema.parse(body.resource)
     if (resource === 'users') {
       const input = UserSchema.parse(body.input)
-      if (!isSupabaseConfigured()) {
+      if (demoFallbackAllowed()) {
         const result = addDemoUser(input)
         if (!result.ok) throw new Error(result.error)
         return NextResponse.json(result.user)
@@ -110,7 +123,7 @@ export async function PATCH(request: NextRequest) {
     const id = z.string().min(1).parse(body.id)
     if (resource === 'users') {
       const input = userUpdateSchema.parse(body.input)
-      if (!isSupabaseConfigured()) {
+      if (demoFallbackAllowed()) {
         const result = updateDemoUser(id, input)
         if (!result.ok) throw new Error(result.error)
         return NextResponse.json(result.user)

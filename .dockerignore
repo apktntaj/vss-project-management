@@ -1,0 +1,28 @@
+# Jaga build context kecil dan jangan pernah mengirim rahasia/artefak lokal ke image.
+node_modules
+.next
+.git
+.gitignore
+.vscode
+.zcode
+.zcodeignore
+
+# Rahasia lingkungan — JANGAN masuk image. Env disuntikkan saat runtime via compose.
+.env
+.env.local
+.env.*.local
+
+# Artefak & dokumen yang tak dibutuhkan runtime.
+Dockerfile
+.dockerignore
+docker-compose.yml
+Caddyfile
+npm-debug.log*
+*.log
+coverage
+.DS_Store
+docs
+documentation
+README.md
+AGENTS.md
+ecosystem.config.js

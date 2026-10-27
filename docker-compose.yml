@@ -1,0 +1,63 @@
+# Deploy VPS: dua service — `web` (Next.js standalone) di belakang `caddy` (reverse
+# proxy + TLS Let's Encrypt otomatis). Database TETAP eksternal di Supabase; tidak ada
+# Postgres di sini. Env runtime disuntik dari file `.env` di VPS (lihat .env.example),
+# TIDAK dibakar ke image.
+#
+# Pakai:
+#   1. Salin .env.example → .env di VPS, isi nilai produksi (SUPABASE_*, AUTH_SECRET, dst).
+#   2. Set DOMAIN dan ACME_EMAIL di .env (dipakai Caddy untuk TLS).
+#   3. docker compose up -d --build
+#
+# Caddy otomatis menerbitkan + memperpanjang sertifikat TLS untuk DOMAIN. Hanya port
+# 80/443 yang terekspos ke internet; `web` hanya dijangkau lewat jaringan internal compose.
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # Semua env runtime dibaca dari file .env di VPS. `env_file` menyuntik seluruh isinya
+    # ke environment container tanpa menuliskannya ke image atau ke compose yang ter-commit.
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    expose:
+      # Hanya terekspos ke jaringan internal compose, bukan ke host/internet. Caddy yang
+      # menjangkau web:3000.
+      - '3000'
+    networks:
+      - web-net
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      # Dibaca oleh Caddyfile. DOMAIN = nama domain publik app; ACME_EMAIL untuk notifikasi
+      # Let's Encrypt. Keduanya diset di .env VPS.
+      - DOMAIN=${DOMAIN}
+      - ACME_EMAIL=${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Volume persisten: sertifikat TLS + state ACME. Tanpa ini, tiap restart menerbitkan
+      # ulang sertifikat dan bisa kena rate limit Let's Encrypt.
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+    networks:
+      - web-net
+
+networks:
+  web-net:
+    driver: bridge
+
+volumes:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,34 @@
+# Reverse proxy + TLS otomatis. Caddy menerbitkan & memperpanjang sertifikat Let's Encrypt
+# untuk {$DOMAIN} tanpa konfigurasi tambahan. {$DOMAIN} dan {$ACME_EMAIL} berasal dari
+# environment (diset di .env VPS lewat docker-compose).
+
+{
+	# Email akun ACME untuk notifikasi kedaluwarsa/masalah penerbitan sertifikat.
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	# Teruskan seluruh trafik ke service `web` di jaringan internal compose. Caddy
+	# otomatis menambahkan header X-Forwarded-* yang dipercaya NextAuth (trustHost: true)
+	# sehingga callback/cookie sesi bekerja di balik proxy.
+	reverse_proxy web:3000
+
+	# Kompresi respons teks (HTML/JS/CSS/JSON).
+	encode zstd gzip
+
+	# Header keamanan dasar. HSTS aman karena Caddy memaksa HTTPS.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Jangan bocorkan server token.
+		-Server
+	}
+
+	# Log akses ke stdout (ditangkap `docker compose logs caddy`).
+	log {
+		output stdout
+		format console
+	}
+}
