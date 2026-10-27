@@ -1315,6 +1315,8 @@ export async function saveJobOperationalDetails(
 export type InternationalJobInitInput = {
   eventId: string
   agentId: string | null
+  /** Exhibitor yang mengatur sendiri pengirimannya — hanya saat tanpa agent. */
+  exhibitorId?: string | null
   internationalJenis: InternationalJobJenis
 }
 
@@ -1359,7 +1361,7 @@ export async function createInternationalJobInit(
     assignedToId: null,
     createdById: null,
     eventId: input.eventId,
-    exhibitorId: null,
+    exhibitorId: input.exhibitorId ?? null,
     agentId: agent?.id ?? null,
     kind: 'INTERNATIONAL',
     internationalJenis: input.internationalJenis,
@@ -1376,7 +1378,11 @@ export async function createInternationalJobInit(
  * Inisiasi job Local: tanpa dokumen kepabeanan; agent opsional (job local tidak
  * membutuhkan agent). Exhibitor lokal dilekatkan belakangan di detail job.
  */
-export async function createLocalJobInit(eventId: string, agentId?: string | null): Promise<LocalJob> {
+export async function createLocalJobInit(
+  eventId: string,
+  agentId?: string | null,
+  exhibitorId?: string | null,
+): Promise<LocalJob> {
   let agent: Agent | null = null
   if (agentId) {
     const [jobs, agents] = await Promise.all([readAll<LocalJob>('jobs'), readAll<Agent>('agents')])
@@ -1412,7 +1418,7 @@ export async function createLocalJobInit(eventId: string, agentId?: string | nul
     assignedToId: null,
     createdById: null,
     eventId,
-    exhibitorId: null,
+    exhibitorId: exhibitorId ?? null,
     agentId: agent?.id ?? null,
     kind: 'LOCAL',
     internationalJenis: null,

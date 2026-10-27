@@ -186,14 +186,12 @@ Job adalah salah satu dari:
 
 JobLocal
   event : EventId
-  klien : ExhibitorId
   agent : AgentId, atau kosong
   pic   : UserId, atau kosong
   status: StatusJob
 
 JobInternational
   event     : EventId
-  klien     : ExhibitorId
   agent     : AgentId, atau kosong
   jenis     : JenisInternational
   dokumenBc : daftar DokumenBC (boleh kosong)
@@ -208,15 +206,36 @@ lokal, venue-ke-venue) sehingga **tidak memiliki dan tidak dapat memiliki** doku
 JobInternational adalah pekerjaan lintas negara melalui jalur kepabeanan. Agent opsional pada
 kedua varian (keputusan domain expert 2026-10-24): JobLocal tidak membutuhkannya, JobInternational
 biasanya memakainya; jika ada, agent adalah pemilik dokumen sumber (CIPL, B/L,
-AWB) sementara job adalah pemilik dokumen proses (BC). Klien tepat satu: job melayani satu
-exhibitor. Manifest dan kepulangan hanya menempel pada jalur international (definisi di dokumen
-manifest). PIC opsional sampai ditetapkan; pemilik event adalah PIC default koordinasi.
+AWB) sementara job adalah pemilik dokumen proses (BC).
+
+Agent menurut domain expert (2026-10-24) adalah **pihak yang mengatur pengiriman barang dari
+luar negeri ke Indonesia**. Bila exhibitor mengatur sendiri pengirimannya, job dibuat TANPA
+agent — exhibitor itu sekaligus pengatur pengiriman dan pemilik barang, dan peserta job
+adalah dirinya sendiri (satu).
+
+Job adalah dokumen LEGAL pengangkutan: nama pada B/L atau AWB tepat satu (biasanya agent).
+Exhibitor yang dilayani sebuah job bisa LEBIH DARI SATU — konsep **MENUMPANG** (keputusan domain
+expert 2026-10-24): beberapa exhibitor menitipkan barangnya dalam satu pengiriman yang sama,
+TERMASUK pada job tanpa agent. Relasi ini PENGETAHUAN INTERNAL, bukan bagian dokumen legal:
+rincian barang tiap exhibitor terjabar di CIPL masing-masing — bukan di job.
+
+Arah model (disepakati 2026-10-24, belum diimplementasi penuh):
+`pengaturPengiriman` = AGENT (agentId) | EXHIBITOR (exhibitorId yang mengatur sendiri, opsi a)
+| kosong; `peserta` = daftar ExhibitorId yang dilekatkan eksplisit. Untuk job dengan agent,
+peserta terisi DEFAULT dari exhibitor binaan agent pada event yang sama (derivasi agent —
+saat ini satu-satunya mekanisme, via `buildManifestView`); untuk job tanpa agent, peserta
+diisi manual dan pengaturnya disarankan dari kecocokan nama shipper B/L (nama adalah BUKTI
+yang menyarankan, ID hasil konfirmasi adalah TAUTAN — nama bebas dokumen legal tidak
+dipakai sebagai relasi data). Manifest dan kepulangan hanya menempel pada jalur
+international (definisi di dokumen manifest). PIC opsional sampai ditetapkan;
+pemilik event adalah PIC default koordinasi.
 
 **Contoh (semua varian dan boundary):**
 
-1. JobLocal — event JIE-2026, klien Dinas Pariwisata, agent kosong, pic kosong, status DRAFT.
-2. JobInternational dengan agent — event JIE-2026, klien Kementerian Koperasi, agent ALLPACK,
-   jenis TEMPORARY, dokumenBc `[BC_2_3 terdaftar]`, manifest terisi, kepulangan kosong.
+1. JobLocal — event JIE-2026, agent kosong, pic kosong, status DRAFT.
+2. JobInternational dengan agent — event JIE-2026, agent ALLPACK (nama legal di B/L),
+   jenis TEMPORARY, dokumenBc `[BC_2_3 terdaftar]`, manifest terisi, kepulangan kosong;
+   pesertanya (menumpang): 3 exhibitor binaan ALLPACK pada event itu.
 3. JobInternational tanpa agent (exhibitor bertindak sendiri) — jenis PERMANENT_IMPORT,
    dokumenBc kosong (boundary: baru dibuat, belum diajukan).
 4. JobInternational ROAD_SHIPMENT dengan dokumen BC 2.7 dan kepulangan terisi.
@@ -224,6 +243,8 @@ manifest). PIC opsional sampai ditetapkan; pemilik event adalah PIC default koor
 Invalid (tidak dapat dibentuk dari definisi — inilah tujuannya):
 
 - JobLocal dengan dokumen BC → tidak ada field untuk itu pada varian Local.
+- Tautan peserta berbasis KESAMAAN NAMA shipper B/L → nama hanya saran; tautan
+  harus ID hasil konfirmasi pengguna.
 - Job tanpa kind ("Job lama" pada data sekarang) → definisi memaksa tepat satu varian.
 - JobInternational tanpa klien → kedua varian mewajibkan klien.
 
@@ -295,8 +316,14 @@ mengizinkan keadaan ketiga ini.
    lama vs model unified — keputusan terbesar yang tersisa.)
 2. **JenisInternational → itemization?** ATA_CARNET (nomor carnet) dan TEMPORARY
    (tenggat kepulangan) berindikasi membawa data sendiri.
-3. **Billing** (requirements J-11: NOT_READY … PAID dengan nominal/invoice) — masuk model job
+3. **Titik taut peserta (TERJAWAB 2026-10-24)** — tautan peserta adalah pilihan EKSPLISIT
+   (ID): `pengaturPengiriman` (agent / exhibitor yang mengatur sendiri) + daftar `peserta`
+   yang dilekatkan manual. Job tanpa agent boleh berpeserta lebih dari satu. Nama shipper
+   pada B/L hanya SARAN pengisi awal (bukti), bukan relasi data — nama bebas dokumen legal
+   terlalu rapuh untuk jadi tautan. Implementasi bertahap: derivasi agent tetap dipakai
+   sebagai pengisian default sampai relasi eksplisit mendarat.
+4. **Billing** (requirements J-11: NOT_READY … PAID dengan nominal/invoice) — masuk model job
    yang baru atau menjadi konsep terpisah?
-4. **Revisi DokumenBC**: nomor registrasi salah terbit — dokumen baru atau mutasi field?
-5. **NomorJob**: siapa yang menetapkan (manifes klien vs sistem) dan apakah perlu keunikan
+5. **Revisi DokumenBC**: nomor registrasi salah terbit — dokumen baru atau mutasi field?
+6. **NomorJob**: siapa yang menetapkan (manifes klien vs sistem) dan apakah perlu keunikan
    per event?

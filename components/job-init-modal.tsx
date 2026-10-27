@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState, type FormEvent } from 'react'
-import { Upload, X } from 'lucide-react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Plus, Upload, X } from 'lucide-react'
 
 import {
   createInternationalJobInit,
@@ -27,7 +27,6 @@ function toast(message: string, tone: 'success' | 'error') {
 }
 
 type JobTypeSelection = 'LOCAL' | InternationalJobJenis
-type AgentMode = 'existing' | 'new' | 'none'
 
 const jobTypeOptions: Array<{ value: JobTypeSelection; description: string }> = [
   {
@@ -56,11 +55,6 @@ function jobTypeLabel(value: JobTypeSelection) {
   return value === 'LOCAL' ? 'Local' : internationalJobJenisLabels[value]
 }
 
-/** Semua jenis boleh dengan atau tanpa agent; Local tidak membutuhkannya. */
-function defaultAgentMode(selection: JobTypeSelection): AgentMode {
-  return selection === 'LOCAL' ? 'none' : 'existing'
-}
-
 /**
  * Inisiasi job dalam satu form: jenis job (dropdown, default Temporary) + agent opsional.
  * Exhibitor binaan tidak diisi di sini — menyusul di detail job.
@@ -77,8 +71,10 @@ export function JobInitModal({
   const [selection, setSelection] = useState<JobTypeSelection>('TEMPORARY')
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
-  const [agentMode, setAgentMode] = useState<AgentMode>('existing')
-  const [selectedAgentId, setSelectedAgentId] = useState('')
+  const [tanpaAgent, setTanpaAgent] = useState(false)
+  const [creatingNew, setCreatingNew] = useState(false)
+  const [agentQuery, setAgentQuery] = useState('')
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
   const [newAgentName, setNewAgentName] = useState('')
   const [newAgentContactName, setNewAgentContactName] = useState('')
   const [newAgentEmail, setNewAgentEmail] = useState('')
@@ -149,8 +145,15 @@ export function JobInitModal({
 
   function changeSelection(next: JobTypeSelection) {
     setSelection(next)
-    setAgentMode(defaultAgentMode(next))
+    // Local tidak membutuhkan agent — centang "Tanpa agent" secara bawaan.
+    setTanpaAgent(next === 'LOCAL')
   }
+
+  const agentSuggestions = useMemo(() => {
+    const query = agentQuery.trim().toLowerCase()
+    if (!query) return []
+    return agents.filter((agent) => agent.name.toLowerCase().includes(query)).slice(0, 6)
+  }, [agentQuery, agents])
 
   async function submit(formEvent: FormEvent<HTMLFormElement>) {
     formEvent.preventDefault()
@@ -161,23 +164,25 @@ export function JobInitModal({
       // Pilihan kosong / nama agent baru kosong → job dibuat tanpa agent.
       let agentId: string | null = null
       let agentName = ''
-      if (agentMode === 'existing' && selectedAgentId) {
-        agentId = selectedAgentId
-        agentName = agents.find((agent) => agent.id === agentId)?.name ?? ''
-      } else if (agentMode === 'new' && newAgentName.trim()) {
-        const created = await saveAgent({
-          name: newAgentName,
-          contact: {
-            name: newAgentContactName || null,
-            role: null,
-            email: newAgentEmail || null,
-            phone: newAgentPhone || null,
-          },
-          address: null,
-          countryCode: null,
-        })
-        agentId = created.id
-        agentName = created.name
+      if (!tanpaAgent) {
+        if (creatingNew && newAgentName.trim()) {
+          const created = await saveAgent({
+            name: newAgentName,
+            contact: {
+              name: newAgentContactName || null,
+              role: null,
+              email: newAgentEmail || null,
+              phone: newAgentPhone || null,
+            },
+            address: null,
+            countryCode: null,
+          })
+          agentId = created.id
+          agentName = created.name
+        } else if (selectedAgentId) {
+          agentId = selectedAgentId
+          agentName = agents.find((agent) => agent.id === agentId)?.name ?? ''
+        }
       }
       const job =
         selection === 'LOCAL'
@@ -224,7 +229,7 @@ export function JobInitModal({
             <h2 id="job-init-title" className="text-2xl font-bold">
               Form Job Baru
             </h2>
-            <p className="mt-1 text-sm text-slate-500">{event.officialName}</p>
+            <h3 className="mt-1 text-sm text-slate-500">Untuk event: {event.officialName}</h3>
           </div>
           <button
             type="button"
@@ -241,7 +246,9 @@ export function JobInitModal({
             Jenis job
             <select
               value={selection}
-              onChange={(selectEvent) => changeSelection(selectEvent.target.value as JobTypeSelection)}
+              onChange={(selectEvent) =>
+                changeSelection(selectEvent.target.value as JobTypeSelection)
+              }
               className="input mt-1"
             >
               {jobTypeOptions.map((option) => (
@@ -250,97 +257,125 @@ export function JobInitModal({
                 </option>
               ))}
             </select>
-            <span className="mt-1 block text-xs font-normal text-slate-500">
-              {jobTypeOptions.find((option) => option.value === selection)?.description}
-            </span>
           </label>
 
           <section>
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-500">
-                Agent <span className="font-normal normal-case tracking-normal">(opsional)</span>
-              </h3>
-            </div>
-            <div className="mt-3 inline-flex rounded-lg bg-slate-100 p-1 text-sm font-medium" role="group" aria-label="Mode agent">
-              {(
-                [
-                  ['existing', 'Agent tersimpan'],
-                  ['new', 'Agent baru'],
-                  ['none', 'Tanpa agent'],
-                ] as Array<[AgentMode, string]>
-              ).map(([mode, modeLabel]) => (
+            {!creatingNew ? (
+              <div className="flex justify-end">
                 <button
-                  key={mode}
                   type="button"
-                  onClick={() => setAgentMode(mode)}
-                  aria-pressed={agentMode === mode}
-                  className={`rounded-md px-3 py-1.5 ${agentMode === mode ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+                  onClick={() => setCreatingNew(true)}
+                  disabled={tanpaAgent}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-orange-700 hover:text-orange-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {modeLabel}
+                  <Plus size={13} aria-hidden="true" />
+                  Tambah agent
                 </button>
-              ))}
-            </div>
-            {agentMode === 'existing' ? (
-              <label className="label mt-3">
-                <select
-                  value={selectedAgentId}
-                  onChange={(selectEvent) => setSelectedAgentId(selectEvent.target.value)}
-                  className="input mt-1"
-                  disabled={loading}
+              </div>
+            ) : null}
+
+            {!tanpaAgent && creatingNew ? (
+              <div className="mt-3">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="label sm:col-span-2">
+                    Nama agent
+                    <input
+                      value={newAgentName}
+                      onChange={(inputEvent) =>
+                        setNewAgentName(inputEvent.target.value.toLocaleUpperCase('id-ID'))
+                      }
+                      className="input mt-1"
+                      placeholder="cth. JS LOGISTICS"
+                    />
+                  </label>
+                  <label className="label">
+                    Nama PIC
+                    <input
+                      value={newAgentContactName}
+                      onChange={(inputEvent) => setNewAgentContactName(inputEvent.target.value)}
+                      className="input mt-1"
+                    />
+                  </label>
+                  <label className="label">
+                    Telepon PIC
+                    <input
+                      value={newAgentPhone}
+                      onChange={(inputEvent) => setNewAgentPhone(inputEvent.target.value)}
+                      className="input mt-1"
+                    />
+                  </label>
+                  <label className="label sm:col-span-2">
+                    Email PIC
+                    <input
+                      type="email"
+                      value={newAgentEmail}
+                      onChange={(inputEvent) => setNewAgentEmail(inputEvent.target.value)}
+                      className="input mt-1"
+                    />
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCreatingNew(false)}
+                  className="mt-3 text-xs font-semibold text-orange-700 hover:text-orange-800"
                 >
-                  <option value="">{loading ? 'Memuat agent...' : 'Pilih agent (opsional)...'}</option>
-                  {agents.map((agent) => (
-                    <option key={agent.id} value={agent.id}>
-                      {agent.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : agentMode === 'new' ? (
-              <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                <label className="label sm:col-span-2">
-                  Nama agent
-                  <input
-                    value={newAgentName}
-                    onChange={(inputEvent) =>
-                      setNewAgentName(inputEvent.target.value.toLocaleUpperCase('id-ID'))
-                    }
-                    className="input mt-1"
-                    placeholder="cth. JS LOGISTICS"
-                  />
-                </label>
-                <label className="label">
-                  Nama PIC
-                  <input
-                    value={newAgentContactName}
-                    onChange={(inputEvent) => setNewAgentContactName(inputEvent.target.value)}
-                    className="input mt-1"
-                  />
-                </label>
-                <label className="label">
-                  Telepon PIC
-                  <input
-                    value={newAgentPhone}
-                    onChange={(inputEvent) => setNewAgentPhone(inputEvent.target.value)}
-                    className="input mt-1"
-                  />
-                </label>
-                <label className="label sm:col-span-2">
-                  Email PIC
-                  <input
-                    type="email"
-                    value={newAgentEmail}
-                    onChange={(inputEvent) => setNewAgentEmail(inputEvent.target.value)}
-                    className="input mt-1"
-                  />
-                </label>
+                  Pilih agent tersimpan
+                </button>
               </div>
             ) : (
-              <p className="mt-3 rounded-xl border border-dashed border-black/15 px-4 py-3 text-sm text-slate-500">
-                Job dibuat tanpa agent — exhibitor bertindak untuk dirinya sendiri. Exhibitor
-                dilekatkan belakangan di detail job.
-              </p>
+              <div className="mt-3">
+                <div className="relative">
+                  <input
+                    value={agentQuery}
+                    onChange={(inputEvent) => {
+                      setAgentQuery(inputEvent.target.value)
+                      setSelectedAgentId(null)
+                    }}
+                    className="input"
+                    placeholder={loading ? 'Memuat agent...' : 'Ketik nama agent...'}
+                    disabled={tanpaAgent}
+                    aria-label="Cari agent"
+                    autoComplete="off"
+                  />
+                  {agentSuggestions.length > 0 && !selectedAgentId ? (
+                    <ul
+                      className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-black/10 bg-white py-1 shadow-lg"
+                      aria-label="Saran agent"
+                    >
+                      {agentSuggestions.map((agent) => (
+                        <li key={agent.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedAgentId(agent.id)
+                              setAgentQuery(agent.name)
+                            }}
+                            className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-orange-50"
+                          >
+                            {agent.name}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+                {selectedAgentId ? (
+                  <p className="mt-1.5 text-xs font-medium text-emerald-700">
+                    Agent terpilih: {agents.find((agent) => agent.id === selectedAgentId)?.name}
+                  </p>
+                ) : null}
+              </div>
             )}
+
+            <label className="mt-2.5 flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                checked={tanpaAgent}
+                onChange={(checkEvent) => setTanpaAgent(checkEvent.target.checked)}
+                className="h-4 w-4 accent-orange-600"
+              />
+              Tanpa agent
+            </label>
           </section>
 
           <section>

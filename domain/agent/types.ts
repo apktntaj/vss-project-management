@@ -1,6 +1,10 @@
 import type { ExhibitorContact } from '@/domain/event/types'
 
-/** Master data agent (forwarder) — global, dapat diikutsertakan ke banyak event. */
+/**
+ * Master data agent — pihak yang mengatur pengiriman barang dari luar negeri ke Indonesia.
+ * Exhibitor yang mengatur sendiri pengirimannya tidak memakai agent. Global, dapat
+ * diikutsertakan ke banyak event.
+ */
 export type Agent = {
   id: string
   name: string

@@ -21,14 +21,19 @@ export type ManifestBlockView = {
 }
 
 /**
- * Assembler murni blok manifest: peserta = exhibitor pada event yang sama yang
- * kepesertaannya dibawa agent job (invariant data definitions, bagian 4).
+ * Assembler murni blok manifest: peserta job dengan agent = exhibitor pada event yang
+ * sama yang dibawa agent job; peserta job tanpa agent = exhibitor pengatur pengiriman
+ * sendiri (job.exhibitorId), fase 1 relasi peserta eksplisit (data definitions 2026-10-24).
  */
 export function buildManifestView(job: LocalJob, exhibitors: LocalExhibitor[]): ManifestBlockView {
   const peserta: ManifestPeserta[] =
-    job.eventId && job.agentId
+    job.eventId && (job.agentId || job.exhibitorId)
       ? exhibitors
-          .filter((exhibitor) => exhibitor.eventId === job.eventId && exhibitor.agentId === job.agentId)
+          .filter((exhibitor) =>
+            job.agentId
+              ? exhibitor.eventId === job.eventId && exhibitor.agentId === job.agentId
+              : exhibitor.eventId === job.eventId && exhibitor.id === job.exhibitorId,
+          )
           .sort((left, right) => left.name.localeCompare(right.name))
           .map((exhibitor) => ({ exhibitor, logistics: exhibitor.logistics ?? null }))
       : []

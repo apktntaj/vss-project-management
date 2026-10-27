@@ -1,19 +1,25 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { CalendarDays, ChevronRight, Package, FolderKanban, X } from 'lucide-react'
 
 import type { LocalEvent } from '@/lib/data-client'
 
 /**
  * Dialog routing "Job baru": pilih kategori job dulu (Event / General Cargo / Project).
- * Job event lahir di dalam konteks eventnya — memilih event mengarahkan ke halaman detail
- * event dengan ?newJob=1 yang langsung membuka form inisiasi job di sana.
- * General Cargo dan Project menyusul.
+ * Memilih event menyerahkan kendali ke pemanggil lewat `onSelectEvent` — di halaman /jobs
+ * form inisiasi job terbuka di tempat tanpa berpindah halaman. General Cargo dan Project
+ * menyusul.
  */
-export function NewJobDialog({ events, onClose }: { events: LocalEvent[]; onClose: () => void }) {
-  const router = useRouter()
+export function NewJobDialog({
+  events,
+  onClose,
+  onSelectEvent,
+}: {
+  events: LocalEvent[]
+  onClose: () => void
+  onSelectEvent: (event: LocalEvent) => void
+}) {
   const [step, setStep] = useState<'category' | 'event'>('category')
 
   const sortedEvents = useMemo(() => {
@@ -26,9 +32,8 @@ export function NewJobDialog({ events, onClose }: { events: LocalEvent[]; onClos
     })
   }, [events])
 
-  function openEventJobForm(eventId: string) {
-    onClose()
-    router.push(`/events/${eventId}?newJob=1`)
+  function openEventJobForm(event: LocalEvent) {
+    onSelectEvent(event)
   }
 
   return (
@@ -110,7 +115,7 @@ export function NewJobDialog({ events, onClose }: { events: LocalEvent[]; onClos
                   <button
                     key={event.id}
                     type="button"
-                    onClick={() => openEventJobForm(event.id)}
+                    onClick={() => openEventJobForm(event)}
                     className="flex w-full items-center gap-3 rounded-xl border border-black/10 px-4 py-3 text-left hover:border-orange-300 hover:bg-orange-50"
                   >
                     <span className="min-w-0 flex-1">

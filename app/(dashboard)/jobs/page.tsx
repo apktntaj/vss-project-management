@@ -25,6 +25,7 @@ import {
 } from '@/components/job-document-editor-dialog'
 import { Button } from '@/components/ui/button'
 import { NewJobDialog } from '@/components/new-job-dialog'
+import { JobInitModal } from '@/components/job-init-modal'
 import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
 import { getNextEventJobView, type EventJobViews } from '@/lib/event-job-view'
 import {
@@ -306,6 +307,7 @@ export default function JobsPage() {
   const [events, setEvents] = useState<LocalEvent[]>([])
   const [segment, setSegment] = useState<JobSegment>('EVENT')
   const [showNewJob, setShowNewJob] = useState(false)
+  const [initEvent, setInitEvent] = useState<LocalEvent | null>(null)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [scope, setScope] = useState<Scope>('active')
@@ -329,6 +331,13 @@ export default function JobsPage() {
       finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
     })
   }, [])
+  // Segarkan senyap setelah mutasi (mis. job baru dibuat) — tanpa skeleton halaman penuh.
+  const refreshJobs = () => {
+    listJobsWithEvents().then(({ jobs: loadedJobs, events: loadedEvents }) => {
+      setJobs(loadedJobs)
+      setEvents(loadedEvents)
+    })
+  }
   useEffect(() => {
     if (!toast) return
     const timeout = window.setTimeout(() => setToast(null), 7000)
@@ -627,7 +636,26 @@ export default function JobsPage() {
           </p>
         </section>
       )}
-      {showNewJob && <NewJobDialog events={events} onClose={() => setShowNewJob(false)} />}
+      {showNewJob && (
+        <NewJobDialog
+          events={events}
+          onClose={() => setShowNewJob(false)}
+          onSelectEvent={(event) => {
+            setShowNewJob(false)
+            setInitEvent(event)
+          }}
+        />
+      )}
+      {initEvent && (
+        <JobInitModal
+          event={initEvent}
+          onCreated={() => {
+            setInitEvent(null)
+            refreshJobs()
+          }}
+          onCancel={() => setInitEvent(null)}
+        />
+      )}
       <JobDocumentEditorDialog
         job={editingDocument?.job ?? null}
         kind={editingDocument?.kind ?? 'INVOICE'}
