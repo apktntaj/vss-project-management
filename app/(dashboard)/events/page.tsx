@@ -94,97 +94,80 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
   }
 
   return (
-    <div className="space-y-8">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Events</h1>
-          <p className="mt-2 text-sm text-slate-500">Pantau kesiapan dan jadwal pameran.</p>
-        </div>
-        <EventCreateButton venues={venues} organizers={organizers} pics={pics} />
-      </header>
+    <div className="space-y-6">
+      <h1 className="sr-only">Events</h1>
+      <section>
+        <EventFilters>
+          <EventCreateButton venues={venues} organizers={organizers} pics={pics} />
+        </EventFilters>
 
-      {loadFailed || !page ? (
-        <div className="card border-rose-200 p-12 text-center" role="alert">
-          <AlertTriangle className="mx-auto text-rose-500" size={28} aria-hidden="true" />
-          <p className="mt-3 font-semibold text-rose-700">Data gagal dimuat.</p>
-          <p className="mt-1 text-sm text-slate-500">Muat ulang halaman untuk mencoba lagi.</p>
-        </div>
-      ) : (
-        <>
-          <div className="grid gap-5 lg:grid-cols-3">
-            <section className="grid gap-4 sm:grid-cols-2 lg:col-span-2" aria-label="Ringkasan">
-              <article className="card p-5">
+        {loadFailed || !page ? (
+          <div className="card border-rose-200 p-12 text-center" role="alert">
+            <AlertTriangle className="mx-auto text-rose-500" size={28} aria-hidden="true" />
+            <p className="mt-3 font-semibold text-rose-700">Data gagal dimuat.</p>
+            <p className="mt-1 text-sm text-slate-500">Muat ulang halaman untuk mencoba lagi.</p>
+          </div>
+        ) : (
+          <>
+            <section
+              className="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+              aria-label="Ringkasan"
+            >
+              <article className="card flex items-center justify-between gap-3 p-4">
                 <p className="text-sm text-slate-500">Total event</p>
-                <p className="mt-2 text-3xl font-bold text-slate-700">
-                  {page.summary.totalEvents}
-                </p>
+                <p className="text-2xl font-bold text-slate-700">{page.summary.totalEvents}</p>
               </article>
-              <article className="card p-5">
+              <article className="card flex items-center justify-between gap-3 p-4">
                 <p className="text-sm text-slate-500">Berlangsung</p>
-                <p className="mt-2 text-3xl font-bold text-emerald-700">
+                <p className="text-2xl font-bold text-emerald-700">
                   {page.summary.ongoingEvents}
                 </p>
               </article>
-              <article className="card p-5">
-                <p className="text-sm text-slate-500">Exhibitor</p>
-                <p className="mt-2 text-3xl font-bold text-blue-700">
-                  {page.summary.totalExhibitors}
-                </p>
-              </article>
-              <article className="card p-5">
-                <p className="text-sm text-slate-500">Load item</p>
-                <p className="mt-2 text-3xl font-bold text-orange-700">
-                  {page.summary.totalCiplItems}
-                </p>
+              <article className="card p-4" aria-labelledby="events-attention-title">
+                <h2 id="events-attention-title" className="text-sm font-semibold">
+                  Attention
+                </h2>
+                {page.attention.scheduleOverlaps.length > 0 ||
+                page.attention.venueConflicts.length > 0 ? (
+                  <ul className="mt-2 flex flex-col gap-1.5 text-sm text-slate-600">
+                    {page.attention.scheduleOverlaps.length > 0 ? (
+                      <li className="flex gap-2">
+                        <AlertTriangle
+                          className="mt-0.5 shrink-0 text-amber-600"
+                          size={16}
+                          aria-hidden="true"
+                        />
+                        <span>{page.attention.scheduleOverlaps.length} jadwal event beririsan.</span>
+                      </li>
+                    ) : null}
+                    {page.attention.venueConflicts.length > 0 ? (
+                      <li className="flex gap-2">
+                        <MapPin
+                          className="mt-0.5 shrink-0 text-amber-600"
+                          size={16}
+                          aria-hidden="true"
+                        />
+                        <span>{page.attention.venueConflicts.length} konflik venue.</span>
+                      </li>
+                    ) : null}
+                  </ul>
+                ) : (
+                  <p className="mt-1 text-sm text-slate-500">
+                    Tidak ada perhatian operasional saat ini.
+                  </p>
+                )}
               </article>
             </section>
-            <section className="card p-5" aria-labelledby="events-attention-title">
-              <h2 id="events-attention-title" className="text-lg font-semibold">
-                Attention
-              </h2>
-              {page.attention.scheduleOverlaps.length > 0 ||
-              page.attention.venueConflicts.length > 0 ? (
-                <ul className="mt-3 flex flex-col gap-2 text-sm text-slate-600">
-                  {page.attention.scheduleOverlaps.length > 0 ? (
-                    <li className="flex gap-2">
-                      <AlertTriangle
-                        className="mt-0.5 shrink-0 text-amber-600"
-                        size={16}
-                        aria-hidden="true"
-                      />
-                      <span>{page.attention.scheduleOverlaps.length} jadwal event beririsan.</span>
-                    </li>
-                  ) : null}
-                  {page.attention.venueConflicts.length > 0 ? (
-                    <li className="flex gap-2">
-                      <MapPin
-                        className="mt-0.5 shrink-0 text-amber-600"
-                        size={16}
-                        aria-hidden="true"
-                      />
-                      <span>{page.attention.venueConflicts.length} konflik venue.</span>
-                    </li>
-                  ) : null}
-                </ul>
-              ) : (
-                <p className="mt-3 text-sm text-slate-500">
-                  Tidak ada perhatian operasional saat ini.
-                </p>
-              )}
-            </section>
-          </div>
 
-          <section>
-            <EventFilters />
             <EventList
               items={page.items}
               venues={venues}
               organizers={organizers}
               pics={pics}
             />
-          </section>
-        </>
-      )}
+          </>
+        )}
+      </section>
     </div>
   )
 }

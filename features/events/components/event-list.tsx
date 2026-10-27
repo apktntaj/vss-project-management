@@ -45,7 +45,7 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
         return (
           <article
             key={item.id}
-            className={`card group flex h-full flex-col p-5 transition hover:border-orange-200 hover:shadow-lg ${
+            className={`card group flex h-full flex-col p-4 transition hover:border-orange-200 hover:shadow-lg ${
               isInactive ? 'opacity-80' : ''
             }`}
           >
@@ -53,13 +53,27 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
               <div className="min-w-0">
                 <Link
                   href={`/events/${item.id}`}
-                  className="block truncate text-lg font-semibold leading-snug text-slate-800 hover:text-orange-700 focus-visible:text-orange-700"
+                  className="block truncate text-base font-semibold leading-snug text-slate-800 hover:text-orange-700 focus-visible:text-orange-700"
                 >
                   {item.name}
                 </Link>
-                {item.alias ? (
-                  <p className="mt-1 truncate text-sm text-slate-500">{item.alias}</p>
-                ) : null}
+                <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-semibold ${DISPLAY_STATUS_BADGE[item.displayStatus]}`}
+                  >
+                    {DISPLAY_STATUS_LABEL[item.displayStatus]}
+                  </span>
+                  {lifecycle ? (
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-semibold ${lifecycle.className}`}
+                    >
+                      {lifecycle.label}
+                    </span>
+                  ) : null}
+                  {item.alias ? (
+                    <p className="min-w-0 truncate text-xs text-slate-500">{item.alias}</p>
+                  ) : null}
+                </div>
               </div>
               <EventCardActions
                 event={{
@@ -78,22 +92,7 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
               />
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span
-                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${DISPLAY_STATUS_BADGE[item.displayStatus]}`}
-              >
-                {DISPLAY_STATUS_LABEL[item.displayStatus]}
-              </span>
-              {lifecycle ? (
-                <span
-                  className={`rounded-full px-2.5 py-1 text-xs font-semibold ${lifecycle.className}`}
-                >
-                  {lifecycle.label}
-                </span>
-              ) : null}
-            </div>
-
-            <dl className="mt-5 space-y-3 border-t pt-4 text-sm text-slate-600">
+            <dl className="mt-2.5 space-y-2.5 border-t pt-2.5 text-sm text-slate-600">
               <div className="grid grid-cols-[16px_minmax(0,1fr)] items-start gap-2">
                 <CalendarDays className="mt-0.5 text-slate-400" size={16} aria-hidden="true" />
                 <dd>{formatDateRange(item.startsOn, item.endsOn)}</dd>

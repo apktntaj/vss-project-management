@@ -6,7 +6,7 @@
 // filter tetap milik server (bukan membaca seluruh tabel ke browser lalu menyaring). Leaf ini tak
 // mengimpor modul server-only apa pun.
 
-import { useCallback } from 'react'
+import { useCallback, type ReactNode } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Search } from 'lucide-react'
 
@@ -23,11 +23,12 @@ const STATUS_OPTIONS = [
 type StatusValue = (typeof STATUS_OPTIONS)[number][0]
 
 /**
- * Baris filter: kotak pencarian + radio status. Setiap perubahan menulis `search`/`status` ke URL;
- * RSC membaca ulang params itu dan memfilter di server. Nilai saat ini dibaca dari `useSearchParams`
- * agar kontrol tetap sinkron dengan URL (mis. setelah refresh atau tautan langsung).
+ * Baris filter: kotak pencarian + radio status + slot aksi di ujung kanan (mis. tombol
+ * "Event baru"). Setiap perubahan filter menulis `search`/`status` ke URL; RSC membaca ulang
+ * params itu dan memfilter di server. Nilai saat ini dibaca dari `useSearchParams` agar kontrol
+ * tetap sinkron dengan URL (mis. setelah refresh atau tautan langsung).
  */
-export function EventFilters() {
+export function EventFilters({ children }: { children?: ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -84,6 +85,7 @@ export function EventFilters() {
             </label>
           ))}
         </fieldset>
+        {children ? <div className="flex-none lg:ml-auto">{children}</div> : null}
       </div>
       {hasFilters ? (
         <button
