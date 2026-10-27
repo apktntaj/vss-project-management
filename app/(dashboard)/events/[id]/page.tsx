@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, Building2, CalendarDays, ChevronDown, ChevronRight, MapPin, Plus } from 'lucide-react'
@@ -19,7 +19,7 @@ import {
   type InternationalJobJenis,
 } from '@/domain/job/types'
 import { buildJobNomor } from '@/lib/job-number'
-import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
+import { PageSkeleton } from '@/components/loading-skeletons'
 import { ContextTicketList } from '@/components/context-ticket-list'
 import { JobInitModal } from '@/components/job-init-modal'
 import {
@@ -73,7 +73,6 @@ export default function EventDetailPage() {
   const [event, setEvent] = useState<LocalEvent | null>(null)
   const [jobs, setJobs] = useState<LocalJob[]>([])
   const [loading, setLoading] = useState(true)
-  const loadingStartedAt = useRef(Date.now())
   const [showNewJob, setShowNewJob] = useState(false)
   const [editingDocument, setEditingDocument] = useState<{
     job: LocalJob
@@ -102,13 +101,12 @@ export default function EventDetailPage() {
   }, [jobs])
 
   const loadData = useCallback(() => {
-    loadingStartedAt.current = Date.now()
     setLoading(true)
     Promise.all([listEventsWithExhibitors(), listEventJobs(params.id)]).then(
       ([{ events }, eventJobs]) => {
         setEvent(events.find((item) => item.id === params.id) ?? null)
         setJobs(eventJobs)
-        finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
+        setLoading(false)
       },
     )
   }, [params.id])

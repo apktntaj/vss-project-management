@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Save } from 'lucide-react'
 import {
@@ -12,7 +12,7 @@ import {
   type JobDocumentKind,
   type LocalJob,
 } from '@/lib/data-client'
-import { finishLoadingAfterMinimum, FormSkeleton } from '@/components/loading-skeletons'
+import { FormSkeleton } from '@/components/loading-skeletons'
 
 const text = (form: FormData, key: string) => String(form.get(key) || '').trim() || null
 function notify(message: string, tone: 'success' | 'error') {
@@ -185,13 +185,11 @@ export function JobEditor({ jobId }: { jobId: string }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
-  const loadingStartedAt = useRef(Date.now())
   useEffect(() => {
-    loadingStartedAt.current = Date.now()
     setLoading(true)
     getJob(jobId).then((loadedJob) => {
       setJob(loadedJob)
-      finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
+      setLoading(false)
     })
   }, [jobId])
   if (loading || !job) return <FormSkeleton fields={8} />

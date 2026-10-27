@@ -26,7 +26,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { NewJobDialog } from '@/components/new-job-dialog'
 import { JobInitModal } from '@/components/job-init-modal'
-import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
+import { PageSkeleton } from '@/components/loading-skeletons'
 import { getNextEventJobView, type EventJobViews } from '@/lib/event-job-view'
 import {
   getJobOperationalPhase,
@@ -319,7 +319,6 @@ export default function JobsPage() {
     kind: EditableJobDocument
   } | null>(null)
   const [loading, setLoading] = useState(true)
-  const loadingStartedAt = useRef(Date.now())
   const initialLoadStarted = useRef(false)
   useEffect(() => {
     if (initialLoadStarted.current) return
@@ -328,7 +327,7 @@ export default function JobsPage() {
       setJobs(loadedJobs)
       setEvents(loadedEvents)
       setOpen(Object.fromEntries(loadedEvents.map((event) => [event.id, true])))
-      finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
+      setLoading(false)
     })
   }, [])
   // Segarkan senyap setelah mutasi (mis. job baru dibuat) — tanpa skeleton halaman penuh.

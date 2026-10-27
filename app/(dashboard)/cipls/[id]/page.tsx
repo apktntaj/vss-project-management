@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FileText, Package, Plus } from 'lucide-react'
 import { useParams } from 'next/navigation'
 import {
@@ -14,7 +14,7 @@ import {
 } from '@/lib/data-client'
 import type { Attachment, Cipl, CiplVersion, Shipment } from '@/domain/exhibition/types'
 import { StatusBadge } from '@/components/status-badge'
-import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
+import { PageSkeleton } from '@/components/loading-skeletons'
 
 export default function CiplDetailPage() {
   const params = useParams<{ id: string }>()
@@ -23,15 +23,13 @@ export default function CiplDetailPage() {
   const [shipments, setShipments] = useState<Shipment[]>([])
   const [exhibitor, setExhibitor] = useState<LocalExhibitor | null>(null)
   const [loading, setLoading] = useState(true)
-  const loadingStartedAt = useRef(Date.now())
 
   useEffect(() => {
-    loadingStartedAt.current = Date.now()
     setLoading(true)
     getCipl(params.id).then(async (loaded) => {
       setCipl(loaded)
       if (!loaded) {
-        finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
+        setLoading(false)
         return
       }
       const [loadedVersions, loadedShipments, exhibitors] = await Promise.all([
@@ -40,7 +38,7 @@ export default function CiplDetailPage() {
       setVersions(loadedVersions)
       setShipments(loadedShipments)
       setExhibitor(exhibitors.find((item) => item.id === loaded.eventExhibitorId) ?? null)
-      finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
+      setLoading(false)
     })
   }, [params.id])
 

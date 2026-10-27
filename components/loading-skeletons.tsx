@@ -1,16 +1,5 @@
 import { Skeleton } from '@/components/ui/skeleton'
 
-export const MINIMUM_SKELETON_DURATION_MS = 600
-
-export function finishLoadingAfterMinimum(startedAt: number, finish: () => void) {
-  const remainingDuration = MINIMUM_SKELETON_DURATION_MS - (Date.now() - startedAt)
-  if (remainingDuration <= 0) {
-    finish()
-    return
-  }
-  window.setTimeout(finish, remainingDuration)
-}
-
 export function PageSkeleton({ cards = 3, rows = 4 }: { cards?: number; rows?: number }) {
   return (
     <div className="space-y-6" aria-busy="true" aria-label="Memuat data">

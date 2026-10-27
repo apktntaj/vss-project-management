@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ArrowLeft,
   CalendarDays,
@@ -27,7 +27,7 @@ import { StatusBadge } from '@/components/status-badge'
 import { JobManifestSection } from '@/components/job-manifest-section'
 import { JobManifestEditorModal } from '@/components/job-manifest-editor-modal'
 import { ExhibitorLogisticsModal } from '@/components/exhibitor-logistics-modal'
-import { finishLoadingAfterMinimum, PageSkeleton } from '@/components/loading-skeletons'
+import { PageSkeleton } from '@/components/loading-skeletons'
 import { compareInvoiceWithTransport, type DocumentComparison } from '@/lib/document-comparison'
 import { ContextTicketList } from '@/components/context-ticket-list'
 
@@ -124,13 +124,11 @@ function DocumentComparisonSummary({ comparison }: { comparison: DocumentCompari
 export default function JobDetail({ params }: { params: { id: string } }) {
   const [job, setJob] = useState<LocalJob | null>(null)
   const [loading, setLoading] = useState(true)
-  const loadingStartedAt = useRef(Date.now())
   useEffect(() => {
-    loadingStartedAt.current = Date.now()
     setLoading(true)
     getJob(params.id).then((loadedJob) => {
       setJob(loadedJob)
-      finishLoadingAfterMinimum(loadingStartedAt.current, () => setLoading(false))
+      setLoading(false)
     })
   }, [params.id])
   const [exhibitors, setExhibitors] = useState<LocalExhibitor[]>([])

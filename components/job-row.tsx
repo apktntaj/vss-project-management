@@ -32,12 +32,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import type { EditableJobDocument } from '@/components/job-document-editor-dialog'
 import { compareInvoiceWithTransport } from '@/lib/document-comparison'
 
-const MINIMUM_CLASSIFICATION_SKELETON_MS = 600
-
-function wait(milliseconds: number) {
-  return new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds))
-}
-
 export type DocumentClassification = {
   documentType: 'BILL_OF_LADING' | 'AIR_WAYBILL' | 'COMMERCIAL_INVOICE' | 'OTHER' | 'UNREADABLE'
   confidence: number
@@ -298,7 +292,6 @@ export function JobRow({
       )
     }
     if (!acceptedFiles.length) return
-    const loadingStartedAt = Date.now()
     setUploading(true)
     const confidences: number[] = []
     let uploadedInvoice: JobInvoiceExtraction | null = null
@@ -368,8 +361,6 @@ export function JobRow({
         }
       }
     } finally {
-      const remainingDuration = MINIMUM_CLASSIFICATION_SKELETON_MS - (Date.now() - loadingStartedAt)
-      if (remainingDuration > 0) await wait(remainingDuration)
       setUploading(false)
     }
   }
