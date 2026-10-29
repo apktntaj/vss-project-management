@@ -80,7 +80,7 @@ export function EventFilters({
         <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-2 px-0 py-2">
           <legend className="sr-only">Filter status event</legend>
           {STATUS_OPTIONS.map(([value, label]) => (
-            <label key={value} className="flex items-center gap-2 text-sm text-slate-700">
+            <label key={value} className="flex items-center gap-2 text-sm text-slate-500">
               <input
                 type="radio"
                 name="event-status"
@@ -94,7 +94,7 @@ export function EventFilters({
           ))}
         </fieldset>
         {pics ? (
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-center gap-2 text-sm text-slate-500">
             <span className="flex-none font-medium">PIC</span>
             <select
               value={currentPic}
