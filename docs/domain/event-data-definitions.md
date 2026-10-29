@@ -408,7 +408,10 @@ jobTuntas : Job -> Bool
   // berlaku bagi jenis job itu sudah terdaftar — punya nomorRegistrasi (bukan hanya nomorAju),
   // dan (2) kepulangan (KepulanganJob, doc manifest) sudah terisi ATAU jenis job tidak
   // mengharuskan barang kembali (JobLocal, PERMANENT_IMPORT). Pemetaan per jenis job mana yang
-  // wajib kepulangan (TEMPORARY, ATA_CARNET, ROAD_SHIPMENT) dirinci di dokumen Job.
+  // wajib kepulangan (TPPB_BC_23, ATA_CARNET, TEMPORARY_IMPORT, ROAD_SHIPMENT) dirinci di
+  // dokumen Job. Implementasi live (domain/event/tuntas.ts): dokumen dianggap selesai bila
+  // status COMPLETED ATAU nomorRegistrasi terisi (dua sinyal penutupan independen di data
+  // operasional); job lama tanpa kind dianggap tidak wajib kepulangan.
 
 eventTuntas : Event × Daftar Job -> StatusTuntasEvent
   // purpose: TANPA_JOB bila daftar job kosong; BELUM_TUNTAS bila ada job dengan jobTuntas

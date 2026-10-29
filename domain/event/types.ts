@@ -2,6 +2,10 @@ export type EventDisplayStatus = 'soon' | 'ongoing' | 'done'
 
 export type EventLifecycle = 'ACTIVE' | 'CANCELLED' | 'ARCHIVED'
 
+// Kelengkapan pekerjaan event — rollup dari job (docs/domain/event-data-definitions.md,
+// StatusTuntasEvent): TANPA_JOB berarti belum ada pekerjaan sama sekali (bukan menggantung).
+export type EventTuntasStatus = 'TUNTAS' | 'BELUM_TUNTAS' | 'TANPA_JOB'
+
 
 export type EventInput = {
   name: string
@@ -11,6 +15,9 @@ export type EventInput = {
   picId: string
   startsOn: string
   endsOn: string
+  // Penanda logistik venue (opsional): tanggal barang masuk/keluar venue, bukan tanggal pameran.
+  moveInOn: string | null
+  moveOutOn: string | null
 }
 export type EventListQuery = {
   search?: string
@@ -28,8 +35,14 @@ export type EventListItem = {
   picName: string
   startsOn: string
   endsOn: string
+  moveInOn: string | null
+  moveOutOn: string | null
   lifecycle: EventLifecycle
   displayStatus: EventDisplayStatus
+  // Rollup job (turunan, tidak disimpan): kelengkapan pekerjaan + jumlah job yang belum tuntas
+  // (dipakai peringatan arsip dan badge baris).
+  tuntasStatus: EventTuntasStatus
+  unfinishedJobs: number
 }
 
 // Agregat ringkasan yang ditampilkan di atas daftar (Requirement 16.1). Dihitung sisi-server;
@@ -111,6 +124,9 @@ export type EventInsights = {
   dueSoon: EventInsightItem[]
   // starts_on antara hari ini dan H+30 tanpa satu pun job terkait — sinyal follow-up.
   soonWithoutJob: EventInsightItem[]
+  // Pameran sudah lewat (ends_on < hari ini) namun masih ada job yang belum tuntas —
+  // pekerjaan menggantung setelah pameran tutup; urut paling lama menggantung.
+  unfinishedAfterShow: EventInsightItem[]
   // Venue dengan ≥2 event yang rentangnya beririsan.
   venueConflicts: EventVenueConflictGroup[]
   // Total pasangan event (venue apa pun) dengan jadwal beririsan.

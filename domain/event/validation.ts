@@ -12,6 +12,12 @@ import { fromIssues, issue, ok, type Validation } from '@/domain/shared/validati
 // tanggal (startsOn <= endsOn bisa diuji dengan perbandingan string), jadi domain tak perlu Date.
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Gunakan tanggal YYYY-MM-DD.')
 
+// Tanggal opsional (move in/out venue): string kosong / undefined dinormalisasi jadi null.
+const optionalDateOnly = z.preprocess(
+  (value) => (value === '' || value === undefined ? null : value),
+  dateOnly.nullable(),
+)
+
 // Bentuk create/edit event. `.strict()` menolak field tak dikenal (Requirement — input ketat).
 export const eventInputSchema = z
   .object({
@@ -39,6 +45,9 @@ export const eventInputSchema = z
     picId: z.string().uuid('PIC wajib dipilih.'),
     startsOn: dateOnly,
     endsOn: dateOnly,
+    // Penanda logistik venue (opsional, keputusan 2026-10-29): tanggal barang masuk/keluar venue.
+    moveInOn: optionalDateOnly,
+    moveOutOn: optionalDateOnly,
   })
   .strict()
   // Aturan antar-field: akhir tidak boleh sebelum mulai (Requirement 10.5 / 11.3). Issue dilekatkan
@@ -49,6 +58,14 @@ export const eventInputSchema = z
         code: z.ZodIssueCode.custom,
         path: ['endsOn'],
         message: 'Tanggal akhir harus sama dengan atau setelah tanggal mulai.',
+      })
+    }
+    // Invariant I-7: move out tidak boleh sebelum move in bila keduanya terisi.
+    if (value.moveInOn && value.moveOutOn && value.moveOutOn < value.moveInOn) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['moveOutOn'],
+        message: 'Tanggal move out tidak boleh sebelum move in.',
       })
     }
   })

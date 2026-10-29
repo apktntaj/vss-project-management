@@ -9,7 +9,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Archive, MoreVertical, Pencil, Trash2 } from 'lucide-react'
+import { AlertTriangle, Archive, MoreVertical, Pencil, Trash2 } from 'lucide-react'
 
 import { toast } from '@/components/toast'
 import {
@@ -23,6 +23,8 @@ type EventCardActionsProps = EventFormOptions & {
   event: EventFormValues
   /** Lifecycle baris pemilik aksi: ARCHIVED menyembunyikan item "Arsipkan". */
   lifecycle?: EventLifecycle
+  /** Rollup tuntas (turunan job) — memicu peringatan lembut pada dialog arsip. */
+  unfinishedJobs?: number
 }
 
 /**
@@ -30,7 +32,14 @@ type EventCardActionsProps = EventFormOptions & {
  * lalu me-refresh RSC; sukses/gagal diumpanbalikkan lewat toast. Pesan error dibaca dari field
  * `error` respons.
  */
-export function EventCardActions({ event, lifecycle, venues, organizers, pics }: EventCardActionsProps) {
+export function EventCardActions({
+  event,
+  lifecycle,
+  unfinishedJobs,
+  venues,
+  organizers,
+  pics,
+}: EventCardActionsProps) {
   const router = useRouter()
   // Menu di-anchor fixed dari getBoundingClientRect (pola JobRow) supaya tidak terpotong oleh
   // wadah tabel yang overflow-x-auto.
@@ -187,6 +196,15 @@ export function EventCardActions({ event, lifecycle, venues, organizers, pics }:
               <span className="font-semibold">{event.name}</span> akan ditandai sebagai Diarsipkan.
               Data event dan job tetap utuh; status dapat dibedakan lewat badge pada daftar.
             </p>
+            {unfinishedJobs && unfinishedJobs > 0 ? (
+              <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm leading-6 text-amber-800">
+                <AlertTriangle className="mt-0.5 shrink-0" size={16} aria-hidden="true" />
+                <span>
+                  Masih ada <span className="font-semibold">{unfinishedJobs} job yang belum tuntas</span>{' '}
+                  pada event ini — pastikan memang ingin menutup bukunya.
+                </span>
+              </p>
+            ) : null}
             <div className="mt-6 flex justify-end gap-3">
               <button
                 type="button"

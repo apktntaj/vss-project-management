@@ -34,6 +34,9 @@ export type EventFormValues = {
   picId: string
   startsOn: string
   endsOn: string
+  /** Penanda logistik venue (opsional): tanggal barang masuk/keluar venue, bukan tanggal pameran. */
+  moveInOn?: string | null
+  moveOutOn?: string | null
 }
 
 type EventFormModalProps = EventFormOptions & {
@@ -45,7 +48,10 @@ type EventFormModalProps = EventFormOptions & {
 
 // Field yang bisa membawa error validasi per-field dari server (path Zod/invariant).
 type FieldErrors = Partial<
-  Record<'name' | 'venueId' | 'eventOrganizerId' | 'picId' | 'startsOn' | 'endsOn', string>
+  Record<
+    'name' | 'venueId' | 'eventOrganizerId' | 'picId' | 'startsOn' | 'endsOn' | 'moveInOn' | 'moveOutOn',
+    string
+  >
 >
 
 const EMPTY: EventFormValues = {
@@ -55,6 +61,8 @@ const EMPTY: EventFormValues = {
   picId: '',
   startsOn: '',
   endsOn: '',
+  moveInOn: '',
+  moveOutOn: '',
 }
 
 // Aritmetika tanggal-saja tanpa lib: komponen lokal agar hasil tak bergeser zona waktu.
@@ -103,6 +111,8 @@ export function EventFormModal({
       picId: values.picId.trim(),
       startsOn: values.startsOn,
       endsOn: values.endsOn,
+      moveInOn: values.moveInOn || null,
+      moveOutOn: values.moveOutOn || null,
     }
 
     const target = isEdit ? `/api/events/${event?.id}` : '/api/events'
@@ -258,6 +268,41 @@ export function EventFormModal({
               />
               {errors.endsOn ? (
                 <p className="mt-1 text-sm text-rose-600">{errors.endsOn}</p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label htmlFor={`${titleId}-move-in`} className="label">
+                Move in (venue) <span className="font-normal text-slate-400">opsional</span>
+              </label>
+              <input
+                id={`${titleId}-move-in`}
+                type="date"
+                value={values.moveInOn ?? ''}
+                onChange={(inputEvent) => update('moveInOn', inputEvent.target.value)}
+                className="input"
+                aria-invalid={Boolean(errors.moveInOn)}
+              />
+              {errors.moveInOn ? (
+                <p className="mt-1 text-sm text-rose-600">{errors.moveInOn}</p>
+              ) : null}
+            </div>
+            <div>
+              <label htmlFor={`${titleId}-move-out`} className="label">
+                Move out (venue) <span className="font-normal text-slate-400">opsional</span>
+              </label>
+              <input
+                id={`${titleId}-move-out`}
+                type="date"
+                value={values.moveOutOn ?? ''}
+                onChange={(inputEvent) => update('moveOutOn', inputEvent.target.value)}
+                className="input"
+                aria-invalid={Boolean(errors.moveOutOn)}
+              />
+              {errors.moveOutOn ? (
+                <p className="mt-1 text-sm text-rose-600">{errors.moveOutOn}</p>
               ) : null}
             </div>
           </div>

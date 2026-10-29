@@ -9,6 +9,11 @@ import 'server-only'
 // fungsi mengambil konteks via `withWorkspace()` sendiri dan hanya menerima argumen domain.
 
 import { withWorkspace } from '@/lib/server/db'
+import {
+  eventTuntas,
+  hitungJobBelumTuntas,
+  type TuntasJobShape,
+} from '@/domain/event/tuntas'
 import type {
   EventDisplayStatus,
   EventInsightItem,
@@ -45,6 +50,8 @@ export type EventRow = {
   picId: string
   startsOn: string
   endsOn: string
+  moveInOn: string | null
+  moveOutOn: string | null
   status: EventLifecycle
   createdById: string
   createdAt: string
@@ -62,6 +69,8 @@ export type EventSummary = {
   picName: string
   startsOn: string
   endsOn: string
+  moveInOn: string | null
+  moveOutOn: string | null
   lifecycle: EventLifecycle
   displayStatus: EventDisplayStatus
 }
@@ -69,7 +78,7 @@ export type EventSummary = {
 // Kolom tabel `events` yang diambil — eksplisit agar tidak menarik lebih dari yang dibutuhkan dan
 // agar perubahan skema terlihat jelas di diff.
 const EVENT_COLUMNS =
-  'id, workspace_id, name, alias, venue_id, event_organizer_id, pic_id, starts_on, ends_on, status, created_by_id, created_at, updated_at'
+  'id, workspace_id, name, alias, venue_id, event_organizer_id, pic_id, starts_on, ends_on, move_in_on, move_out_on, status, created_by_id, created_at, updated_at'
 
 // Select bentuk daftar/ringkasan: kolom event + nama master data lewat foreign-table select.
 // `!inner` memastikan baris tanpa relasi valid tidak muncul (FK NOT NULL menjamin selalu ada).
@@ -77,7 +86,7 @@ const EVENT_COLUMNS =
 // punya DUA FK ke `app_users` (pic_id + created_by_id) — tanpa hint, PostgREST menolak dengan
 // PGRST201 (relasi ambigu) dan seluruh halaman /events gagal memuat.
 const EVENT_WITH_RELATIONS =
-  'id, name, alias, starts_on, ends_on, status, venue:venues!inner(legal_name), organizer:event_organizers!inner(legal_name), pic:app_users!events_pic_id_fkey!inner(full_name)'
+  'id, name, alias, starts_on, ends_on, move_in_on, move_out_on, status, venue:venues!inner(legal_name), organizer:event_organizers!inner(legal_name), pic:app_users!events_pic_id_fkey!inner(full_name)'
 
 // Bentuk baris mentah dari Postgres (snake_case apa adanya). Dipakai internal untuk memetakan ke
 // `EventRow` camelCase.
@@ -91,6 +100,8 @@ type EventDbRow = {
   pic_id: string
   starts_on: string
   ends_on: string
+  move_in_on: string | null
+  move_out_on: string | null
   status: EventLifecycle
   created_by_id: string
   created_at: string
@@ -106,6 +117,8 @@ type EventJoinedRow = {
   alias: string | null
   starts_on: string
   ends_on: string
+  move_in_on: string | null
+  move_out_on: string | null
   status: EventLifecycle
   venue: { legal_name: string } | { legal_name: string }[] | null
   organizer: { legal_name: string } | { legal_name: string }[] | null
@@ -130,6 +143,8 @@ function toEventRow(row: EventDbRow): EventRow {
     picId: row.pic_id,
     startsOn: row.starts_on,
     endsOn: row.ends_on,
+    moveInOn: row.move_in_on,
+    moveOutOn: row.move_out_on,
     status: row.status,
     createdById: row.created_by_id,
     createdAt: row.created_at,
@@ -174,6 +189,8 @@ export async function insertEvent(
       pic_id: input.picId,
       starts_on: input.startsOn,
       ends_on: input.endsOn,
+      move_in_on: input.moveInOn,
+      move_out_on: input.moveOutOn,
       created_by_id: createdById,
     })
     .select(EVENT_COLUMNS)
@@ -205,6 +222,8 @@ export async function updateEvent(id: string, input: EventInput): Promise<EventR
       pic_id: input.picId,
       starts_on: input.startsOn,
       ends_on: input.endsOn,
+      move_in_on: input.moveInOn,
+      move_out_on: input.moveOutOn,
       updated_at: new Date().toISOString(),
     })
     .eq('workspace_id', workspaceId)
@@ -301,6 +320,8 @@ export async function findEventSummary(id: string): Promise<EventSummary | null>
     picName: firstRelation(data.pic)?.full_name ?? '',
     startsOn: data.starts_on,
     endsOn: data.ends_on,
+    moveInOn: data.move_in_on,
+    moveOutOn: data.move_out_on,
     lifecycle: data.status,
     displayStatus: deriveDisplayStatus(data.starts_on, data.ends_on, today),
   }
@@ -477,6 +498,33 @@ function computeAttention(rows: AttentionRow[]): EventListAttention {
 
 // ── Insight operasional (panel "Perlu tindakan" + statistik) ─────────────────────────────────
 
+// Muat payload `jobs` workspace dan kelompokkan per eventId — bahan rollup tuntas. Payload jsonb
+// dibaca structural (TuntasJobShape): bentuk job lama dan baru sama-sama diterima; job tanpa
+// eventId (job lama lepas) diabaikan.
+async function fetchJobsGroupedByEvent(
+  client: Awaited<ReturnType<typeof withWorkspace>>['client'],
+  workspaceId: string,
+): Promise<Map<string, TuntasJobShape[]>> {
+  const { data, error } = await client
+    .from('jobs')
+    .select('payload')
+    .eq('workspace_id', workspaceId)
+    .returns<{ payload: (TuntasJobShape & { eventId?: string | null }) | null }[]>()
+
+  if (error) {
+    throw new Error(`Gagal memuat job untuk insight: ${error.message}`)
+  }
+  const grouped = new Map<string, TuntasJobShape[]>()
+  for (const row of data ?? []) {
+    const eventId = row?.payload?.eventId
+    if (!eventId) continue
+    const list = grouped.get(eventId) ?? []
+    list.push(row.payload as TuntasJobShape)
+    grouped.set(eventId, list)
+  }
+  return grouped
+}
+
 // Baris event ACTIVE + nama master data sebagai input komputasi insight.
 type InsightRow = {
   id: string
@@ -509,11 +557,12 @@ function bumpCount(map: Map<string, EventNameCount>, name: string): void {
  */
 function computeInsights(
   rows: InsightRow[],
-  jobEventIds: Set<string>,
+  jobsByEvent: Map<string, TuntasJobShape[]>,
   today: string,
 ): EventInsights {
   const horizon14 = addDays(today, 14)
   const horizon30 = addDays(today, 30)
+  const jobEventIds = new Set(jobsByEvent.keys())
 
   const toItem = (row: InsightRow): EventInsightItem => ({
     id: row.id,
@@ -525,6 +574,7 @@ function computeInsights(
 
   const dueSoon: EventInsightItem[] = []
   const soonWithoutJob: EventInsightItem[] = []
+  const unfinishedAfterShow: EventInsightItem[] = []
   const archivable: EventInsightItem[] = []
   const picCounts = new Map<string, EventNameCount>()
   const eoCounts = new Map<string, EventNameCount>()
@@ -540,6 +590,10 @@ function computeInsights(
     }
     if (row.ends_on < today) {
       archivable.push(toItem(row))
+      // Pameran sudah lewat namun masih ada job yang belum tuntas — pekerjaan menggantung.
+      if (eventTuntas(jobsByEvent.get(row.id) ?? []) === 'BELUM_TUNTAS') {
+        unfinishedAfterShow.push(toItem(row))
+      }
     }
     bumpCount(picCounts, firstRelation(row.pic)?.full_name ?? 'Tanpa PIC')
     bumpCount(eoCounts, firstRelation(row.organizer)?.legal_name ?? 'Tanpa EO')
@@ -574,6 +628,8 @@ function computeInsights(
     a.startsOn.localeCompare(b.startsOn)
   dueSoon.sort(byStartsAsc)
   soonWithoutJob.sort(byStartsAsc)
+  // Paling lama menggantung di atas — yang paling mendesak ditindak.
+  unfinishedAfterShow.sort((a, b) => a.endsOn.localeCompare(b.endsOn))
   archivable.sort((a, b) => a.endsOn.localeCompare(b.endsOn))
 
   const ranked = (counts: Map<string, EventNameCount>) =>
@@ -582,6 +638,7 @@ function computeInsights(
   return {
     dueSoon,
     soonWithoutJob,
+    unfinishedAfterShow,
     venueConflicts: [...conflictsByVenue.values()].map((group) => ({
       venueName: group.venueName,
       events: [...group.events.values()].sort(byStartsAsc),
@@ -599,8 +656,7 @@ function computeInsights(
 
 /**
  * Seluruh insight operasional untuk halaman events. Dua query: (a) event ACTIVE + nama master data,
- * (b) `payload->>eventId` dari tabel `jobs` (pola alias jsonb seperti app/api/jobs/[jobId]/route.ts)
- * yang dikelompokkan di JS menjadi himpunan event yang sudah punya job.
+ * (b) payload `jobs` dikelompokkan per event untuk rollup tuntas (dokumen BC + kepulangan).
  */
 export async function queryEventInsights(): Promise<EventInsights> {
   const { client, workspaceId } = await withWorkspace()
@@ -617,21 +673,8 @@ export async function queryEventInsights(): Promise<EventInsights> {
     throw new Error(`Gagal memuat event untuk insight: ${rowsError.message}`)
   }
 
-  const { data: jobRows, error: jobError } = await client
-    .from('jobs')
-    .select('event_id:payload->>eventId')
-    .eq('workspace_id', workspaceId)
-    .returns<{ event_id: string | null }[]>()
-  if (jobError) {
-    throw new Error(`Gagal memuat job untuk insight: ${jobError.message}`)
-  }
-  const jobEventIds = new Set(
-    (jobRows ?? [])
-      .map((row) => row.event_id)
-      .filter((value): value is string => value !== null),
-  )
-
-  return computeInsights(rows ?? [], jobEventIds, today)
+  const jobsByEvent = await fetchJobsGroupedByEvent(client, workspaceId)
+  return computeInsights(rows ?? [], jobsByEvent, today)
 }
 
 /**
@@ -697,9 +740,14 @@ export async function queryEventList(q: EventListQuery): Promise<EventListPage> 
     picName: firstRelation(row.pic)?.full_name ?? '',
     startsOn: row.starts_on,
     endsOn: row.ends_on,
+    moveInOn: row.move_in_on,
+    moveOutOn: row.move_out_on,
     lifecycle: row.status,
     // Derivasi presentasi pada baris yang SUDAH tersaring server-side (bukan filter seluruh tabel).
     displayStatus: deriveDisplayStatus(row.starts_on, row.ends_on, today),
+    // Diisi setelah pencarian (lihat bawah).
+    tuntasStatus: 'TANPA_JOB',
+    unfinishedJobs: 0,
   }))
 
   // Pencarian 5-field di JS (lihat catatan di atas): salah-satu-cocok pada name/alias/venue/EO/PIC.
@@ -716,6 +764,15 @@ export async function queryEventList(q: EventListQuery): Promise<EventListPage> 
           ].some((value) => value.toLowerCase().includes(needle))
         })
       : items
+
+  // Rollup tuntas per baris (badge "Belum tuntas" + peringatan arsip) — satu query jobs, digabung
+  // di JS karena bentuknya jsonb lintas generasi.
+  const jobsByEvent = await fetchJobsGroupedByEvent(client, workspaceId)
+  for (const item of visibleItems) {
+    const jobs = jobsByEvent.get(item.id) ?? []
+    item.tuntasStatus = eventTuntas(jobs)
+    item.unfinishedJobs = hitungJobBelumTuntas(jobs)
+  }
 
   // ── Agregat ringkasan (Req 16.1) ─────────────────────────────────────────────────────────────
   // Count query dengan `head: true` — hanya menghitung, tidak menarik baris ke memori.

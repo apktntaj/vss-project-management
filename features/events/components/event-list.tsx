@@ -10,6 +10,7 @@ import { EventCardActions } from '@/features/events/components/event-card-action
 import {
   DISPLAY_STATUS_BADGE,
   DISPLAY_STATUS_LABEL,
+  formatDay,
   formatDateRange,
   lifecycleBadge,
 } from '@/features/events/components/event-presentation'
@@ -78,6 +79,12 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
           {items.map((item, index) => {
             const lifecycle = lifecycleBadge(item.lifecycle)
             const isInactive = lifecycle !== null
+            const moveLine = [
+              item.moveInOn ? `MI ${formatDay(item.moveInOn)}` : null,
+              item.moveOutOn ? `MO ${formatDay(item.moveOutOn)}` : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')
             return (
               <tr
                 key={item.id}
@@ -106,6 +113,11 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
                   <p className="font-medium text-slate-700">
                     {formatDateRange(item.startsOn, item.endsOn)}
                   </p>
+                  {moveLine ? (
+                    <p className="mt-0.5 text-xs text-slate-500" title="Tanggal barang masuk/keluar venue">
+                      {moveLine}
+                    </p>
+                  ) : null}
                 </td>
                 <td className="px-3 py-3 align-top">
                   <div className="flex flex-col items-start gap-1">
@@ -114,6 +126,14 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
                     >
                       {DISPLAY_STATUS_LABEL[item.displayStatus]}
                     </span>
+                    {item.tuntasStatus === 'BELUM_TUNTAS' ? (
+                      <span
+                        className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700"
+                        title={`Masih ada ${item.unfinishedJobs} job yang belum tuntas`}
+                      >
+                        Belum tuntas
+                      </span>
+                    ) : null}
                     {lifecycle ? (
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs font-semibold ${lifecycle.className}`}
@@ -152,8 +172,11 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
                       picId: '',
                       startsOn: item.startsOn,
                       endsOn: item.endsOn,
+                      moveInOn: item.moveInOn ?? '',
+                      moveOutOn: item.moveOutOn ?? '',
                     }}
                     lifecycle={item.lifecycle}
+                    unfinishedJobs={item.unfinishedJobs}
                     venues={venues}
                     organizers={organizers}
                     pics={pics}
