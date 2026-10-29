@@ -1,12 +1,8 @@
-// Mengapa: sub-komponen SERVER (tanpa `'use client'`) yang me-render daftar kartu event dari
-// `EventListItem[]` yang SUDAH di-join/di-agregat server-side oleh repository (Req 16.1). Ia
-// me-render presentasi inline dari daftar itu — BUKAN memanggil `getEventSummary` per kartu —
-// supaya tidak terjadi N+1 query (daftar sudah membawa semua field siap-render). Kepemilikan query
-// tetap di repository; komponen ini murni presentasi. Aksi interaktif (edit/hapus) didelegasikan ke
-// leaf klien `EventCardActions` agar batas server/klien tetap tegas (Req 3.1).
+// Sub-komponen SERVER (tanpa `'use client'`) yang me-render daftar event sebagai BARIS tabel dari
+// `EventListItem[]` yang sudah di-join server-side oleh repository — bukan query per baris (hindari
+// N+1). Aksi interaktif (edit/hapus) didelegasikan ke leaf klien `EventCardActions`.
 
 import Link from 'next/link'
-import { Building2, CalendarDays, MapPin, User } from 'lucide-react'
 
 import type { EventListItem } from '@/domain/event/types'
 
@@ -20,13 +16,13 @@ import {
 
 type EventListProps = {
   items: EventListItem[]
-  // Opsi master data diteruskan ke leaf klien untuk form edit per kartu.
+  // Opsi master data diteruskan ke leaf klien untuk form edit per baris.
   venues?: { id: string; name: string }[]
   organizers?: { id: string; name: string }[]
   pics?: { id: string; name: string }[]
 }
 
-/** Grid kartu event. Kosong → pesan ramah; selain itu satu kartu per item. */
+/** Daftar event sebagai baris tabel. Kosong → pesan ramah; selain itu satu baris per item. */
 export function EventList({ items, venues, organizers, pics }: EventListProps) {
   if (items.length === 0) {
     return (
@@ -38,81 +34,136 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
   }
 
   return (
-    <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-      {items.map((item) => {
-        const lifecycle = lifecycleBadge(item.lifecycle)
-        const isInactive = lifecycle !== null
-        return (
-          <article
-            key={item.id}
-            className={`card group flex h-full flex-col p-4 transition hover:border-orange-200 hover:shadow-lg ${
-              isInactive ? 'opacity-80' : ''
-            }`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <Link
-                  href={`/events/${item.id}`}
-                  className="block truncate text-base font-semibold leading-snug text-slate-800 hover:text-orange-700 focus-visible:text-orange-700"
-                >
-                  {item.name}
-                </Link>
-                <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-semibold ${DISPLAY_STATUS_BADGE[item.displayStatus]}`}
+    <div className="card max-h-[65vh] overflow-auto">
+      <table className="min-w-[920px] w-full table-fixed text-left text-sm">
+        <colgroup>
+          <col className="w-[44px]" />
+          <col />
+          <col className="w-[130px]" />
+          <col className="w-[105px]" />
+          <col className="w-[150px]" />
+          <col className="w-[150px]" />
+          <col className="w-[100px]" />
+          <col className="w-[48px]" />
+        </colgroup>
+        <thead className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <tr>
+            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-3 text-right">
+              No
+            </th>
+            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-3 py-3">
+              Event
+            </th>
+            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-3 py-3">
+              Tanggal
+            </th>
+            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-3 py-3">
+              Status
+            </th>
+            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-3 py-3">
+              Venue
+            </th>
+            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-3 py-3">
+              EO
+            </th>
+            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-3 py-3">
+              PIC
+            </th>
+            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-3 py-3">
+              <span className="sr-only">Aksi</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item, index) => {
+            const lifecycle = lifecycleBadge(item.lifecycle)
+            const isInactive = lifecycle !== null
+            return (
+              <tr
+                key={item.id}
+                className={`border-b border-slate-100 odd:bg-slate-50/70 last:border-0 hover:bg-orange-50/40 ${
+                  isInactive ? 'opacity-80' : ''
+                }`}
+              >
+                <td className="px-2 py-3 text-right align-top tabular-nums text-slate-500">
+                  {index + 1}
+                </td>
+                <td className="px-3 py-3 align-top">
+                  <Link
+                    href={`/events/${item.id}`}
+                    className="block truncate font-semibold text-slate-900 hover:text-orange-700"
+                    title={item.name}
                   >
-                    {DISPLAY_STATUS_LABEL[item.displayStatus]}
-                  </span>
-                  {lifecycle ? (
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-semibold ${lifecycle.className}`}
-                    >
-                      {lifecycle.label}
-                    </span>
-                  ) : null}
+                    {item.name}
+                  </Link>
                   {item.alias ? (
-                    <p className="min-w-0 truncate text-xs text-slate-500">{item.alias}</p>
+                    <p className="mt-0.5 truncate text-xs text-slate-500" title={item.alias}>
+                      {item.alias}
+                    </p>
                   ) : null}
-                </div>
-              </div>
-              <EventCardActions
-                event={{
-                  id: item.id,
-                  name: item.name,
-                  alias: item.alias,
-                  venueId: '',
-                  eventOrganizerId: '',
-                  picId: '',
-                  startsOn: item.startsOn,
-                  endsOn: item.endsOn,
-                }}
-                venues={venues}
-                organizers={organizers}
-                pics={pics}
-              />
-            </div>
-
-            <dl className="mt-2.5 space-y-2.5 border-t pt-2.5 text-sm text-slate-600">
-              <div className="grid grid-cols-[16px_minmax(0,1fr)] items-start gap-2">
-                <CalendarDays className="mt-0.5 text-slate-400" size={16} aria-hidden="true" />
-                <dd>{formatDateRange(item.startsOn, item.endsOn)}</dd>
-              </div>
-              <div className="grid grid-cols-[16px_minmax(0,1fr)] items-start gap-2">
-                <MapPin className="mt-0.5 text-slate-400" size={16} aria-hidden="true" />
-                <dd>{item.venueName || 'Venue belum diinput'}</dd>
-              </div>
-              <div className="grid grid-cols-[16px_minmax(0,1fr)] items-start gap-2 text-xs text-slate-500">
-                <Building2 className="mt-0.5 text-slate-400" size={15} aria-hidden="true" />
-                <dd>{item.eventOrganizerName || 'EO belum diinput'}</dd>
-              </div>
-              <div className="grid grid-cols-[16px_minmax(0,1fr)] items-start gap-2 text-xs text-slate-500">
-                <User className="mt-0.5 text-slate-400" size={15} aria-hidden="true" />
-                <dd>PIC: {item.picName || 'Belum diinput'}</dd>
-              </div>
-            </dl>
-          </article>
-        )
-      })}
+                </td>
+                <td className="px-3 py-3 align-top">
+                  <p className="font-medium text-slate-700">
+                    {formatDateRange(item.startsOn, item.endsOn)}
+                  </p>
+                </td>
+                <td className="px-3 py-3 align-top">
+                  <div className="flex flex-col items-start gap-1">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-semibold ${DISPLAY_STATUS_BADGE[item.displayStatus]}`}
+                    >
+                      {DISPLAY_STATUS_LABEL[item.displayStatus]}
+                    </span>
+                    {lifecycle ? (
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${lifecycle.className}`}
+                      >
+                        {lifecycle.label}
+                      </span>
+                    ) : null}
+                  </div>
+                </td>
+                <td className="px-3 py-3 align-top">
+                  <p className="truncate text-slate-700" title={item.venueName || undefined}>
+                    {item.venueName || 'Venue belum diinput'}
+                  </p>
+                </td>
+                <td className="px-3 py-3 align-top">
+                  <p
+                    className="truncate text-slate-600"
+                    title={item.eventOrganizerName || undefined}
+                  >
+                    {item.eventOrganizerName || 'EO belum diinput'}
+                  </p>
+                </td>
+                <td className="px-3 py-3 align-top">
+                  <p className="truncate text-slate-600" title={item.picName || undefined}>
+                    {item.picName || 'Belum diinput'}
+                  </p>
+                </td>
+                <td className="px-3 py-3 align-top text-right">
+                  <EventCardActions
+                    event={{
+                      id: item.id,
+                      name: item.name,
+                      alias: item.alias,
+                      venueId: '',
+                      eventOrganizerId: '',
+                      picId: '',
+                      startsOn: item.startsOn,
+                      endsOn: item.endsOn,
+                    }}
+                    lifecycle={item.lifecycle}
+                    venues={venues}
+                    organizers={organizers}
+                    pics={pics}
+                  />
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }

@@ -52,9 +52,10 @@ Atomic / Enumeration
 → Structure dasar
   Pengguna → Venue → EventOrganizer
 → Itemization
-  SiklusHidupEvent (dipertikaikan — lihat open questions) · StatusTampilEvent (turunan)
+  SiklusHidupEvent (resolusi 2026-10-29) · StatusTampilEvent (turunan) · StatusTuntasEvent (turunan)
 → Aggregate
-  Event = structure(venue: Venue, eo: EventOrganizer, pic: Pengguna, rentang tanggal, …)
+  Event = structure(venue: Venue, eo: EventOrganizer, pic: Pengguna, rentang tanggal,
+                    masukVenue/keluarVenue opsional, …)
 ```
 
 Venue dan Event Organizer adalah saudara: keduanya bergantung hanya pada atomic, urutan di
@@ -218,36 +219,36 @@ Sudah didefinisikan di [dokumen manifest](./job-manifest-data-definitions.md): t
 `YYYY-MM-DD` tanpa komponen waktu dan tanpa zona — event pameran dijadwalkan per hari. Dirujuk,
 tidak didefinisikan ulang.
 
-### `SiklusHidupEvent` — **dipertikaikan**
+### `SiklusHidupEvent` — **diresolusi 2026-10-29**
 
-**Definisi (apa adanya di kode redesign):**
+**Keputusan (diskusi domain expert 2026-10-29):** siklus hidup tersimpan murni **administratif**;
+"tuntas" BUKAN keadaan tersimpan — ia turunan rollup dari job (lihat `StatusTuntasEvent`).
+Dengan itu, kebingungan "arsip vs selesai" berhenti: **tuntas itu fakta (dihitung), arsip itu
+keputusan (diambil)**.
 
-```text
-SiklusHidupEvent adalah salah satu dari ACTIVE, CANCELLED, atau ARCHIVED.
-```
-
-**Konflik evidence (ditampilkan, tidak dipilih diam-diam):** tipe masih memuat `CANCELLED`, tetapi
-fitur cancel **sudah dihapus dari produk** (keputusan 2026-10: tidak ada pembatalan; event
-dihapus hard oleh PIC). `ARCHIVED` tidak punya produsen di kode manapun. Sementara itu filter
-daftar event bermacam "Aktif" menyiratkan minimal satu keadaan non-aktif yang disimpan.
-
-**Definisi (proposal target):**
+**Definisi**
 
 ```text
-SiklusHidupEvent adalah salah satu dari AKTIF atau SELESAI.
+SiklusHidupEvent adalah salah satu dari AKTIF atau DIARSIPKAN.
 ```
 
-dengan interpretasi: AKTIF event yang ditangani (masa datang, berjalan, atau baru lewat dan
-masih diproses job-nya); SELESAI event yang tidak lagi ditangani namun tetap disimpan sebagai
-riwayat. Penghapusan event bukan keadaan — ia menghilangkan entitas (hard delete oleh PIC).
+**Interpretasi** — AKTIF event yang masih hidup secara operasional (termasuk yang pamerannya
+sudah lewat tapi pekerjaannya belum tuntas). DIARSIPKAN keputusan manual menutup buku: keluar
+dari seluruh angka operasional (panel perlu tindakan, statistik, insight), tetap tampil di
+daftar dengan badge, data/job/dokumen utuh. Idealnya arsip diambil SETELAH tuntas — ditegakkan
+lunak lewat konfirmasi "masih ada N job belum tuntas", tidak diblokir keras. Penghapusan bukan
+keadaan — ia menghilangkan entitas (hard delete oleh PIC). `CANCELLED` tetap ada di basis data
+hanya sebagai data historis baca-saja (produsen UI-nya sudah dihapus, keputusan 2026-10); tidak
+diproduksi lagi.
 
-**Contoh** — event JIE Okt 2026: AKTIF selama job re-export-nya masih jalan, SELESAI setelah
-semua kepulangan tuntas. Invalid: CANCELLED (fitur sudah tidak ada).
+**Contoh** — event JIE Okt 2026: AKTIF selama job re-export-nya masih jalan; setelah semua job
+tuntas, pengguna mengarsipkan → DIARSIPKAN. Boundary: mengarsipkan saat masih ada job belum
+tuntas — diizinkan, dengan peringatan. Invalid: CANCELLED sebagai nilai baru (tidak ada
+produsen).
 
-**Open question (keputusan domain yang diminta):** (a) apakah SELESAI dibutuhkan sekarang, atau
-event tetap "selamanya aktif" sampai dipindah arsip? (b) jika arsip dibutuhkan, apa pemicunya —
-manual, atau otomatis ketika semua job-nya COMPLETED? (c) migrasi nilai CANCELLED lama: hard
-delete atau dikonversi SELESAI?
+**Jawaban open question lama:** (a) SELESAI tidak jadi keadaan tersimpan — digantikan
+`StatusTuntasEvent` turunan; (b) pemicu arsip = manual, bukan otomatis dari status job; (c) nilai
+`CANCELLED` lama dibiarkan sebagai historis baca-saja, tidak dikonversi.
 
 ### `StatusTampilEvent` (turunan — tidak disimpan)
 
@@ -260,11 +261,54 @@ StatusTampilEvent adalah salah satu dari SEGERA, BERLANGSUNG, atau LEWAT.
 **Interpretasi** — posisi event terhadap hari ini, **dihitung** dari rentang tanggal, bukan
 disimpan: SEGERA jika hari ini < tanggal mulai; BERLANGSUNG jika tanggal mulai ≤ hari ini ≤
 tanggal selesai; LEWAT jika hari ini > tanggal selesai (inklusif di kedua batas — proposal).
-Terpisah dari SiklusHidupEvent: event SEGERA dan LEWAT sama-sama bisa AKTIF.
+Terpisah dari SiklusHidupEvent: event SEGERA dan LEWAT sama-sama bisa AKTIF. **Penegasan
+2026-10-29:** LEWAT berarti *pamerannya* sudah lewat — bukan *pekerjaannya* selesai. Kelengkapan
+pekerjaan adalah `StatusTuntasEvent`; kedua sumbu ini tidak boleh menyatu kembali.
 
 **Contoh** — hari ini 21 Okt: event 23–26 Okt = SEGERA; 20–23 Okt = BERLANGSUNG; 15–18 Okt =
 LEWAT. Boundary: tepat pada tanggal mulai = BERLANGSUNG; tepat pada tanggal selesai =
 BERLANGSUNG.
+
+### `masukVenue` dan `keluarVenue` (penanda logistik — proposal 2026-10-29)
+
+**Definisi**
+
+```text
+masukVenue   : TanggalHari, atau kosong
+keluarVenue  : TanggalHari, atau kosong
+```
+
+**Interpretasi** — tanggal **fakta fisik** pergerakan barang di venue (move in / move out):
+barang dating ke venue untuk pemasangan, dan barang meninggalkan venue setelah pembongkaran.
+Keduanya *tanggal*, bukan keadaan — sejajar `mulai`/`selesai`, terjadi di luarnya: move-in
+tipikal sebelum/saat `mulai`, move-out tipikal setelah/saat `selesai` (tipikal, bukan
+invariant). Dua pagar istilah: (1) ini pergerakan **di venue**, bukan pergerakan kepabeanan —
+masuk/keluar BC (2.3 masuk, 2.5/3.0 keluar) tetap milik `DokumenBC` per job, dan barang bisa
+keluar venue sambil masih menunggu re-export; (2) ini **jadwal agregat di level event** —
+eksekusi per pengiriman (truk, gudang) tetap milik level job (ETA inward dan `KepulanganJob`).
+Tanpa salah satu tanggal, field kosong — banyak event belum punya jadwal ini.
+
+**Contoh** — event 20–23 Okt di JIExpo: masukVenue 18 Okt (borongan masuk dua hari sebelum
+buka), keluarVenue 24 Okt. Boundary: event satu hari dengan masukVenue = keluarVenue = hari
+yang sama. Invalid: keluarVenue < masukVenue (I-7).
+
+### `StatusTuntasEvent` (turunan — tidak disimpan)
+
+**Definisi**
+
+```text
+StatusTuntasEvent adalah salah satu dari TUNTAS, BELUM_TUNTAS, atau TANPA_JOB.
+```
+
+**Interpretasi** — kelengkapan **pekerjaan** (bukan pameran), dihitung dari seluruh job event
+itu: TANPA_JOB bila tidak ada satu pun job — *dimulai saja belum*, bukan pekerjaan menggantung,
+dan kebutuhan "event dekat belum digarap" sudah dilayani sinyal pipeline terpisah (≤30 hari
+tanpa job); BELUM_TUNTAS bila ada job yang belum `jobTuntas`; TUNTAS bila semua job `jobTuntas`.
+Menggantikan makna "selesai" yang keliru dilekatkan ke `ends_on`, dan menjadi prasyarat lunak
+bagi arsip (perbedaan tuntas/arsip lihat `SiklusHidupEvent`).
+
+**Contoh** — event dengan 3 job, satu masih menunggu BC 2.5 terdaftar = BELUM_TUNTAS; Coaltrans
+Asia tanpa job = TANPA_JOB (bukan tuduhan menggantung); event 2 job semuanya tuntas = TUNTAS.
 
 ### `Event`
 
@@ -280,6 +324,8 @@ Event terdiri dari:
   pic         : UserId    — tepat satu (WAJIB)
   mulai       : TanggalHari
   selesai     : TanggalHari
+  masukVenue  : TanggalHari, atau kosong   (proposal 2026-10-29)
+  keluarVenue : TanggalHari, atau kosong   (proposal 2026-10-29)
   siklusHidup : SiklusHidupEvent
   dibuatOleh  : UserId
 ```
@@ -329,6 +375,10 @@ prosesEvent(e, hariIni):
   B-3).
 - **I-6:** seluruh definisi di atas terikat satu WorkspaceId; lintas workspace tidak
   direpresentasikan.
+- **I-7 (proposal 2026-10-29):** bila `masukVenue` dan `keluarVenue` keduanya terisi,
+  `masukVenue ≤ keluarVenue`. Urutannya terhadap `mulai`/`selesai` hanya tipikal (move-in
+  umumnya ≤ `mulai`, move-out umumnya ≥ `selesai`), bukan invariant — ada pemasangan saat
+  pameran berjalan dan pembongkaran bertahap.
 
 ## 5. Fungsi turunan (signature, tanpa implementasi)
 
@@ -352,6 +402,23 @@ ringkasDashboard : Daftar Event × TanggalHari -> Ringkasan
 
 bolehHapus : Pengguna × Event × jumlahTurunan -> Bool
   // purpose: menegakkan I-4 + B-1 sebelum hard delete.
+
+jobTuntas : Job -> Bool
+  // purpose (keputusan 2026-10-29): job dikatakan tuntas bila (1) setiap DokumenBC yang
+  // berlaku bagi jenis job itu sudah terdaftar — punya nomorRegistrasi (bukan hanya nomorAju),
+  // dan (2) kepulangan (KepulanganJob, doc manifest) sudah terisi ATAU jenis job tidak
+  // mengharuskan barang kembali (JobLocal, PERMANENT_IMPORT). Pemetaan per jenis job mana yang
+  // wajib kepulangan (TEMPORARY, ATA_CARNET, ROAD_SHIPMENT) dirinci di dokumen Job.
+
+eventTuntas : Event × Daftar Job -> StatusTuntasEvent
+  // purpose: TANPA_JOB bila daftar job kosong; BELUM_TUNTAS bila ada job dengan jobTuntas
+  // false; TUNTAS bila semua jobTuntas true. Sumbu kelengkapan pekerjaan — terpisah dari
+  // StatusTampilEvent (kalender pameran).
+
+peringatanArsip : Event × Daftar Job -> Text, atau kosong
+  // purpose: soft-guard arsip (lihat SiklusHidupEvent) — bila siklusHidup AKTIF dan
+  // eventTuntas ≠ TUNTAS, kembalikan peringatan "masih ada N job belum tuntas"; kosong bila
+  // aman diarsipkan tanpa catatan. Tidak memblokir.
 ```
 
 ## 6. Validasi contoh dan migrasi
@@ -362,6 +429,10 @@ bolehHapus : Pengguna × Event × jumlahTurunan -> Bool
 | Venue dengan alias populer | Venue | ya | structure | JIExpo |
 | Event satu hari | Event | ya | structure, I-1 boundary | mulai = selesai |
 | Event lewat tapi masih AKTIF | Event × SiklusHidup | ya | StatusTampil = LEWAT | pembedaan vs siklus hidup |
+| Event tanpa move-in/out | Event | ya | kedua field kosong | mayoritas event saat ini |
+| Move-out sebelum move-in | — | **tidak** (I-7) | — | validasi, bukan bentuk |
+| Event pameran lewat, semua job tuntas | StatusTuntasEvent | ya | TUNTAS + LEWAT | dua sumbu bebas berpadu |
+| Event tanpa job dipandang "belum tuntas" | StatusTuntasEvent | **tidak** | TANPA_JOB | keputusan 2026-10-29 |
 | Event tanpa PIC | — | **tidak** | — | mustahil by construction |
 | Dua event sama venue, tanggal menyentuh di satu hari | konflikVenue | ya (terdeteksi) | interval boundary | open question batas |
 | Akun nonaktif ditunjuk PIC | — | **tidak** (I-3) | — | validasi, bukan bentuk |
@@ -374,8 +445,9 @@ tanpa baris workspace_members tidak bisa login — pemetaan data, bukan model.
 
 ## 7. Open questions (ringkasan untuk domain expert)
 
-1. **SiklusHidupEvent:** butuh SELESAI/ARSIP sekarang atau nanti? Pemicu arsip apa? Nasib
-   CANCELLED lama? *(konflik evidence terbesar slice ini)*
+1. **SiklusHidupEvent** — **RESOLVED 2026-10-29**: siklus tersimpan = AKTIF | DIARSIPKAN
+   (administratif, manual); "tuntas" menjadi `StatusTuntasEvent` turunan dari job, bukan keadaan
+   tersimpan; `CANCELLED` lama dibiarkan historis baca-saja. Detail di §3.
 2. **Otorisasi satu model:** `Peran` saja, atau tetap ada `isAdmin` terpisah? Hubungan
    SUPERVISOR vs admin?
 3. **Pemangkasan Venue/EO permanen?** Venue tanpa alamat lengkap/kontak/loadingAccessNotes dan EO
@@ -383,6 +455,15 @@ tanpa baris workspace_members tidak bisa login — pemetaan data, bukan model.
    sebaiknya didefinisikan sekali dan dipakai bersama Exhibitor/Agent (slice berikutnya).
 4. **Duplikasi master data:** aturan mengenali venue/EO yang sama saat "input baru" (E-3/E-4).
 5. **Batas konflik venue:** dua event yang rentangnya menyentuh di satu hari yang sama — konflik
-   atau normal (turnover build-up/teardown)?
+   atau normal (turnover build-up/teardown)? *Diperkaya 2026-10-29: kini ada kandidat jawaban
+   yang lebih jujur — deteksi konflik bisa memakai jendela okupansi `masukVenue..keluarVenue`
+   (bila terisi) alih-alih `mulai..selesai`, karena turnover-lah yang bentrok fisik. Belum
+   diputuskan.*
 6. **Inklusivitas StatusTampil** di kedua batas — proposal; konfirmasi.
 7. **Multi-workspace:** tujuan produk atau sisa generik yang boleh dibuang?
+8. **Sumber & pengisi move-in/out (baru 2026-10-29):** tanggal ini datang dari jadwal resmi
+   venue/EO atau rencana VSS sendiri? Siapa berwenang mengisinya (PIC event?), dan seberapa
+   sering direvisi? Menentukan bentuk UI (field edit event vs catatan terpisah).
+9. **Rincian wajib-kepulangan per jenis job (baru 2026-10-29):** konsep `jobTuntas` dirinci di
+   sini, tetapi tabel jenis mana yang mewajibkan kepulangan dimiliki dokumen Job — konfirmasi
+   di sana.

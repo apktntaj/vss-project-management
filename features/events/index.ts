@@ -13,6 +13,7 @@ export { archiveEvent } from '@/features/events/use-cases/archive-event'
 
 // Use-case baca (dipakai Server Component dashboard + EventCard).
 export { listEventsForDashboard } from '@/features/events/use-cases/list-events-for-dashboard'
+export { listEventInsights } from '@/features/events/use-cases/list-event-insights'
 export { getEventSummary } from '@/features/events/use-cases/get-event-summary'
 
 // Use-case master data venue/EO (create-inline + select existing, Req 12). Tulis menegakkan

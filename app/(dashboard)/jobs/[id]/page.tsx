@@ -50,7 +50,7 @@ const jenisLabel = (job: LocalJob) =>
   job.kind === 'LOCAL'
     ? 'Local'
     : job.internationalJenis
-      ? internationalJobJenisLabels[job.internationalJenis]
+      ? internationalJobJenisLabels[job.internationalJenis] ?? 'Job lama'
       : 'Job lama'
 
 function comparisonValue(value: DocumentComparison['invoiceValue']) {

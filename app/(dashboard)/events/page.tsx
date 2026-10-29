@@ -1,4 +1,4 @@
-import { AlertTriangle, MapPin } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import { redirect } from 'next/navigation'
 
 import { requireCurrentUser } from '@/features/auth'
@@ -28,16 +28,19 @@ function singleParam(value: string | string[] | undefined): string | undefined {
   return value
 }
 
-// Terjemahkan param UI (`search`, `status`) ke EventListQuery domain. `status`:
+// Terjemahkan param UI (`search`, `status`, `pic`) ke EventListQuery domain. `status`:
 //   all     → tanpa filter
 //   active  → lifecycle ACTIVE
 //   soon|ongoing|done → displayStatus (turunan tanggal, repository menerjemahkan ke predikat tanggal)
+// `pic` → id PIC (UUID) untuk filter penugasan.
 function toQuery(searchParams: EventsPageProps['searchParams']): EventListQuery {
   const search = singleParam(searchParams?.search)?.trim() || undefined
   const status = singleParam(searchParams?.status)
+  const pic = singleParam(searchParams?.pic)?.trim() || undefined
 
   const query: EventListQuery = {}
   if (search) query.search = search
+  if (pic) query.picId = pic
   if (status === 'active') {
     query.lifecycle = 'ACTIVE'
   } else if (status === 'soon' || status === 'ongoing' || status === 'done') {
@@ -58,8 +61,9 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
   }
   const query = toQuery(searchParams)
 
-  // Indikator error (Req 16.8): bila query agregat/daftar/attention gagal, use-case MELEMPAR.
-  // Kita tangkap di sini dan render keadaan error yang jelas — BUKAN daftar kosong seolah valid.
+  // Indikator error (Req 16.8): bila query daftar gagal, use-case MELEMPAR. Kita tangkap di sini
+  // dan render keadaan error yang jelas — BUKAN daftar kosong seolah valid. Laporan insight hidup
+  // di dashboard; halaman ini fokus pada daftar.
   let page: EventListPage | null = null
   let loadFailed = false
   try {
@@ -68,9 +72,9 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
     loadFailed = true
   }
 
-  // Opsi master data untuk form buat/edit event (venue/EO/PIC). Kegagalan memuat opsi TIDAK
-  // mematikan halaman: EventFormModal memang dirancang menerima daftar kosong dan jatuh ke input
-  // id teks, jadi daftar event tetap tampil.
+  // Opsi master data untuk form buat/edit event (venue/EO/PIC) — sekaligus opsi filter PIC.
+  // Kegagalan memuat opsi TIDAK mematikan halaman: EventFormModal memang dirancang menerima
+  // daftar kosong dan jatuh ke input id teks, jadi daftar event tetap tampil.
   let venues: { id: string; name: string }[] | undefined
   let organizers: { id: string; name: string }[] | undefined
   let pics: { id: string; name: string }[] | undefined
@@ -96,8 +100,23 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
   return (
     <div className="space-y-6">
       <h1 className="sr-only">Events</h1>
-      <section>
-        <EventFilters>
+      {page ? (
+        <section className="grid gap-4 sm:grid-cols-2" aria-label="Ringkasan">
+          <article className="card flex items-center justify-between gap-3 p-4">
+            <p className="text-sm text-slate-500">Total event</p>
+            <p className="text-2xl font-bold text-slate-700">{page.summary.totalEvents}</p>
+          </article>
+          <article className="card flex items-center justify-between gap-3 p-4">
+            <p className="text-sm text-slate-500">Berlangsung</p>
+            <p className="text-2xl font-bold text-emerald-700">
+              {page.summary.ongoingEvents}
+            </p>
+          </article>
+        </section>
+      ) : null}
+
+      <section className="space-y-5">
+        <EventFilters pics={pics}>
           <EventCreateButton venues={venues} organizers={organizers} pics={pics} />
         </EventFilters>
 
@@ -108,64 +127,12 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
             <p className="mt-1 text-sm text-slate-500">Muat ulang halaman untuk mencoba lagi.</p>
           </div>
         ) : (
-          <>
-            <section
-              className="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
-              aria-label="Ringkasan"
-            >
-              <article className="card flex items-center justify-between gap-3 p-4">
-                <p className="text-sm text-slate-500">Total event</p>
-                <p className="text-2xl font-bold text-slate-700">{page.summary.totalEvents}</p>
-              </article>
-              <article className="card flex items-center justify-between gap-3 p-4">
-                <p className="text-sm text-slate-500">Berlangsung</p>
-                <p className="text-2xl font-bold text-emerald-700">
-                  {page.summary.ongoingEvents}
-                </p>
-              </article>
-              <article className="card p-4" aria-labelledby="events-attention-title">
-                <h2 id="events-attention-title" className="text-sm font-semibold">
-                  Attention
-                </h2>
-                {page.attention.scheduleOverlaps.length > 0 ||
-                page.attention.venueConflicts.length > 0 ? (
-                  <ul className="mt-2 flex flex-col gap-1.5 text-sm text-slate-600">
-                    {page.attention.scheduleOverlaps.length > 0 ? (
-                      <li className="flex gap-2">
-                        <AlertTriangle
-                          className="mt-0.5 shrink-0 text-amber-600"
-                          size={16}
-                          aria-hidden="true"
-                        />
-                        <span>{page.attention.scheduleOverlaps.length} jadwal event beririsan.</span>
-                      </li>
-                    ) : null}
-                    {page.attention.venueConflicts.length > 0 ? (
-                      <li className="flex gap-2">
-                        <MapPin
-                          className="mt-0.5 shrink-0 text-amber-600"
-                          size={16}
-                          aria-hidden="true"
-                        />
-                        <span>{page.attention.venueConflicts.length} konflik venue.</span>
-                      </li>
-                    ) : null}
-                  </ul>
-                ) : (
-                  <p className="mt-1 text-sm text-slate-500">
-                    Tidak ada perhatian operasional saat ini.
-                  </p>
-                )}
-              </article>
-            </section>
-
-            <EventList
-              items={page.items}
-              venues={venues}
-              organizers={organizers}
-              pics={pics}
-            />
-          </>
+          <EventList
+            items={page.items}
+            venues={venues}
+            organizers={organizers}
+            pics={pics}
+          />
         )}
       </section>
     </div>

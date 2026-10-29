@@ -11,6 +11,8 @@ import 'server-only'
 import { withWorkspace } from '@/lib/server/db'
 import type {
   EventDisplayStatus,
+  EventInsightItem,
+  EventInsights,
   EventInput,
   EventLifecycle,
   EventListAttention,
@@ -18,10 +20,13 @@ import type {
   EventListPage,
   EventListQuery,
   EventListSummary,
+  EventMonthCount,
+  EventNameCount,
   EventOrganizerInput,
   EventOrganizerRecord,
   EventScheduleOverlap,
   EventVenueConflict,
+  EventVenueConflictGroup,
   VenueInput,
   VenueRecord,
 } from '@/domain/event/types'
@@ -423,6 +428,13 @@ function rangesOverlap(aStart: string, aEnd: string, bStart: string, bEnd: strin
   return aStart <= bEnd && bStart <= aEnd
 }
 
+// Tanggal ISO + N hari, tanpa objek Date zona-lokal (aritmetika UTC pada tanggal-saja).
+function addDays(iso: string, days: number): string {
+  const date = new Date(`${iso}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
 // Hitung overlap jadwal dan konflik venue dari kumpulan event AKTIF yang sudah tersaring server-side
 // ke workspace ini. Pairwise overlap bersifat O(n^2) dan tidak bisa diekspresikan sebagai filter
 // SQL sederhana; karena itu komputasi dilakukan di JS DI ATAS hasil yang sudah dibatasi server
@@ -463,6 +475,165 @@ function computeAttention(rows: AttentionRow[]): EventListAttention {
   return { scheduleOverlaps, venueConflicts }
 }
 
+// ── Insight operasional (panel "Perlu tindakan" + statistik) ─────────────────────────────────
+
+// Baris event ACTIVE + nama master data sebagai input komputasi insight.
+type InsightRow = {
+  id: string
+  name: string
+  starts_on: string
+  ends_on: string
+  venue_id: string
+  event_organizer_id: string
+  pic_id: string
+  venue: { legal_name: string } | { legal_name: string }[] | null
+  organizer: { legal_name: string } | { legal_name: string }[] | null
+  pic: { full_name: string } | { full_name: string }[] | null
+}
+
+const INSIGHT_COLUMNS =
+  'id, name, starts_on, ends_on, venue_id, event_organizer_id, pic_id, venue:venues!inner(legal_name), organizer:event_organizers!inner(legal_name), pic:app_users!events_pic_id_fkey!inner(full_name)'
+
+// Naikkan penghitung nama dalam Map ranking (beban PIC, EO, venue).
+function bumpCount(map: Map<string, EventNameCount>, name: string): void {
+  const current = map.get(name)
+  if (current) current.count += 1
+  else map.set(name, { name, count: 1 })
+}
+
+/**
+ * Hitung seluruh insight dari baris event ACTIVE + himpunan eventId yang sudah punya job. Murni
+ * (tanpa I/O) agar mudah diuji terpisah. Horizon: dueSoon = H+14, soonWithoutJob = H+30; keduanya
+ * hanya menghitung event yang belum dimulai — yang sedang berjalan sudah terwakili ringkasan
+ * "Berlangsung". Konflik venue dikelompokkan per venue dari gabungan pasangan yang beririsan.
+ */
+function computeInsights(
+  rows: InsightRow[],
+  jobEventIds: Set<string>,
+  today: string,
+): EventInsights {
+  const horizon14 = addDays(today, 14)
+  const horizon30 = addDays(today, 30)
+
+  const toItem = (row: InsightRow): EventInsightItem => ({
+    id: row.id,
+    name: row.name,
+    startsOn: row.starts_on,
+    endsOn: row.ends_on,
+    venueName: firstRelation(row.venue)?.legal_name ?? '',
+  })
+
+  const dueSoon: EventInsightItem[] = []
+  const soonWithoutJob: EventInsightItem[] = []
+  const archivable: EventInsightItem[] = []
+  const picCounts = new Map<string, EventNameCount>()
+  const eoCounts = new Map<string, EventNameCount>()
+  const venueCounts = new Map<string, EventNameCount>()
+  const monthCounts = new Map<string, number>()
+
+  for (const row of rows) {
+    if (row.starts_on >= today && row.starts_on <= horizon14) {
+      dueSoon.push(toItem(row))
+    }
+    if (row.starts_on >= today && row.starts_on <= horizon30 && !jobEventIds.has(row.id)) {
+      soonWithoutJob.push(toItem(row))
+    }
+    if (row.ends_on < today) {
+      archivable.push(toItem(row))
+    }
+    bumpCount(picCounts, firstRelation(row.pic)?.full_name ?? 'Tanpa PIC')
+    bumpCount(eoCounts, firstRelation(row.organizer)?.legal_name ?? 'Tanpa EO')
+    bumpCount(venueCounts, firstRelation(row.venue)?.legal_name ?? 'Tanpa venue')
+    const month = row.starts_on.slice(0, 7)
+    monthCounts.set(month, (monthCounts.get(month) ?? 0) + 1)
+  }
+
+  let scheduleOverlapCount = 0
+  const conflictsByVenue = new Map<
+    string,
+    { venueName: string; events: Map<string, EventInsightItem> }
+  >()
+  for (let i = 0; i < rows.length; i += 1) {
+    for (let j = i + 1; j < rows.length; j += 1) {
+      const a = rows[i]
+      const b = rows[j]
+      if (!rangesOverlap(a.starts_on, a.ends_on, b.starts_on, b.ends_on)) continue
+      scheduleOverlapCount += 1
+      if (a.venue_id !== b.venue_id) continue
+      let group = conflictsByVenue.get(a.venue_id)
+      if (!group) {
+        group = { venueName: firstRelation(a.venue)?.legal_name ?? '', events: new Map() }
+        conflictsByVenue.set(a.venue_id, group)
+      }
+      group.events.set(a.id, toItem(a))
+      group.events.set(b.id, toItem(b))
+    }
+  }
+
+  const byStartsAsc = (a: EventInsightItem, b: EventInsightItem) =>
+    a.startsOn.localeCompare(b.startsOn)
+  dueSoon.sort(byStartsAsc)
+  soonWithoutJob.sort(byStartsAsc)
+  archivable.sort((a, b) => a.endsOn.localeCompare(b.endsOn))
+
+  const ranked = (counts: Map<string, EventNameCount>) =>
+    [...counts.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+
+  return {
+    dueSoon,
+    soonWithoutJob,
+    venueConflicts: [...conflictsByVenue.values()].map((group) => ({
+      venueName: group.venueName,
+      events: [...group.events.values()].sort(byStartsAsc),
+    })),
+    scheduleOverlapCount,
+    archivable,
+    picLoad: ranked(picCounts),
+    eoRanking: ranked(eoCounts).slice(0, 5),
+    perMonth: [...monthCounts.entries()]
+      .map(([month, count]) => ({ month, count }))
+      .sort((a, b) => a.month.localeCompare(b.month)),
+    venueRanking: ranked(venueCounts).slice(0, 5),
+  }
+}
+
+/**
+ * Seluruh insight operasional untuk halaman events. Dua query: (a) event ACTIVE + nama master data,
+ * (b) `payload->>eventId` dari tabel `jobs` (pola alias jsonb seperti app/api/jobs/[jobId]/route.ts)
+ * yang dikelompokkan di JS menjadi himpunan event yang sudah punya job.
+ */
+export async function queryEventInsights(): Promise<EventInsights> {
+  const { client, workspaceId } = await withWorkspace()
+  const today = serverToday()
+
+  const { data: rows, error: rowsError } = await client
+    .from('events')
+    .select(INSIGHT_COLUMNS)
+    .eq('workspace_id', workspaceId)
+    .eq('status', 'ACTIVE')
+    .order('starts_on', { ascending: true })
+    .returns<InsightRow[]>()
+  if (rowsError) {
+    throw new Error(`Gagal memuat event untuk insight: ${rowsError.message}`)
+  }
+
+  const { data: jobRows, error: jobError } = await client
+    .from('jobs')
+    .select('event_id:payload->>eventId')
+    .eq('workspace_id', workspaceId)
+    .returns<{ event_id: string | null }[]>()
+  if (jobError) {
+    throw new Error(`Gagal memuat job untuk insight: ${jobError.message}`)
+  }
+  const jobEventIds = new Set(
+    (jobRows ?? [])
+      .map((row) => row.event_id)
+      .filter((value): value is string => value !== null),
+  )
+
+  return computeInsights(rows ?? [], jobEventIds, today)
+}
+
 /**
  * Daftar event untuk dashboard dengan filter SEPENUHNYA sisi-server (Req 16.1–16.7): join
  * venue/EO/PIC, pencarian substring `ilike`, filter lifecycle, filter display-status diterjemahkan
@@ -479,26 +650,22 @@ export async function queryEventList(q: EventListQuery): Promise<EventListPage> 
     .select(EVENT_WITH_RELATIONS)
     .eq('workspace_id', workspaceId)
 
-  // Pencarian substring (Req 16.2/16.3): `ilike` pada name/alias di tabel dasar DAN pada nama legal
-  // venue/EO + full_name PIC di foreign table. Supabase `.or()` tidak menjangkau kolom foreign-table
-  // dalam satu ekspresi; jadi name/alias digabung dalam satu `.or` di tabel dasar, sementara
-  // kolom foreign-table disaring lewat `referencedTable` masing-masing. Semua tetap sisi-server.
+  // Pencarian substring (Req 16.2/16.3) menjangkau name/alias + nama venue/EO/PIC. PostgREST
+  // gerbang ini MENOLAK kolom relasi di dalam logic tree `or` (PGRST100), sehingga pencarian
+  // 5-field tak dapat menjadi satu ekspresi SQL; memfilter per-relasi ala `.or(...,
+  // { referencedTable })` justru digabung AND (nama harus cocok di SEMUA relasi — pernah membuat
+  // semua pencarian mengembalikan nol). Halaman ini tanpa paginasi: baris workspace memang sudah
+  // dibaca utuh bersama relasinya, jadi pencarian dicocokkan case-insensitive di JS di bawah.
   const search = (q.search ?? '').trim()
-  if (search.length > 0) {
-    const pattern = `%${search}%`
-    listQuery = listQuery.or(`name.ilike.${pattern},alias.ilike.${pattern}`)
-    // Catatan: filter foreign-table berikut mem-batasi baris bila disetel; karena `!inner`,
-    // predikat ini menyaring server-side pada kolom relasi. Digabung agar pencarian menjangkau
-    // kelima field yang disyaratkan tanpa menarik seluruh tabel.
-    listQuery = listQuery
-      .or(`legal_name.ilike.${pattern}`, { referencedTable: 'venue' })
-      .or(`legal_name.ilike.${pattern}`, { referencedTable: 'organizer' })
-      .or(`full_name.ilike.${pattern}`, { referencedTable: 'pic' })
-  }
 
   // Filter lifecycle administratif (Req 16.4) bila disetel.
   if (q.lifecycle) {
     listQuery = listQuery.eq('status', q.lifecycle)
+  }
+
+  // Filter PIC (dari control panel "PIC"): predikat sederhana pada FK pic_id.
+  if (q.picId) {
+    listQuery = listQuery.eq('pic_id', q.picId)
   }
 
   // Filter display-status (Req 16.4/16.5) diterjemahkan ke predikat tanggal terhadap hari ini —
@@ -535,6 +702,21 @@ export async function queryEventList(q: EventListQuery): Promise<EventListPage> 
     displayStatus: deriveDisplayStatus(row.starts_on, row.ends_on, today),
   }))
 
+  // Pencarian 5-field di JS (lihat catatan di atas): salah-satu-cocok pada name/alias/venue/EO/PIC.
+  const visibleItems =
+    search.length > 0
+      ? items.filter((item) => {
+          const needle = search.toLowerCase()
+          return [
+            item.name,
+            item.alias ?? '',
+            item.venueName,
+            item.eventOrganizerName,
+            item.picName,
+          ].some((value) => value.toLowerCase().includes(needle))
+        })
+      : items
+
   // ── Agregat ringkasan (Req 16.1) ─────────────────────────────────────────────────────────────
   // Count query dengan `head: true` — hanya menghitung, tidak menarik baris ke memori.
   const summary = await queryEventSummary(client, workspaceId, today)
@@ -542,7 +724,7 @@ export async function queryEventList(q: EventListQuery): Promise<EventListPage> 
   // ── Attention (Req 16.6) ─────────────────────────────────────────────────────────────────────
   const attention = await queryEventAttention(client, workspaceId)
 
-  return { items, summary, attention }
+  return { items: visibleItems, summary, attention }
 }
 
 // Hitung agregat ringkasan lewat count query tanpa menarik baris. exhibitors/ciplItems = 0 karena

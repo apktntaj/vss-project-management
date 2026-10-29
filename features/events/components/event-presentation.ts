@@ -75,3 +75,10 @@ export function formatDateRange(startsOn: string, endsOn: string): string {
   }
   return `${formatDay(startsOn)} – ${formatDay(endsOn)}`
 }
+
+// Format kunci bulan 'YYYY-MM' → 'Mon YYYY' (mis. '2026-06' → 'Jun 2026').
+export function formatMonth(value: string): string {
+  const [year, month] = value.split('-')
+  const label = MONTHS[Number(month) - 1] ?? month
+  return `${label} ${year}`
+}

@@ -3,13 +3,14 @@ export type JobKind = 'LOCAL' | 'INTERNATIONAL'
 
 /**
  * Sub-jenis job international pada event — rezim kepabeanan pengiriman barang.
- * Daftar ini eksklusif: tidak ada jenis lain di luar empat nilai berikut.
+ * Daftar ini eksklusif: tidak ada jenis lain di luar lima nilai berikut.
  */
 export type InternationalJobJenis =
-  | 'TEMPORARY'
+  | 'TPPB_BC_23'
   | 'ATA_CARNET'
-  | 'ROAD_SHIPMENT'
+  | 'TEMPORARY_IMPORT'
   | 'PERMANENT_IMPORT'
+  | 'ROAD_SHIPMENT'
 
 export const jobKindLabels: Record<JobKind, string> = {
   LOCAL: 'Local',
@@ -17,10 +18,11 @@ export const jobKindLabels: Record<JobKind, string> = {
 }
 
 export const internationalJobJenisLabels: Record<InternationalJobJenis, string> = {
-  TEMPORARY: 'Temporary',
+  TPPB_BC_23: 'TPPB (BC 2.3)',
   ATA_CARNET: 'ATA Carnet',
+  TEMPORARY_IMPORT: 'Temporary Import',
+  PERMANENT_IMPORT: 'Permanent Import (Genco)',
   ROAD_SHIPMENT: 'Road Shipment',
-  PERMANENT_IMPORT: 'Permanent Import',
 }
 
 /** Dokumen BC yang dilayani job; BC 2.7 dipakai untuk pengalihan barang (inward manifest ALLPACK). */

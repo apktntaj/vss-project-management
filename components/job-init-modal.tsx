@@ -30,20 +30,25 @@ type JobTypeSelection = 'LOCAL' | InternationalJobJenis
 
 const jobTypeOptions: Array<{ value: JobTypeSelection; description: string }> = [
   {
-    value: 'TEMPORARY',
-    description: 'Impor sementara untuk event (BC 2.3); barang wajib keluar kembali.',
+    value: 'TPPB_BC_23',
+    description:
+      'Fasilitas Tempat Penyelenggaraan Pameran Berikat; barang masuk venue berikat via BC 2.3.',
   },
   {
     value: 'ATA_CARNET',
     description: 'Impor sementara dengan paspor barang ATA Carnet.',
   },
   {
-    value: 'ROAD_SHIPMENT',
-    description: 'Pengangkutan darat / pengalihan barang antar tempat (BC 2.7).',
+    value: 'TEMPORARY_IMPORT',
+    description: 'Impor sementara biasa dengan jaminan; barang wajib keluar kembali.',
   },
   {
     value: 'PERMANENT_IMPORT',
-    description: 'Impor tetap; barang tetap berada di Indonesia (BC 3.0).',
+    description: 'Impor tetap (Genco); barang tetap berada di Indonesia.',
+  },
+  {
+    value: 'ROAD_SHIPMENT',
+    description: 'Pengangkutan darat / pengalihan barang antar tempat (BC 2.7).',
   },
   {
     value: 'LOCAL',
@@ -56,7 +61,7 @@ function jobTypeLabel(value: JobTypeSelection) {
 }
 
 /**
- * Inisiasi job dalam satu form: jenis job (dropdown, default Temporary) + agent opsional.
+ * Inisiasi job dalam satu form: jenis job (dropdown, default TPPB) + agent opsional.
  * Exhibitor binaan tidak diisi di sini — menyusul di detail job.
  */
 export function JobInitModal({
@@ -68,7 +73,7 @@ export function JobInitModal({
   onCreated: (job: LocalJob) => void
   onCancel: () => void
 }) {
-  const [selection, setSelection] = useState<JobTypeSelection>('TEMPORARY')
+  const [selection, setSelection] = useState<JobTypeSelection>('TPPB_BC_23')
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
   const [tanpaAgent, setTanpaAgent] = useState(false)
@@ -257,6 +262,9 @@ export function JobInitModal({
                 </option>
               ))}
             </select>
+            <span className="mt-1 block text-xs font-normal text-slate-500">
+              {jobTypeOptions.find((option) => option.value === selection)?.description}
+            </span>
           </label>
 
           <section>

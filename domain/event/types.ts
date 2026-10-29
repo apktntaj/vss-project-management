@@ -16,6 +16,7 @@ export type EventListQuery = {
   search?: string
   lifecycle?: EventLifecycle
   displayStatus?: EventDisplayStatus
+  picId?: string
 }
 
 export type EventListItem = {
@@ -71,6 +72,59 @@ export type EventListPage = {
   items: EventListItem[]
   summary: EventListSummary
   attention: EventListAttention
+}
+
+// ── Insight operasional (turunan event ACTIVE × jobs) ─────────────────────────────────────────
+// Satu item insight: cukup identitas + tanggal + venue agar panel dapat menautkan ke detail event
+// tanpa query ulang.
+
+export type EventInsightItem = {
+  id: string
+  name: string
+  startsOn: string
+  endsOn: string
+  venueName: string
+}
+
+// Konflik venue yang dikelompokkan per venue: daftar event di venue sama dengan rentang tanggal
+// yang beririsan (gabungan pasangan unik, bukan pasangan mentah).
+export type EventVenueConflictGroup = {
+  venueName: string
+  events: EventInsightItem[]
+}
+
+// Nama + jumlah untuk ranking (EO, venue) dan beban PIC.
+export type EventNameCount = {
+  name: string
+  count: number
+}
+
+export type EventMonthCount = {
+  month: string
+  count: number
+}
+
+// Panel "Perlu tindakan" + statistik perencanaan. Semua turunan event ACTIVE; horizon tanggal
+// dihitung terhadap "hari ini" sisi-server.
+export type EventInsights = {
+  // starts_on antara hari ini dan H+14, urut terdekat.
+  dueSoon: EventInsightItem[]
+  // starts_on antara hari ini dan H+30 tanpa satu pun job terkait — sinyal follow-up.
+  soonWithoutJob: EventInsightItem[]
+  // Venue dengan ≥2 event yang rentangnya beririsan.
+  venueConflicts: EventVenueConflictGroup[]
+  // Total pasangan event (venue apa pun) dengan jadwal beririsan.
+  scheduleOverlapCount: number
+  // ends_on < hari ini namun masih ACTIVE — kandidat arsip.
+  archivable: EventInsightItem[]
+  // Jumlah event ACTIVE per PIC, urut terbanyak.
+  picLoad: EventNameCount[]
+  // EO dengan event ACTIVE terbanyak (top 5).
+  eoRanking: EventNameCount[]
+  // Jumlah event ACTIVE per bulan mulai, urut bulan.
+  perMonth: EventMonthCount[]
+  // Venue dengan event ACTIVE terbanyak (top 5).
+  venueRanking: EventNameCount[]
 }
 
 export type VenueInput = {

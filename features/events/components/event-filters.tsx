@@ -23,18 +23,26 @@ const STATUS_OPTIONS = [
 type StatusValue = (typeof STATUS_OPTIONS)[number][0]
 
 /**
- * Baris filter: kotak pencarian + radio status + slot aksi di ujung kanan (mis. tombol
- * "Event baru"). Setiap perubahan filter menulis `search`/`status` ke URL; RSC membaca ulang
+ * Baris filter: kotak pencarian + radio status + pilih PIC + slot aksi di ujung kanan (mis. tombol
+ * "Event baru"). Setiap perubahan filter menulis `search`/`status`/`pic` ke URL; RSC membaca ulang
  * params itu dan memfilter di server. Nilai saat ini dibaca dari `useSearchParams` agar kontrol
  * tetap sinkron dengan URL (mis. setelah refresh atau tautan langsung).
  */
-export function EventFilters({ children }: { children?: ReactNode }) {
+export function EventFilters({
+  children,
+  pics,
+}: {
+  children?: ReactNode
+  /** Opsi PIC untuk filter; bila undefined (master data gagal dimuat) kontrol disembunyikan. */
+  pics?: { id: string; name: string }[]
+}) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
   const currentSearch = searchParams.get('search') ?? ''
   const currentStatus = (searchParams.get('status') as StatusValue | null) ?? 'all'
+  const currentPic = searchParams.get('pic') ?? ''
 
   // Tulis pasangan key→value ke URL (null menghapus key), pertahankan param lain, lalu replace.
   const applyParams = useCallback(
@@ -53,7 +61,7 @@ export function EventFilters({ children }: { children?: ReactNode }) {
     [pathname, router, searchParams],
   )
 
-  const hasFilters = currentSearch.length > 0 || currentStatus !== 'all'
+  const hasFilters = currentSearch.length > 0 || currentStatus !== 'all' || currentPic !== ''
 
   return (
     <div className="mb-5">
@@ -85,12 +93,29 @@ export function EventFilters({ children }: { children?: ReactNode }) {
             </label>
           ))}
         </fieldset>
+        {pics ? (
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <span className="flex-none font-medium">PIC</span>
+            <select
+              value={currentPic}
+              onChange={(selectEvent) => applyParams({ pic: selectEvent.target.value || null })}
+              className="input m-0 max-w-44 border-0 bg-slate-50 py-2 shadow-none"
+            >
+              <option value="">Semua PIC</option>
+              {pics.map((pic) => (
+                <option key={pic.id} value={pic.id}>
+                  {pic.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         {children ? <div className="flex-none lg:ml-auto">{children}</div> : null}
       </div>
       {hasFilters ? (
         <button
           type="button"
-          onClick={() => applyParams({ search: null, status: null })}
+          onClick={() => applyParams({ search: null, status: null, pic: null })}
           className="mt-3 text-sm font-semibold text-orange-700 hover:text-orange-800"
         >
           Reset filter

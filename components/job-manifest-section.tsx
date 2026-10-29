@@ -12,6 +12,7 @@ import {
   summarizeKoliCollections,
   type MilestoneKind,
 } from '@/domain/job/manifest'
+import { internationalJobJenisLabels } from '@/domain/job/types'
 import type { LocalExhibitor } from '@/lib/data-client'
 import type { ManifestBlockView } from '@/lib/manifest-view'
 
@@ -173,9 +174,7 @@ export function JobManifestSection({
             </span>
             {view.internationalJenis && (
               <span className={chip('violet')}>
-                {view.internationalJenis === 'ATA_CARNET'
-                  ? 'ATA Carnet'
-                  : view.internationalJenis.replaceAll('_', ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase())}
+                {internationalJobJenisLabels[view.internationalJenis] ?? 'Job lama'}
               </span>
             )}
           </div>

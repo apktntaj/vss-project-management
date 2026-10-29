@@ -47,17 +47,20 @@ type JobJenisGroup = InternationalJobJenis | 'LOCAL' | 'LEGACY'
 
 /** Urutan dasar grup jenis; dipakai sebagai tie-break saat jumlah job sama. */
 const jobJenisOrder: ReadonlyArray<JobJenisGroup> = [
-  'TEMPORARY',
+  'TPPB_BC_23',
   'ATA_CARNET',
-  'ROAD_SHIPMENT',
+  'TEMPORARY_IMPORT',
   'PERMANENT_IMPORT',
+  'ROAD_SHIPMENT',
   'LOCAL',
   'LEGACY',
 ]
 
 function jobJenisKey(job: LocalJob): JobJenisGroup {
   if (job.kind === 'LOCAL') return 'LOCAL'
-  if (job.internationalJenis) return job.internationalJenis
+  // Nilai jenis yang tak dikenal (mis. TEMPORARY pra-taksonomi 2026-10-29) tetap tampil sebagai job lama.
+  if (job.internationalJenis && job.internationalJenis in internationalJobJenisLabels)
+    return job.internationalJenis
   return 'LEGACY'
 }
 
