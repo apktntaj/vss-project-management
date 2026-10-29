@@ -26,7 +26,9 @@ export async function deleteEvent(currentUser: CurrentUser, eventId: string): Pr
   }
 
   await authorize(currentUser, 'event:delete', async () => {
-    return event.picId === currentUser.id || currentUser.role === 'SUPERVISOR'
+    // PIC kini opsional: event tanpa PIC bisa dihapus siapa pun yang ber-hak hapus
+    // (warisan aturan "event lama tanpa PIC bebas dihapus").
+    return !event.picId || event.picId === currentUser.id || currentUser.role === 'SUPERVISOR'
   })
 
   // Data turunan menghalangi hapus keras: arahkan pengguna ke jalur batal/arsip (Req 14.3).

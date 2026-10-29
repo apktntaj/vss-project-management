@@ -12,17 +12,24 @@ import { fromIssues, issue, ok, type Validation } from '@/domain/shared/validati
 // tanggal (startsOn <= endsOn bisa diuji dengan perbandingan string), jadi domain tak perlu Date.
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Gunakan tanggal YYYY-MM-DD.')
 
-// Tanggal opsional (move in/out venue): string kosong / undefined dinormalisasi jadi null.
+// Tanggal opsional (move in/out venue, dan kini start/end): string kosong / undefined → null.
 const optionalDateOnly = z.preprocess(
   (value) => (value === '' || value === undefined ? null : value),
   dateOnly.nullable(),
 )
 
+// Referensi opsional: UUID wajib format BILA diisi; kosong → null. (Keputusan 2026-10-29:
+// semua field event opsional kecuali nama — event bisa lahir dengan nama saja.)
+const optionalUuid = z.preprocess(
+  (value) => (value === '' || value === undefined ? null : value),
+  z.string().uuid('Gunakan ID yang valid.').nullable(),
+)
+
 // Bentuk create/edit event. `.strict()` menolak field tak dikenal (Requirement — input ketat).
 export const eventInputSchema = z
   .object({
-    // Nama kosong ATAU >200 karakter sama-sama memberi pesan 'Nama event wajib diisi.'
-    // (Requirement 10.4): batas atas memakai pesan yang sama dengan batas bawah secara sengaja.
+    // Satu-satunya field wajib (keputusan 2026-10-29). Nama kosong ATAU >200 karakter sama-sama
+    // memberi pesan 'Nama event wajib diisi.' (Requirement 10.4).
     name: z
       .string()
       .trim()
@@ -38,29 +45,26 @@ export const eventInputSchema = z
       .max(200, 'Alias event maksimal 200 karakter.')
       .nullish()
       .transform((value) => (value && value.length > 0 ? value : null)),
-    // Referensi dipegang sebagai id (Requirement 12.4) dan WAJIB UUID — build lama menerima string
-    // bebas sehingga bisa menunjuk entitas yang tak ada.
-    venueId: z.string().uuid('Venue wajib dipilih.'),
-    eventOrganizerId: z.string().uuid('Event organizer wajib dipilih.'),
-    picId: z.string().uuid('PIC wajib dipilih.'),
-    startsOn: dateOnly,
-    endsOn: dateOnly,
+    venueId: optionalUuid,
+    eventOrganizerId: optionalUuid,
+    picId: optionalUuid,
+    startsOn: optionalDateOnly,
+    endsOn: optionalDateOnly,
     // Penanda logistik venue (opsional, keputusan 2026-10-29): tanggal barang masuk/keluar venue.
     moveInOn: optionalDateOnly,
     moveOutOn: optionalDateOnly,
   })
   .strict()
-  // Aturan antar-field: akhir tidak boleh sebelum mulai (Requirement 10.5 / 11.3). Issue dilekatkan
-  // ke path ['endsOn'] agar error muncul di field yang tepat pada form.
+  // Aturan antar-field berlaku hanya bila KEDUA tanggal terisi (field kini opsional):
+  // akhir tidak sebelum mulai (Requirement 10.5 / 11.3), move out tidak sebelum move in (I-7).
   .superRefine((value, context) => {
-    if (value.endsOn < value.startsOn) {
+    if (value.startsOn && value.endsOn && value.endsOn < value.startsOn) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['endsOn'],
         message: 'Tanggal akhir harus sama dengan atau setelah tanggal mulai.',
       })
     }
-    // Invariant I-7: move out tidak boleh sebelum move in bila keduanya terisi.
     if (value.moveInOn && value.moveOutOn && value.moveOutOn < value.moveInOn) {
       context.addIssue({
         code: z.ZodIssueCode.custom,

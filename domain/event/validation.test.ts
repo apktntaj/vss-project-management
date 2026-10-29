@@ -126,3 +126,63 @@ assert.equal(
 )
 
 console.log('event domain validation passed')
+
+// ── Keputusan 2026-10-29: semua field opsional kecuali nama ──────────────────────────────────
+
+// Hanya nama → valid; referensi & tanggal kosong dinormalisasi ke null.
+const nameOnly = eventInputSchema.safeParse({ name: 'Event Baru' })
+assert.equal(nameOnly.success, true)
+assert.equal(
+  nameOnly.success &&
+    nameOnly.data.venueId === null &&
+    nameOnly.data.eventOrganizerId === null &&
+    nameOnly.data.picId === null &&
+    nameOnly.data.startsOn === null &&
+    nameOnly.data.endsOn === null &&
+    nameOnly.data.moveInOn === null &&
+    nameOnly.data.moveOutOn === null,
+  true,
+)
+
+// String kosong dari form dinormalisasi ke null (bukan ditolak).
+const emptyStrings = eventInputSchema.safeParse({
+  name: 'Event Baru',
+  venueId: '',
+  eventOrganizerId: '',
+  picId: '',
+  startsOn: '',
+  endsOn: '',
+  moveInOn: '',
+  moveOutOn: '',
+})
+assert.equal(emptyStrings.success, true)
+assert.equal(emptyStrings.success && emptyStrings.data.picId, null)
+
+// Format UUID tetap ditegakkan BILA diisi — '' lolos, string non-UUID ditolak.
+assert.equal(
+  eventInputSchema.safeParse({ name: 'E', venueId: 'venue-jiexpo' }).success,
+  false,
+)
+
+// Aturan antar-field hanya aktif bila KEDUA tanggal terisi: hanya startsOn → valid.
+assert.equal(
+  eventInputSchema.safeParse({ name: 'E', startsOn: '2026-10-03' }).success,
+  true,
+)
+
+// Move out sebelum move in ditolak bila keduanya terisi (I-7).
+const badMove = eventInputSchema.safeParse({
+  name: 'E',
+  moveInOn: '2026-10-05',
+  moveOutOn: '2026-10-04',
+})
+assert.equal(badMove.success, false)
+assert.equal(
+  !badMove.success &&
+    badMove.error.issues.some(
+      (i) => i.path[0] === 'moveOutOn' && i.message === 'Tanggal move out tidak boleh sebelum move in.',
+    ),
+  true,
+)
+
+console.log('event optional-fields validation passed')

@@ -106,11 +106,11 @@ export function EventFormModal({
     const payload = {
       name: values.name.trim(),
       alias: values.alias ?? null,
-      venueId: values.venueId.trim(),
-      eventOrganizerId: values.eventOrganizerId.trim(),
-      picId: values.picId.trim(),
-      startsOn: values.startsOn,
-      endsOn: values.endsOn,
+      venueId: values.venueId.trim() || null,
+      eventOrganizerId: values.eventOrganizerId.trim() || null,
+      picId: values.picId.trim() || null,
+      startsOn: values.startsOn || null,
+      endsOn: values.endsOn || null,
       moveInOn: values.moveInOn || null,
       moveOutOn: values.moveOutOn || null,
     }
@@ -237,14 +237,23 @@ export function EventFormModal({
                 value={values.startsOn}
                 onChange={(inputEvent) => {
                   const nextStart = inputEvent.target.value
-                  // Tanggal akhir otomatis H+3 saat masih kosong atau terlanjur sebelum mulai.
+                  if (!nextStart) {
+                    update('startsOn', '')
+                    return
+                  }
+                  // Rekomendasi otomatis (keputusan 2026-10-29): pameran 3 hari (mulai+2),
+                  // move-in H-3, move-out = hari terakhir pameran — hanya mengisi field yang
+                  // masih kosong atau tidak sah, tanpa menimpa isi manual.
+                  const recommendedEnd = plusDays(nextStart, 2)
                   setValues((current) => ({
                     ...current,
                     startsOn: nextStart,
                     endsOn:
-                      nextStart && (!current.endsOn || current.endsOn < nextStart)
-                        ? plusDays(nextStart, 3)
+                      !current.endsOn || current.endsOn < nextStart
+                        ? recommendedEnd
                         : current.endsOn,
+                    moveInOn: current.moveInOn ? current.moveInOn : plusDays(nextStart, -3),
+                    moveOutOn: current.moveOutOn ? current.moveOutOn : recommendedEnd,
                   }))
                 }}
                 className="input"
@@ -262,7 +271,14 @@ export function EventFormModal({
                 id={`${titleId}-ends`}
                 type="date"
                 value={values.endsOn}
-                onChange={(inputEvent) => update('endsOn', inputEvent.target.value)}
+                onChange={(inputEvent) => {
+                  const nextEnd = inputEvent.target.value
+                  setValues((current) => ({
+                    ...current,
+                    endsOn: nextEnd,
+                    moveOutOn: nextEnd && !current.moveOutOn ? nextEnd : current.moveOutOn,
+                  }))
+                }}
                 className="input"
                 aria-invalid={Boolean(errors.endsOn)}
               />
@@ -275,7 +291,7 @@ export function EventFormModal({
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor={`${titleId}-move-in`} className="label">
-                Move in (venue) <span className="font-normal text-slate-400">opsional</span>
+                Move in (venue)
               </label>
               <input
                 id={`${titleId}-move-in`}
@@ -291,7 +307,7 @@ export function EventFormModal({
             </div>
             <div>
               <label htmlFor={`${titleId}-move-out`} className="label">
-                Move out (venue) <span className="font-normal text-slate-400">opsional</span>
+                Move out (venue)
               </label>
               <input
                 id={`${titleId}-move-out`}

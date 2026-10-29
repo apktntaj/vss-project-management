@@ -45,11 +45,11 @@ export type EventRow = {
   workspaceId: string
   name: string
   alias: string | null
-  venueId: string
-  eventOrganizerId: string
-  picId: string
-  startsOn: string
-  endsOn: string
+  venueId: string | null
+  eventOrganizerId: string | null
+  picId: string | null
+  startsOn: string | null
+  endsOn: string | null
   moveInOn: string | null
   moveOutOn: string | null
   status: EventLifecycle
@@ -67,8 +67,8 @@ export type EventSummary = {
   venueName: string
   eventOrganizerName: string
   picName: string
-  startsOn: string
-  endsOn: string
+  startsOn: string | null
+  endsOn: string | null
   moveInOn: string | null
   moveOutOn: string | null
   lifecycle: EventLifecycle
@@ -81,12 +81,12 @@ const EVENT_COLUMNS =
   'id, workspace_id, name, alias, venue_id, event_organizer_id, pic_id, starts_on, ends_on, move_in_on, move_out_on, status, created_by_id, created_at, updated_at'
 
 // Select bentuk daftar/ringkasan: kolom event + nama master data lewat foreign-table select.
-// `!inner` memastikan baris tanpa relasi valid tidak muncul (FK NOT NULL menjamin selalu ada).
-// Embed `pic` WAJIB menyebut FK secara eksplisit (`events_pic_id_fkey`): sejak redesign, `events`
-// punya DUA FK ke `app_users` (pic_id + created_by_id) — tanpa hint, PostgREST menolak dengan
-// PGRST201 (relasi ambigu) dan seluruh halaman /events gagal memuat.
+// Relasi TANPA `!inner` (left join) sejak field opsional (keputusan 2026-10-29): event tanpa
+// venue/EO/PIC/tanggal tetap harus muncul di daftar. Hint FK `events_pic_id_fkey` tetap wajib:
+// `events` punya DUA FK ke `app_users` (pic_id + created_by_id) — tanpa hint, PostgREST menolak
+// dengan PGRST201 (relasi ambigu).
 const EVENT_WITH_RELATIONS =
-  'id, name, alias, starts_on, ends_on, move_in_on, move_out_on, status, venue_id, event_organizer_id, pic_id, venue:venues!inner(legal_name), organizer:event_organizers!inner(legal_name), pic:app_users!events_pic_id_fkey!inner(full_name)'
+  'id, name, alias, starts_on, ends_on, move_in_on, move_out_on, status, venue_id, event_organizer_id, pic_id, venue:venues(legal_name), organizer:event_organizers(legal_name), pic:app_users!events_pic_id_fkey(full_name)'
 
 // Bentuk baris mentah dari Postgres (snake_case apa adanya). Dipakai internal untuk memetakan ke
 // `EventRow` camelCase.
@@ -95,11 +95,11 @@ type EventDbRow = {
   workspace_id: string
   name: string
   alias: string | null
-  venue_id: string
-  event_organizer_id: string
-  pic_id: string
-  starts_on: string
-  ends_on: string
+  venue_id: string | null
+  event_organizer_id: string | null
+  pic_id: string | null
+  starts_on: string | null
+  ends_on: string | null
   move_in_on: string | null
   move_out_on: string | null
   status: EventLifecycle
@@ -115,14 +115,14 @@ type EventJoinedRow = {
   id: string
   name: string
   alias: string | null
-  starts_on: string
-  ends_on: string
+  starts_on: string | null
+  ends_on: string | null
   move_in_on: string | null
   move_out_on: string | null
   status: EventLifecycle
-  venue_id: string
-  event_organizer_id: string
-  pic_id: string
+  venue_id: string | null
+  event_organizer_id: string | null
+  pic_id: string | null
   venue: { legal_name: string } | { legal_name: string }[] | null
   organizer: { legal_name: string } | { legal_name: string }[] | null
   pic: { full_name: string } | { full_name: string }[] | null
@@ -164,7 +164,14 @@ function serverToday(): string {
 // Turunkan display status dari tanggal terhadap hari ini (Req 16.5): soon bila hari ini < startsOn,
 // ongoing bila startsOn <= hari ini <= endsOn (inklusif), done bila hari ini > endsOn. Ini derivasi
 // presentasi pada baris yang SUDAH tersaring server-side — bukan filter seluruh tabel di browser.
-function deriveDisplayStatus(startsOn: string, endsOn: string, today: string): EventDisplayStatus {
+// Turunkan display status dari tanggal terhadap hari ini. Tanggal kini opsional — event tanpa
+// tanggal berstatus 'unscheduled' (belum dijadwalkan), bukan dipaksa ke salah satu kategori.
+function deriveDisplayStatus(
+  startsOn: string | null,
+  endsOn: string | null,
+  today: string,
+): EventDisplayStatus {
+  if (!startsOn || !endsOn) return 'unscheduled'
   if (today < startsOn) return 'soon'
   if (today > endsOn) return 'done'
   return 'ongoing'
@@ -414,10 +421,13 @@ export async function checkReferences(input: EventInput): Promise<EventReference
     return (count ?? 0) > 0
   }
 
+  // Referensi kini opsional: yang kosong dianggap valid (tak ada yang perlu diperiksa).
   const [venueExists, eventOrganizerExists, picExists] = await Promise.all([
-    existsIn('venues', input.venueId),
-    existsIn('event_organizers', input.eventOrganizerId),
-    memberExists(input.picId),
+    input.venueId ? existsIn('venues', input.venueId) : Promise.resolve(true),
+    input.eventOrganizerId
+      ? existsIn('event_organizers', input.eventOrganizerId)
+      : Promise.resolve(true),
+    input.picId ? memberExists(input.picId) : Promise.resolve(true),
   ])
 
   return { venueExists, eventOrganizerExists, picExists }
@@ -441,9 +451,9 @@ export async function hasDerivedData(_eventId: string): Promise<boolean> {
 type AttentionRow = {
   id: string
   name: string
-  venue_id: string
-  starts_on: string
-  ends_on: string
+  venue_id: string | null
+  starts_on: string | null
+  ends_on: string | null
   venue: { legal_name: string } | { legal_name: string }[] | null
 }
 
@@ -472,6 +482,8 @@ function computeAttention(rows: AttentionRow[]): EventListAttention {
     for (let j = i + 1; j < rows.length; j += 1) {
       const a = rows[i]
       const b = rows[j]
+      // Event tanpa tanggal (belum dijadwalkan) tidak bisa beririsan dengan apa pun.
+      if (!a.starts_on || !a.ends_on || !b.starts_on || !b.ends_on) continue
       if (!rangesOverlap(a.starts_on, a.ends_on, b.starts_on, b.ends_on)) continue
 
       // Rentang beririsan → overlap jadwal.
@@ -482,8 +494,9 @@ function computeAttention(rows: AttentionRow[]): EventListAttention {
         secondEventName: b.name,
       })
 
-      // Venue sama pada rentang beririsan → konflik venue (sub-kasus overlap jadwal).
-      if (a.venue_id === b.venue_id) {
+      // Venue sama pada rentang beririsan → konflik venue (sub-kasus overlap jadwal). Dua event
+      // sama-sama tanpa venue bukan konflik — konflik butuh venue yang sama.
+      if (a.venue_id && a.venue_id === b.venue_id) {
         venueConflicts.push({
           venueId: a.venue_id,
           venueName: firstRelation(a.venue)?.legal_name ?? '',
@@ -532,18 +545,18 @@ async function fetchJobsGroupedByEvent(
 type InsightRow = {
   id: string
   name: string
-  starts_on: string
-  ends_on: string
-  venue_id: string
-  event_organizer_id: string
-  pic_id: string
+  starts_on: string | null
+  ends_on: string | null
+  venue_id: string | null
+  event_organizer_id: string | null
+  pic_id: string | null
   venue: { legal_name: string } | { legal_name: string }[] | null
   organizer: { legal_name: string } | { legal_name: string }[] | null
   pic: { full_name: string } | { full_name: string }[] | null
 }
 
 const INSIGHT_COLUMNS =
-  'id, name, starts_on, ends_on, venue_id, event_organizer_id, pic_id, venue:venues!inner(legal_name), organizer:event_organizers!inner(legal_name), pic:app_users!events_pic_id_fkey!inner(full_name)'
+  'id, name, starts_on, ends_on, venue_id, event_organizer_id, pic_id, venue:venues(legal_name), organizer:event_organizers(legal_name), pic:app_users!events_pic_id_fkey(full_name)'
 
 // Naikkan penghitung nama dalam Map ranking (beban PIC, EO, venue).
 function bumpCount(map: Map<string, EventNameCount>, name: string): void {
@@ -570,8 +583,8 @@ function computeInsights(
   const toItem = (row: InsightRow): EventInsightItem => ({
     id: row.id,
     name: row.name,
-    startsOn: row.starts_on,
-    endsOn: row.ends_on,
+    startsOn: row.starts_on ?? '',
+    endsOn: row.ends_on ?? '',
     venueName: firstRelation(row.venue)?.legal_name ?? '',
   })
 
@@ -585,13 +598,19 @@ function computeInsights(
   const monthCounts = new Map<string, number>()
 
   for (const row of rows) {
-    if (row.starts_on >= today && row.starts_on <= horizon14) {
+    // Semua seksi berbasis tanggal hanya menghitung event yang sudah dijadwalkan.
+    if (row.starts_on && row.starts_on >= today && row.starts_on <= horizon14) {
       dueSoon.push(toItem(row))
     }
-    if (row.starts_on >= today && row.starts_on <= horizon30 && !jobEventIds.has(row.id)) {
+    if (
+      row.starts_on &&
+      row.starts_on >= today &&
+      row.starts_on <= horizon30 &&
+      !jobEventIds.has(row.id)
+    ) {
       soonWithoutJob.push(toItem(row))
     }
-    if (row.ends_on < today) {
+    if (row.ends_on && row.ends_on < today) {
       archivable.push(toItem(row))
       // Pameran sudah lewat namun masih ada job yang belum tuntas — pekerjaan menggantung.
       if (eventTuntas(jobsByEvent.get(row.id) ?? []) === 'BELUM_TUNTAS') {
@@ -601,8 +620,10 @@ function computeInsights(
     bumpCount(picCounts, firstRelation(row.pic)?.full_name ?? 'Tanpa PIC')
     bumpCount(eoCounts, firstRelation(row.organizer)?.legal_name ?? 'Tanpa EO')
     bumpCount(venueCounts, firstRelation(row.venue)?.legal_name ?? 'Tanpa venue')
-    const month = row.starts_on.slice(0, 7)
-    monthCounts.set(month, (monthCounts.get(month) ?? 0) + 1)
+    if (row.starts_on) {
+      const month = row.starts_on.slice(0, 7)
+      monthCounts.set(month, (monthCounts.get(month) ?? 0) + 1)
+    }
   }
 
   let scheduleOverlapCount = 0
@@ -614,9 +635,12 @@ function computeInsights(
     for (let j = i + 1; j < rows.length; j += 1) {
       const a = rows[i]
       const b = rows[j]
+      // Event tanpa tanggal (belum dijadwalkan) tidak bisa beririsan dengan apa pun.
+      if (!a.starts_on || !a.ends_on || !b.starts_on || !b.ends_on) continue
       if (!rangesOverlap(a.starts_on, a.ends_on, b.starts_on, b.ends_on)) continue
       scheduleOverlapCount += 1
-      if (a.venue_id !== b.venue_id) continue
+      // Dua event sama-sama tanpa venue bukan konflik venue — konflik butuh venue yang sama.
+      if (!a.venue_id || a.venue_id !== b.venue_id) continue
       let group = conflictsByVenue.get(a.venue_id)
       if (!group) {
         group = { venueName: firstRelation(a.venue)?.legal_name ?? '', events: new Map() }
@@ -727,7 +751,7 @@ export async function queryEventList(q: EventListQuery): Promise<EventListPage> 
     listQuery = listQuery.lt('ends_on', today)
   }
 
-  listQuery = listQuery.order('starts_on', { ascending: false })
+  listQuery = listQuery.order('starts_on', { ascending: false, nullsFirst: false })
 
   const { data: listData, error: listError } = await listQuery.returns<EventJoinedRow[]>()
   if (listError) {
@@ -754,6 +778,7 @@ export async function queryEventList(q: EventListQuery): Promise<EventListPage> 
     // Derivasi presentasi pada baris yang SUDAH tersaring server-side (bukan filter seluruh tabel).
     displayStatus: deriveDisplayStatus(row.starts_on, row.ends_on, today),
     // Diisi setelah pencarian (lihat bawah).
+    jobCount: 0,
     tuntasStatus: 'TANPA_JOB',
     unfinishedJobs: 0,
   }))
@@ -778,10 +803,10 @@ export async function queryEventList(q: EventListQuery): Promise<EventListPage> 
   const jobsByEvent = await fetchJobsGroupedByEvent(client, workspaceId)
   for (const item of visibleItems) {
     const jobs = jobsByEvent.get(item.id) ?? []
+    item.jobCount = jobs.length
     item.tuntasStatus = eventTuntas(jobs)
     item.unfinishedJobs = hitungJobBelumTuntas(jobs)
   }
-
   // ── Agregat ringkasan (Req 16.1) ─────────────────────────────────────────────────────────────
   // Count query dengan `head: true` — hanya menghitung, tidak menarik baris ke memori.
   const summary = await queryEventSummary(client, workspaceId, today)

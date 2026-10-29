@@ -1,4 +1,4 @@
-export type EventDisplayStatus = 'soon' | 'ongoing' | 'done'
+export type EventDisplayStatus = 'unscheduled' | 'soon' | 'ongoing' | 'done'
 
 export type EventLifecycle = 'ACTIVE' | 'CANCELLED' | 'ARCHIVED'
 
@@ -7,14 +7,16 @@ export type EventLifecycle = 'ACTIVE' | 'CANCELLED' | 'ARCHIVED'
 export type EventTuntasStatus = 'TUNTAS' | 'BELUM_TUNTAS' | 'TANPA_JOB'
 
 
+// Semua field opsional kecuali nama (keputusan 2026-10-29): event bisa lahir dengan nama saja,
+// referensi dan tanggal menyusul saat informasinya tersedia.
 export type EventInput = {
   name: string
   alias: string | null
-  venueId: string
-  eventOrganizerId: string
-  picId: string
-  startsOn: string
-  endsOn: string
+  venueId: string | null
+  eventOrganizerId: string | null
+  picId: string | null
+  startsOn: string | null
+  endsOn: string | null
   // Penanda logistik venue (opsional): tanggal barang masuk/keluar venue, bukan tanggal pameran.
   moveInOn: string | null
   moveOutOn: string | null
@@ -30,21 +32,23 @@ export type EventListItem = {
   id: string
   name: string
   alias: string | null
-  // Id referensi (untuk preselect form edit) berdampingan namanya (untuk tampilan).
-  venueId: string
-  eventOrganizerId: string
-  picId: string
+  // Id referensi (untuk preselect form edit) berdampingan namanya (untuk tampilan); null bila
+  // belum ditentukan (field kini opsional).
+  venueId: string | null
+  eventOrganizerId: string | null
+  picId: string | null
   venueName: string
   eventOrganizerName: string
   picName: string
-  startsOn: string
-  endsOn: string
+  startsOn: string | null
+  endsOn: string | null
   moveInOn: string | null
   moveOutOn: string | null
   lifecycle: EventLifecycle
   displayStatus: EventDisplayStatus
-  // Rollup job (turunan, tidak disimpan): kelengkapan pekerjaan + jumlah job yang belum tuntas
-  // (dipakai peringatan arsip dan badge baris).
+  // Rollup job (turunan, tidak disimpan): jumlah job, kelengkapan pekerjaan, dan jumlah job yang
+  // belum tuntas (dipakai kolom Jobs, peringatan arsip, dan badge baris).
+  jobCount: number
   tuntasStatus: EventTuntasStatus
   unfinishedJobs: number
 }
