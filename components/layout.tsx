@@ -110,10 +110,10 @@ export function AppShell({
           className={`flex items-start gap-3 py-6 ${collapsed ? 'justify-center px-4' : 'justify-between px-6'}`}
         >
           <div className={`min-w-0 ${collapsed ? 'md:hidden' : ''}`}>
-            <p className="text-lg font-bold text-white">
-              VSS <span className="text-orange-400">Projects</span>
+            <p className="text-2xl font-bold leading-none tracking-wider text-white">VISSASA</p>
+            <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-orange-400">
+              Parama Nati
             </p>
-            <p className="mt-1 text-xs text-white/40">Operational control center</p>
           </div>
           <button
             type="button"
@@ -199,7 +199,8 @@ export function AppShell({
         tabIndex={-1}
         className={`min-w-0 flex-1 transition-[margin] duration-200 ${collapsed ? 'md:ml-20' : 'md:ml-64'}`}
       >
-        <header className="flex h-16 items-center justify-between gap-3 border-b border-border bg-white px-4 sm:px-8">
+        <div className="flex min-h-screen flex-col">
+          <header className="flex h-16 items-center justify-between gap-3 border-b border-border bg-white px-4 sm:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
               <DialogTrigger
@@ -210,7 +211,7 @@ export function AppShell({
               </DialogTrigger>
               <DialogContent className="max-h-[85dvh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>VSS Projects</DialogTitle>
+                  <DialogTitle>VISSASA</DialogTitle>
                   <DialogDescription>Navigasi workspace operasional</DialogDescription>
                 </DialogHeader>
                 <nav aria-label="Navigasi mobile" className="flex flex-col gap-1">
@@ -277,7 +278,13 @@ export function AppShell({
             </span>
           </div>
         </header>
-        <div className="mx-auto max-w-[1440px] p-4 py-7 sm:p-6 md:p-8 lg:p-10">{children}</div>
+          <div className="mx-auto w-full max-w-[1440px] flex-1 p-4 py-7 sm:p-6 md:p-8 lg:p-10">
+            {children}
+          </div>
+        </div>
+        <footer className="border-t border-border bg-white px-4 py-2 text-center text-xs text-muted-foreground sm:px-8">
+          © Malika Tumbuh Bersama
+        </footer>
       </main>
       {toast && (
         <div
