@@ -30,6 +30,10 @@ export type EventListItem = {
   id: string
   name: string
   alias: string | null
+  // Id referensi (untuk preselect form edit) berdampingan namanya (untuk tampilan).
+  venueId: string
+  eventOrganizerId: string
+  picId: string
   venueName: string
   eventOrganizerName: string
   picName: string

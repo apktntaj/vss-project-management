@@ -86,7 +86,7 @@ const EVENT_COLUMNS =
 // punya DUA FK ke `app_users` (pic_id + created_by_id) — tanpa hint, PostgREST menolak dengan
 // PGRST201 (relasi ambigu) dan seluruh halaman /events gagal memuat.
 const EVENT_WITH_RELATIONS =
-  'id, name, alias, starts_on, ends_on, move_in_on, move_out_on, status, venue:venues!inner(legal_name), organizer:event_organizers!inner(legal_name), pic:app_users!events_pic_id_fkey!inner(full_name)'
+  'id, name, alias, starts_on, ends_on, move_in_on, move_out_on, status, venue_id, event_organizer_id, pic_id, venue:venues!inner(legal_name), organizer:event_organizers!inner(legal_name), pic:app_users!events_pic_id_fkey!inner(full_name)'
 
 // Bentuk baris mentah dari Postgres (snake_case apa adanya). Dipakai internal untuk memetakan ke
 // `EventRow` camelCase.
@@ -120,6 +120,9 @@ type EventJoinedRow = {
   move_in_on: string | null
   move_out_on: string | null
   status: EventLifecycle
+  venue_id: string
+  event_organizer_id: string
+  pic_id: string
   venue: { legal_name: string } | { legal_name: string }[] | null
   organizer: { legal_name: string } | { legal_name: string }[] | null
   pic: { full_name: string } | { full_name: string }[] | null
@@ -735,6 +738,11 @@ export async function queryEventList(q: EventListQuery): Promise<EventListPage> 
     id: row.id,
     name: row.name,
     alias: row.alias,
+    // Id referensi dibawa agar form edit bisa preselect venue/EO/PIC — tanpa ini pengguna
+    // dipaksa mengisi ulang ketiga referensi meski hanya mengubah nama.
+    venueId: row.venue_id,
+    eventOrganizerId: row.event_organizer_id,
+    picId: row.pic_id,
     venueName: firstRelation(row.venue)?.legal_name ?? '',
     eventOrganizerName: firstRelation(row.organizer)?.legal_name ?? '',
     picName: firstRelation(row.pic)?.full_name ?? '',
