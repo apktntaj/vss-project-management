@@ -3,7 +3,7 @@
 // presentasi — seluruh perhitungan hidup di repository (`computeInsights`).
 
 import Link from 'next/link'
-import { Archive, CalendarClock, ClipboardList, Hourglass, MapPin } from 'lucide-react'
+import { Archive, CalendarClock, ClipboardList, MapPin } from 'lucide-react'
 
 import type { EventInsightItem, EventInsights } from '@/domain/event/types'
 
@@ -68,7 +68,6 @@ export function EventInsightsPanel({ insights }: { insights: EventInsights }) {
   const isEmpty =
     insights.dueSoon.length === 0 &&
     insights.soonWithoutJob.length === 0 &&
-    insights.unfinishedAfterShow.length === 0 &&
     insights.venueConflicts.length === 0 &&
     insights.archivable.length === 0
 
@@ -88,19 +87,6 @@ export function EventInsightsPanel({ insights }: { insights: EventInsights }) {
               count={insights.dueSoon.length}
             >
               <InsightList items={insights.dueSoon} />
-            </Section>
-          ) : null}
-
-          {insights.unfinishedAfterShow.length > 0 ? (
-            <Section
-              icon={<Hourglass size={16} className="text-amber-600" aria-hidden="true" />}
-              title="Pameran selesai, belum tuntas"
-              count={insights.unfinishedAfterShow.length}
-            >
-              <p className="mt-1 text-xs text-slate-500">
-                Pameran sudah tutup namun masih ada job dengan dokumen/kepulangan belum selesai.
-              </p>
-              <InsightList items={insights.unfinishedAfterShow} />
             </Section>
           ) : null}
 
