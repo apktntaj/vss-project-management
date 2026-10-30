@@ -196,7 +196,7 @@ export function JobCreateWizard({
     if (!search || selectedEventId) return []
     return events
       .filter((event) =>
-        [event.officialName, event.alias, event.venue?.name, event.eventOrganizer?.legalName]
+        [event.officialName, event.alias]
           .filter(Boolean)
           .join(' ')
           .toLowerCase()
