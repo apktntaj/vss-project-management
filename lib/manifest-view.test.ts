@@ -35,7 +35,7 @@ const exhibitor = (overrides: Partial<LocalExhibitor>): LocalExhibitor =>
   }) as LocalExhibitor
 
 const view = buildManifestView(job, [
-  exhibitor({ id: 'exh-1', name: 'WUHU CHURUI', logistics: { hall: null, booth: 'C302', koli: { totalCount: 3, details: [{ label: 'PK 1', dimension: { lengthCm: 120, widthCm: 101, heightCm: 202 }, volumeCbm: 2.45, weightKg: 428 }] }, notes: [] } }),
+  exhibitor({ id: 'exh-1', name: 'WUHU CHURUI', logistics: { hall: null, booth: 'C302', koli: { totalCount: 3, bareCaseCount: null, details: [{ label: 'PK 1', dimension: { lengthCm: 120, widthCm: 101, heightCm: 202 }, volumeCbm: 2.45, weightKg: 428 }] }, notes: [] } }),
   // Exhibitor event lain / agent lain tidak ikut blok ini.
   exhibitor({ id: 'exh-2', eventId: 'event-other', agentId, name: 'SALAH EVENT' }),
   exhibitor({ id: 'exh-3', agentId: 'agent-other', name: 'SALAH AGENT' }),

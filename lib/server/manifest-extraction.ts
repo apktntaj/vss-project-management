@@ -141,3 +141,86 @@ export async function parseManifestFile(file: File): Promise<ManifestParseResult
     throw new DocumentExtractionError('Manifest tidak dapat diparse. Coba lagi atau gunakan file lain.', 502)
   }
 }
+
+/** Baris exhibitor hasil smart scan CIPL; jobNo (S.01 dst.) hanya untuk ditampilkan. */
+export type CiplExhibitorParse = {
+  name: string
+  jobNo: string | null
+  logistics: ExhibitorLogistics
+}
+
+export type CiplScanResult = {
+  exhibitors: CiplExhibitorParse[]
+  warnings: string[]
+}
+
+const ciplPrompt = `Parse this exhibition cargo document (inward manifest, packing list, or CIPL) into a FLAT list of exhibitor rows with their package (case/koli) breakdown.
+
+Return only JSON: {"exhibitors":[{"name":string,"jobNo":string|null,"hall":string|null,"booth":string|null,"bareCaseCount":number|null,"koliTotalCount":number,"kolis":[{"label":string|null,"lengthCm":number|null,"widthCm":number|null,"heightCm":number|null,"volumeCbm":number|null,"weightKg":number|null}]}]}
+
+Rules:
+- In an inward manifest, one job row (S.01, S.02, ...) can list one or more exhibitor names; output one entry per named exhibitor with that row's package breakdown, hall and booth. jobNo is the row's job number (e.g. "S.01"), null when absent.
+- CASE/PKG/PK lines carrying Dimension L W H are koli rows. The "Total Package" column (e.g. "3 PKG") is koliTotalCount, never a koli row. A "Bare Case" column value (e.g. "7 PKG") is bareCaseCount; null when the row shows no bare case value.
+- Bottom row totals (sum CBM / weight per job) are NOT koli rows; skip them.
+- For a packing list or CIPL without per-case dimensions, still return the exhibitor (buyer/consignee) with koliTotalCount from its totals and kolis from whatever per-package lines exist.
+- Drop unreadable rows instead of guessing.`
+
+function normalizeCiplExhibitor(value: unknown): CiplExhibitorParse | null {
+  if (!value || typeof value !== 'object') return null
+  const input = value as Record<string, unknown>
+  const name = text(input.name)
+  if (!name) return null
+  const kolis = Array.isArray(input.kolis) ? input.kolis : []
+  const parsedCount = wholeNumber(input.koliTotalCount)
+  const totalCount = Math.max(parsedCount ?? 0, kolis.length)
+  const logistics = exhibitorLogisticsSchema.safeParse({
+    hall: text(input.hall),
+    booth: text(input.booth),
+    koli: {
+      totalCount,
+      bareCaseCount: wholeNumber(input.bareCaseCount),
+      details: kolis.map((koli) => {
+        const item = (koli ?? {}) as Record<string, unknown>
+        const lengthCm = amount(item.lengthCm)
+        const widthCm = amount(item.widthCm)
+        const heightCm = amount(item.heightCm)
+        return {
+          label: text(item.label),
+          dimension:
+            lengthCm !== null && widthCm !== null && heightCm !== null
+              ? { lengthCm, widthCm, heightCm }
+              : null,
+          volumeCbm: amount(item.volumeCbm),
+          weightKg: amount(item.weightKg),
+        }
+      }),
+    },
+    notes: [],
+  })
+  if (!logistics.success) return null
+  return { name, jobNo: text(input.jobNo), logistics: logistics.data }
+}
+
+/** Smart scan slide CIPL: inward manifest atau packing list/CIPL menjadi daftar exhibitor + koli. */
+export async function parseCiplExhibitors(file: File): Promise<CiplScanResult> {
+  assertSupportedDocumentFile(file)
+  const provider = configuredLlmProvider()
+  if (!provider) throw new DocumentExtractionError(LLM_UNAVAILABLE_MESSAGE, 503)
+
+  try {
+    const parsed = (await chatDocumentJson(provider.id, provider, ciplPrompt, file)) as {
+      exhibitors?: unknown[]
+    }
+    const warnings: string[] = []
+    const exhibitors = (Array.isArray(parsed.exhibitors) ? parsed.exhibitors : []).flatMap((row) => {
+      const normalized = normalizeCiplExhibitor(row)
+      if (normalized) return [normalized]
+      warnings.push('Satu baris exhibitor dilewati karena tidak terbaca.')
+      return []
+    })
+    return { exhibitors, warnings }
+  } catch (error) {
+    if (error instanceof DocumentExtractionError) throw error
+    throw new DocumentExtractionError('Dokumen tidak dapat dipindai. Coba lagi atau gunakan file lain.', 502)
+  }
+}

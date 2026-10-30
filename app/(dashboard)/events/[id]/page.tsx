@@ -21,7 +21,7 @@ import {
 import { buildJobNomor } from '@/lib/job-number'
 import { PageSkeleton } from '@/components/loading-skeletons'
 import { ContextTicketList } from '@/components/context-ticket-list'
-import { JobInitModal } from '@/components/job-init-modal'
+import { JobCreateWizard } from '@/components/job-create-wizard'
 import {
   JobDocumentEditorDialog,
   type EditableJobDocument,
@@ -393,8 +393,9 @@ export default function EventDetailPage() {
         </div>
       )}
       {showNewJob && (
-        <JobInitModal
-          event={event}
+        <JobCreateWizard
+          events={[event]}
+          presetEvent={event}
           onCreated={() => {
             setShowNewJob(false)
             loadData()

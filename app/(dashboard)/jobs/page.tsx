@@ -24,7 +24,7 @@ import {
 } from '@/components/job-document-editor-dialog'
 import { Button } from '@/components/ui/button'
 import { NewJobDialog } from '@/components/new-job-dialog'
-import { JobInitModal } from '@/components/job-init-modal'
+import { JobCreateWizard } from '@/components/job-create-wizard'
 import { JobUploadDialog } from '@/components/job-upload-dialog'
 import { PageSkeleton } from '@/components/loading-skeletons'
 import { getNextEventJobView, type EventJobViews } from '@/lib/event-job-view'
@@ -248,7 +248,7 @@ export default function JobsPage() {
   const [events, setEvents] = useState<LocalEvent[]>([])
   const [segment, setSegment] = useState<JobSegment>('EVENT')
   const [showNewJob, setShowNewJob] = useState(false)
-  const [initEvent, setInitEvent] = useState<LocalEvent | null>(null)
+  const [wizardOpen, setWizardOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [scope, setScope] = useState<Scope>('active')
@@ -612,22 +612,21 @@ export default function JobsPage() {
       )}
       {showNewJob && (
         <NewJobDialog
-          events={events}
           onClose={() => setShowNewJob(false)}
-          onSelectEvent={(event) => {
+          onSelectCategory={() => {
             setShowNewJob(false)
-            setInitEvent(event)
+            setWizardOpen(true)
           }}
         />
       )}
-      {initEvent && (
-        <JobInitModal
-          event={initEvent}
+      {wizardOpen && (
+        <JobCreateWizard
+          events={events}
           onCreated={() => {
-            setInitEvent(null)
+            setWizardOpen(false)
             refreshJobs()
           }}
-          onCancel={() => setInitEvent(null)}
+          onCancel={() => setWizardOpen(false)}
         />
       )}
       <JobDocumentEditorDialog

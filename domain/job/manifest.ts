@@ -79,6 +79,8 @@ export type Koli = z.infer<typeof koliSchema>
 export const koliCollectionSchema = z
   .object({
     totalCount: z.number().int().min(0),
+    /** Koli tanpa pelindung (kolom Bare Case pada manifest ALLPACK); null bila tak tercantum. */
+    bareCaseCount: z.number().int().min(0).nullable().default(null),
     details: z.array(koliSchema),
   })
   .refine((collection) => collection.details.length <= collection.totalCount, {

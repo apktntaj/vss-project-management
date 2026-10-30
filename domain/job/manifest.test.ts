@@ -74,6 +74,14 @@ assert.doesNotThrow(() => inwardManifestSchema.parse(s09))
 assert.equal(exhibitorLogisticsSchema.safeParse(s08Exhibitor).success, true)
 assert.equal(exhibitorLogisticsSchema.safeParse(s12Exhibitor).success, true)
 
+// Bare case opsional: payload lama tetap valid (default null), angka valid diterima.
+assert.equal(exhibitorLogisticsSchema.parse(s08Exhibitor).koli.bareCaseCount, null)
+assert.equal(
+  exhibitorLogisticsSchema.parse({ ...s08Exhibitor, koli: { ...s08Exhibitor.koli, bareCaseCount: 7 } }).koli
+    .bareCaseCount,
+  7,
+)
+
 // Invalid: FCL tanpa kontainer; rincian melebihi total; tanggal bukan YYYY-MM-DD.
 assert.equal(inwardManifestSchema.safeParse({ ...s01, loadConfiguration: { kind: 'FCL', containers: [] } }).success, false)
 assert.equal(exhibitorLogisticsSchema.safeParse({ ...s08Exhibitor, koli: { totalCount: 1, details: s08Exhibitor.koli.details } }).success, false)

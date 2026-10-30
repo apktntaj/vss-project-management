@@ -218,6 +218,8 @@ export type LocalJob = {
   inward?: InwardManifest | null
   /** Fase kepulangan ala return list container/LCL. */
   kepulangan?: JobReturn | null
+  /** Baris exhibitor + rincian koli hasil scan CIPL/manifest saat job dibuat. */
+  manifestExhibitors?: Array<{ name: string; logistics: ExhibitorLogistics }> | null
   sourceDocumentName?: string | null
   createdAt: string
   updatedAt: string
@@ -1335,6 +1337,10 @@ export type InternationalJobInitInput = {
   /** Exhibitor yang mengatur sendiri pengirimannya — hanya saat tanpa agent. */
   exhibitorId?: string | null
   internationalJenis: InternationalJobJenis
+  /** No Job (mis. S.01/234YFN) bila sudah diketahui saat inisiasi. */
+  jobNumber?: string
+  /** Pihak yang ditagih; boleh kosong dan diisi belakangan. */
+  billTo?: string | null
 }
 
 /**
@@ -1357,7 +1363,7 @@ export async function createInternationalJobInit(
   const timestamp = now()
   const job: LocalJob = {
     id: agent ? `job-for-agent-${agent.id}-${input.eventId}` : id(),
-    jobNumber: '',
+    jobNumber: input.jobNumber?.trim() ?? '',
     awbNumber: null,
     blNumber: null,
     shipper: null,
@@ -1374,6 +1380,7 @@ export async function createInternationalJobInit(
     clientInfo: null,
     status: 'DRAFT',
     notes: null,
+    billTo: input.billTo?.trim() || null,
     trackingToken: crypto.randomUUID(),
     assignedToId: null,
     createdById: null,
@@ -1399,6 +1406,7 @@ export async function createLocalJobInit(
   eventId: string,
   agentId?: string | null,
   exhibitorId?: string | null,
+  init?: { jobNumber?: string; billTo?: string | null },
 ): Promise<LocalJob> {
   let agent: Agent | null = null
   if (agentId) {
@@ -1414,7 +1422,7 @@ export async function createLocalJobInit(
   const timestamp = now()
   const job: LocalJob = {
     id: agent ? `job-for-agent-${agent.id}-${eventId}` : id(),
-    jobNumber: '',
+    jobNumber: init?.jobNumber?.trim() ?? '',
     awbNumber: null,
     blNumber: null,
     shipper: null,
@@ -1431,6 +1439,7 @@ export async function createLocalJobInit(
     clientInfo: null,
     status: 'DRAFT',
     notes: null,
+    billTo: init?.billTo?.trim() || null,
     trackingToken: crypto.randomUUID(),
     assignedToId: null,
     createdById: null,
@@ -1455,6 +1464,16 @@ export async function saveJobInward(jobId: string, input: InwardManifest): Promi
   if (!previous) throw new Error('Job tidak ditemukan.')
   if (previous.kind === 'LOCAL') throw new Error('Job Local tidak memiliki dokumen kepabeanan.')
   return put('jobs', { ...previous, inward, updatedAt: now() })
+}
+
+/** Simpan baris exhibitor + rincian koli hasil scan CIPL/manifest pada job. */
+export async function saveJobManifestExhibitors(
+  jobId: string,
+  exhibitors: Array<{ name: string; logistics: ExhibitorLogistics }>,
+): Promise<LocalJob> {
+  const previous = await getJob(jobId)
+  if (!previous) throw new Error('Job tidak ditemukan.')
+  return put('jobs', { ...previous, manifestExhibitors: exhibitors, updatedAt: now() })
 }
 
 /** Simpan fase kepulangan (return list) pada job; null mengosongkannya. */
