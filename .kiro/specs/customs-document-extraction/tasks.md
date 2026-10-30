@@ -14,7 +14,7 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
 
 ## Tasks
 
-- [ ] 1. Buat konfigurasi terpusat dan kode error ekstraksi (server-only)
+- [x] 1. Buat konfigurasi terpusat dan kode error ekstraksi (server-only)
   - Buat `lib/server/extraction/config.ts` diawali `import 'server-only'` dengan konstanta terpusat:
     `MAX_DOCUMENT_SIZE` (10.485.760 byte), `EXTRACTION_TIMEOUT_MS` (30_000), `CONFIDENCE_THRESHOLD`
     (0.7), `CONFIDENCE_BANDS` (`{ LOW: 0.5, MEDIUM: 0.8 }`), tipe `LlmProviderId`
@@ -27,7 +27,7 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
     memusatkannya di `config.ts`.
   - _Requirements: 1.6, 2.5, 3.6, 4.6, 6.3, 8.8, 9.7_
 
-- [ ] 2. Tambahkan dependensi server-only yang di-pin eksak
+- [x] 2. Tambahkan dependensi server-only yang di-pin eksak
   - Tambahkan `pdfjs-dist` (parser text-layer PDF) dan `tesseract.js` (OCR WASM) ke `dependencies`
     `package.json` dengan versi eksak (tanpa `^`/`~`), konsisten dengan gaya pin di repo.
   - Konfirmasi `xlsx` sudah ada dan dipakai kembali untuk parser XLSX; konfirmasi `fast-check` sudah
@@ -36,7 +36,7 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
     bocor ke bundel browser.
   - _Requirements: 2.3, 2.4, 2.5, 9.1, 9.2_
 
-- [ ] 3. Tambahkan tipe domain ekstraksi (storage-agnostic, tanpa Blob/File)
+- [x] 3. Tambahkan tipe domain ekstraksi (storage-agnostic, tanpa Blob/File)
   - Di `domain/exhibition/source-documents.ts`, tambahkan tipe baru TANPA memutasi
     `JobInvoiceExtraction`/`JobTransportExtraction` yang ada: `DocumentClassificationType`,
     `ConfidenceBand`, `ConfidenceMap`, `DocumentClassification` (termasuk `needsUserConfirmation`),
@@ -46,7 +46,7 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
   - Pastikan tidak ada `Blob`/`File` yang masuk ke tipe domain; dokumen dirujuk lewat id attachment.
   - _Requirements: 1.5, 1.9, 2.6, 4.1_
 
-- [ ] 4. Implementasi file-guard dan tipe ParsedDocument (server-only)
+- [x] 4. Implementasi file-guard dan tipe ParsedDocument (server-only)
   - [ ] 4.1 Buat `lib/server/extraction/deterministic/parsed-document.ts`
     - Definisikan tipe `ParsedDocument` (teks terstruktur + metadata parse) yang dipakai parser dan
       scorer/classifier hilir.
@@ -65,7 +65,7 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
     - Tambahkan path test ke script `domain:test` (lihat tugas 20).
     - _Requirements: 1.5, 1.6, 8.5, 8.6_
 
-- [ ] 5. Implementasi confidence scorer (logika murni)
+- [x] 5. Implementasi confidence scorer (logika murni)
   - [ ] 5.1 Buat `lib/server/extraction/confidence-scorer.ts`
     - Awali `import 'server-only'`; implementasikan `scoreFields` (confidence per field 0.00–1.00),
       `aggregateConfidence` (0.00, dan 0.00 bila tak ada field terbaca), `bandForScore` memakai
@@ -79,7 +79,7 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
     - File `lib/server/extraction/confidence-scorer.test.ts`, `bun:test` + `fast-check`, min 100
       iterasi, tag `// Feature: customs-document-extraction, Property {n}`; daftarkan ke `domain:test`.
 
-- [ ] 6. Implementasi classifier dokumen (logika total)
+- [x] 6. Implementasi classifier dokumen (logika total)
   - [ ] 6.1 Buat `lib/server/extraction/classifier.ts`
     - Awali `import 'server-only'`; `classifyDocument(parsed, intendedKind)` SELALU mengembalikan
       tepat satu `DocumentClassificationType` dari himpunan tertutup memakai heuristik deterministik
@@ -92,7 +92,7 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
     - File `lib/server/extraction/classifier.test.ts`, `bun:test` + `fast-check`, min 100 iterasi;
       daftarkan ke `domain:test`.
 
-- [ ] 7. Implementasi penggabungan PL + CI (logika murni)
+- [x] 7. Implementasi penggabungan PL + CI (logika murni)
   - [ ] 7.1 Buat `lib/server/extraction/cipl-merge.ts`
     - Awali `import 'server-only'`; `mergePackingListAndInvoice(input)` memadankan baris by
       deskripsi ternormalisasi (collapse whitespace → satu spasi, case-insensitive) dan kuantitas
@@ -107,7 +107,7 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
     - File `lib/server/extraction/cipl-merge.test.ts`, `bun:test` + `fast-check`, min 100 iterasi;
       daftarkan ke `domain:test`.
 
-- [ ] 8. Implementasi derivasi kelengkapan Mandatory_Document_Set (logika murni)
+- [x] 8. Implementasi derivasi kelengkapan Mandatory_Document_Set (logika murni)
   - [ ] 8.1 Buat `domain/exhibition/mandatory-documents.ts`
     - Fungsi murni menderivasi status `COMPLETE | INCOMPLETE` dari daftar dokumen tertaut: `COMPLETE`
       iff tepat satu CIPL dan tepat satu Transport_Document; `SUPPORTING_DOCUMENT` tidak memengaruhi.
@@ -126,7 +126,7 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
   - File `lib/server/extraction/errors.test.ts`, `bun:test` + `fast-check`, min 100 iterasi;
     daftarkan ke `domain:test`.
 
-- [ ] 10. Implementasi parser deterministik (server-only)
+- [x] 10. Implementasi parser deterministik (server-only)
   - [ ] 10.1 Buat parser XLSX `lib/server/extraction/deterministic/xlsx-parser.ts`
     - Awali `import 'server-only'`; `parseSpreadsheet(file)` memakai `xlsx`
       (`XLSX.utils.sheet_to_csv`) → `ParsedDocument`; spreadsheet tanpa sel terbaca → lempar
@@ -149,7 +149,7 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
     - Daftarkan path test ke `domain:test`.
     - _Requirements: 2.3, 2.4, 2.5_
 
-- [ ] 11. Reposisi adapter LLM GEMINI di belakang antarmuka LlmProvider (server-only)
+- [x] 11. Reposisi adapter LLM GEMINI di belakang antarmuka LlmProvider (server-only)
   - [ ] 11.1 Buat antarmuka `lib/server/extraction/llm/provider.ts`
     - Awali `import 'server-only'`; definisikan `interface LlmProvider { id; extract(file): Promise<Extraction_Result> }`
       dan `resolveLlmProvider()` yang memilih adapter via `configuredLlmProvider()` (null bila tidak
@@ -168,7 +168,7 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
       `LLM_MODELS` dari `config.ts`; awali `import 'server-only'`.
     - _Requirements: 3.4, 3.6_
 
-- [ ] 12. Implementasi orkestrator Extraction_Service (server-only)
+- [x] 12. Implementasi orkestrator Extraction_Service (server-only)
   - Buat `lib/server/extraction/extraction-service.ts` diawali `import 'server-only'`.
   - `runDeterministicExtraction(file, intendedKind)`: pilih parser berdasar tipe & keberadaan
     text-layer (XLSX → pdf-text → OCR fallback), lalu `scoreFields`/`aggregateConfidence`/`bandForScore`
@@ -179,7 +179,7 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
   - Jangan simpan `Extraction_Result` parsial saat gagal.
   - _Requirements: 2.1, 2.2, 2.6, 2.8, 2.9, 2.11, 3.3, 3.6, 4.1, 4.5_
 
-- [ ] 13. Tambahkan skema Zod di `domain/exhibition/validation.ts`
+- [x] 13. Tambahkan skema Zod di `domain/exhibition/validation.ts`
   - Tambahkan `extractDocumentSchema`, `supportingDocumentSchema`, `ciplVersionFromExtractionSchema`,
     `markShipmentReadySchema`; semua `.strict()` dengan pesan error bahasa Indonesia spesifik per
     field.
@@ -187,7 +187,7 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
     untuk sumber CIPL (COMBINED/SPLIT).
   - _Requirements: 1.3, 1.4, 1.11, 6.5, 6.6_
 
-- [ ] 14. Implementasi route handler `/api/extract-document`
+- [x] 14. Implementasi route handler `/api/extract-document`
   - Buat `app/api/extract-document/route.ts` dengan `export const runtime = 'nodejs'` dan
     `export const dynamic = 'force-dynamic'`.
   - Guard `getEventApiContext()` dalam `try/catch` + `eventApiFailure(error)` (401 bila tanpa sesi);
@@ -207,7 +207,7 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
     - Daftarkan path test ke `domain:test`.
     - _Requirements: 1.2, 1.5, 1.6, 3.5, 8.3, 8.4, 8.7_
 
-- [ ] 15. Implementasi route handler `/api/cipl-versions`
+- [x] 15. Implementasi route handler `/api/cipl-versions`
   - Buat `app/api/cipl-versions/route.ts` (`runtime='nodejs'`, `dynamic='force-dynamic'`); guard
     `getEventApiContext()` + `eventApiFailure`; `ciplVersionFromExtractionSchema.parse`.
   - `source.kind === 'SPLIT'` → `mergePackingListAndInvoice`; `ok:false` → 400 `CIPL_MERGE_UNMATCHED`;
@@ -225,7 +225,7 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
     - Daftarkan path test ke `domain:test`.
     - _Requirements: 5.4, 5.5, 5.7, 6.6_
 
-- [ ] 16. Implementasi route handler `/api/shipment-documents`
+- [x] 16. Implementasi route handler `/api/shipment-documents`
   - Buat `app/api/shipment-documents/route.ts` (`GET ?shipmentId=`, `runtime='nodejs'`,
     `dynamic='force-dynamic'`); guard `getEventApiContext()` (401 `AUTHENTICATION_REQUIRED`).
   - Filter server-side `workspace_id` + `shipmentId`; kembalikan hanya baris dokumen milik shipment
@@ -233,7 +233,7 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
     `mandatory-documents.ts` + pesan dokumen wajib yang hilang; supporting docs tidak memengaruhi.
   - _Requirements: 7.2, 7.3, 7.4, 7.8, 9.3, 9.4_
 
-- [ ] 17. Implementasi route handler `/api/shipment-documents/mark-ready`
+- [x] 17. Implementasi route handler `/api/shipment-documents/mark-ready`
   - Buat `app/api/shipment-documents/mark-ready/route.ts` (`POST`, `runtime='nodejs'`,
     `dynamic='force-dynamic'`); guard `getEventApiContext()` (401 R7.7); `markShipmentReadySchema.parse`.
   - Hitung kelengkapan **di server** via `mandatory-documents.ts`; tidak lengkap → 400
@@ -247,10 +247,10 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
     - Daftarkan path test ke `domain:test`.
     - _Requirements: 7.5, 7.6, 7.7_
 
-- [ ] 18. Checkpoint — pastikan semua test lulus
+- [x] 18. Checkpoint — pastikan semua test lulus
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 19. Tambahkan fungsi data-client (verb-first, `'use client'`)
+- [x] 19. Tambahkan fungsi data-client (verb-first, `'use client'`)
   - Di `lib/data-client.ts` tambahkan `extractDocument`, `reExtractWithLlm`, `uploadSupportingDocument`,
     `createCiplVersionFromExtraction`, `listShipmentDocuments`, `markShipmentReadyForCustoms`; semua
     `fetch('/api/...', { cache: 'no-store' })` dan membaca field `error` untuk melempar `Error`.
@@ -267,7 +267,7 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
   - KRITIS: file test yang tidak terdaftar tidak pernah dijalankan `bun test`.
   - _Requirements: (steering tech — registrasi test)_
 
-- [ ] 21. Bangun komponen UI unggah dan peninjauan
+- [x] 21. Bangun komponen UI unggah dan peninjauan
   - [ ] 21.1 Buat `components/confidence-badge.tsx`
     - Badge pita keyakinan + penanda field perlu ditinjau dengan `aria` (`aria-describedby`);
       `focus-visible`; hormati `prefers-reduced-motion`.
@@ -296,7 +296,7 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
       `markShipmentReadyForCustoms`; toast via helper bersama.
     - _Requirements: 7.2, 7.3, 7.4, 7.5_
 
-- [ ] 22. Pasang komponen ke halaman cipls/shipment
+- [x] 22. Pasang komponen ke halaman cipls/shipment
   - Mount `document-upload-panel`, `extraction-review-form`, `confidence-badge`,
     `supporting-document-uploader`, `shipment-document-checklist` ke
     `app/(dashboard)/cipls/[id]/` dan subrute `versions/new`, `shipments/new`,
@@ -305,7 +305,7 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
   - Pisahkan logika ke komponen (hindari menambah halaman monolit).
   - _Requirements: 6.1, 6.2, 6.7, 7.2, 9.6_
 
-- [ ] 23. Verifikasi akhir
+- [x] 23. Verifikasi akhir
   - Jalankan `npx tsc --noEmit` dan jaga tetap bersih.
   - Jalankan `npm run domain:test` dan pastikan semua test (termasuk PBT) lulus.
   - Jalankan `npm run build` karena route handler dan komponen disentuh.
@@ -322,6 +322,40 @@ error berbahasa Inggris `SCREAMING_SNAKE_CASE`.
 - KRITIS: setiap `*.test.ts` baru wajib didaftarkan ke script `domain:test` (tugas 20), kalau tidak
   test itu diam-diam tidak pernah berjalan.
 - Teks untuk pengguna berbahasa Indonesia; identifier/enum/kode error berbahasa Inggris.
+
+## Catatan implementasi 2026-10-30 (sesi inti, tugas test ditunda)
+
+- **Tugas `*` + 20 DITUNDA** (keputusan pengguna): PBT fast-check, unit test file-guard/route, test
+  parser fixture, dan registrasi `domain:test` menyusul di sesi berikutnya. Tugas inti tuntas dan
+  tervalidasi (`npx tsc --noEmit` bersih, `domain:test` 49 lulus, `npm run build` sukses).
+- **R9.6 (gap-fill)**: loading tanpa delay buatan — `finishLoadingAfterMinimum` tidak dihidupkan
+  kembali (konsisten commit 65025c7 "remove artificial delays"); panel unggah menampilkan indikator
+  `busy` selama ekstraksi berjalan.
+- **Persist-first + `attachmentId` (gap-fill)**: menyelesaikan inkonsistensi design.md (sequence
+  diagram LLM memakai `attachmentId` vs signature data-client memakai `file`). `/api/extract-document`
+  menyimpan attachment lebih dulu (`uploadAttachment`, rollback storage sudah ada), lalu mengekstrak:
+  DETERMINISTIC → `200 { attachmentId, result }`; SUPPORTING → `201 { attachmentId }` (R1.1 terpenuhi
+  pada unggah murni); mode LLM tidak mengirim ulang file — server mengunduh via `downloadAttachment`
+  berdasarkan `attachmentId` yang diverifikasi milik owner.
+- **`ownerId` untuk `ownerType: 'CIPL_VERSION'` merujuk CIPL induk** — versi baru belum ada saat
+  dokumen diunggah, jadi `OWNER_NOT_FOUND` (R1.4) memeriksa tabel `cipls`, bukan `cipl_versions`.
+- **OCR (gap-fill teknologi)**: tesseract.js 7 **tidak menerima PDF** (README eksplisit). OCR
+  merasterisasi gambar tertanam PDF via pdfjs (`pdf-images.ts`: dekode piksel → PNM P5/P6 yang
+  dibaca leptonica), maks 5 halaman, batas waktu 30 detik keseluruhan (R2.5).
+- **DeepSeek text-only**: PDF tanpa lapisan teks → 503 `LLM_EXTRACTION_FAILED` dengan pesan standar
+  (R8.4); Gemini & Claude menerima PDF native (inlineData / document block).
+- **R5.5 `CIPL_COMBINATION_INVALID` tidak pernah terpicu lewat API**: `ciplVersionFromExtractionSchema`
+  (discriminatedUnion COMBINED|SPLIT) sudah menolak kombinasi lain di level validasi.
+- **`validateShipmentAllocation` di `/api/cipl-versions` trivially valid** — versi baru belum punya
+  shipment/kandidat alokasi; invariant aktif yang divalidasi server-side adalah
+  `validateCiplVersionReady` (R5.6/R5.7). Validasi alokasi penuh tetap berjalan di `createShipment`.
+- **Konstanta terpusat**: `MODEL` dan `MAX_DOCUMENT_SIZE` legacy di `lib/server/document-extraction.ts`
+  kini diimpor dari `config.ts` (pitfall duplikasi tertutup tanpa mengubah perilaku legacy);
+  `normalizeInvoice`/`normalizeTransport` diekspor untuk adapter LLM baru. Jalur legacy
+  (`classify-job-document`, `ceisa/bc-23/draft`, `parse-manifest`) tidak berubah.
+- **Konfigurasi LLM**: `LLM_PROVIDER`+`LLM_API_KEY` opsional; tanpa keduanya, `GEMINI_API_KEY` lama
+  mengaktifkan provider GEMINI (sumber kredensial legacy sesuai glossary). UI menonaktifkan tombol
+  ekstraksi ulang via `GET /api/extract-document → { llmAvailable }` (R3.4).
 
 ## Task Dependency Graph
 

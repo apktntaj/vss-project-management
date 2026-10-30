@@ -4,7 +4,7 @@ export type DateOnly = string
 export type Attachment = {
   id: string
   fileName: string
-  mimeType: 'application/pdf'
+  mimeType: 'application/pdf' | 'application/vnd.ms-excel' | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' | string
   fileSize: number
   createdAt: string
 }

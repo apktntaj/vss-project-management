@@ -29,12 +29,17 @@ import {
   validateJobAllocation,
   validateJobTransition,
   validateShipmentAllocation,
+  type CiplVersionFromExtractionInput,
 } from '@/domain/exhibition/validation'
 import type {
   JobInvoiceExtraction,
   JobInvoiceItem,
   JobTransportExtraction,
 } from '@/domain/exhibition/source-documents'
+import type {
+  ExtractionResult,
+} from '@/domain/exhibition/source-documents'
+import type { MandatoryDocumentView } from '@/domain/exhibition/mandatory-documents'
 import type {
   Ticket,
   TicketActivity,
@@ -1734,4 +1739,113 @@ export async function updateCustomsJob(
     createdAt: previous.createdAt,
     updatedAt: now(),
   })
+}
+
+// ── Ekstraksi dokumen pabean (customs-document-extraction) ────────────────────
+
+export type DocumentOwner = { ownerType: 'SHIPMENT' | 'CIPL_VERSION'; ownerId: string }
+export type ExtractionOutcome = { attachmentId: string; result: ExtractionResult }
+
+export type ShipmentDocument = {
+  id: string
+  ownerType: string
+  ownerId: string
+  kind: string | null
+  fileName: string
+  mimeType: string
+  fileSize: number
+  createdAt: string
+}
+
+export type ShipmentDocumentsView = {
+  documents: ShipmentDocument[]
+  completeness: MandatoryDocumentView
+}
+
+/** Visibilitas konfigurasi provider LLM untuk menonaktifkan tombol ekstraksi ulang (R3.4). */
+export async function getExtractionCapabilities(): Promise<{ llmAvailable: boolean }> {
+  const response = await fetch('/api/extract-document', { cache: 'no-store' })
+  const body = (await response.json().catch(() => null)) as { llmAvailable?: boolean; error?: string } | null
+  if (!response.ok) throw new Error(body?.error ?? 'Konfigurasi ekstraksi tidak dapat dimuat.')
+  return { llmAvailable: body?.llmAvailable === true }
+}
+
+async function postExtract(form: FormData): Promise<ExtractionOutcome> {
+  const response = await fetch('/api/extract-document', { method: 'POST', body: form })
+  const body = (await response.json().catch(() => null)) as (ExtractionOutcome & { error?: string }) | null
+  if (!response.ok || !body?.attachmentId || !body?.result) {
+    throw new Error(body?.error ?? 'Dokumen tidak dapat diekstrak.')
+  }
+  return { attachmentId: body.attachmentId, result: body.result }
+}
+
+export async function extractDocument(
+  input: DocumentOwner & { intendedKind: 'CIPL' | 'TRANSPORT'; file: File },
+): Promise<ExtractionOutcome> {
+  const form = new FormData()
+  form.set('ownerType', input.ownerType)
+  form.set('ownerId', input.ownerId)
+  form.set('intendedKind', input.intendedKind)
+  form.set('mode', 'DETERMINISTIC')
+  form.set('file', input.file)
+  return postExtract(form)
+}
+
+export async function reExtractWithLlm(
+  input: DocumentOwner & { attachmentId: string; intendedKind?: 'CIPL' | 'TRANSPORT' },
+): Promise<ExtractionOutcome> {
+  const form = new FormData()
+  form.set('ownerType', input.ownerType)
+  form.set('ownerId', input.ownerId)
+  form.set('attachmentId', input.attachmentId)
+  form.set('intendedKind', input.intendedKind ?? 'CIPL')
+  form.set('mode', 'LLM')
+  return postExtract(form)
+}
+
+export async function uploadSupportingDocument(
+  input: DocumentOwner & { label?: string; file: File },
+): Promise<{ attachmentId: string }> {
+  const form = new FormData()
+  form.set('ownerType', input.ownerType)
+  form.set('ownerId', input.ownerId)
+  form.set('intendedKind', 'SUPPORTING')
+  if (input.label?.trim()) form.set('label', input.label.trim())
+  form.set('file', input.file)
+  const response = await fetch('/api/extract-document', { method: 'POST', body: form })
+  const body = (await response.json().catch(() => null)) as { attachmentId?: string; error?: string } | null
+  if (!response.ok || !body?.attachmentId) throw new Error(body?.error ?? 'Dokumen tidak dapat diunggah.')
+  return { attachmentId: body.attachmentId }
+}
+
+export async function createCiplVersionFromExtraction(input: CiplVersionFromExtractionInput): Promise<CiplVersion> {
+  const response = await fetch('/api/cipl-versions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  const body = (await response.json().catch(() => null)) as { version?: CiplVersion; error?: string } | null
+  if (!response.ok || !body?.version) throw new Error(body?.error ?? 'Versi CIPL tidak dapat disimpan.')
+  return body.version
+}
+
+export async function listShipmentDocuments(shipmentId: string): Promise<ShipmentDocumentsView> {
+  const response = await fetch(`/api/shipment-documents?shipmentId=${encodeURIComponent(shipmentId)}`, {
+    cache: 'no-store',
+  })
+  const body = (await response.json().catch(() => null)) as (ShipmentDocumentsView & { error?: string }) | null
+  if (!response.ok) throw new Error(body?.error ?? 'Dokumen shipment tidak dapat dimuat.')
+  if (!body?.documents || !body?.completeness) throw new Error('Dokumen shipment tidak dapat dimuat.')
+  return { documents: body.documents, completeness: body.completeness }
+}
+
+export async function markShipmentReadyForCustoms(shipmentId: string): Promise<Shipment> {
+  const response = await fetch('/api/shipment-documents/mark-ready', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ shipmentId }),
+  })
+  const body = (await response.json().catch(() => null)) as { shipment?: Shipment; error?: string } | null
+  if (!response.ok || !body?.shipment) throw new Error(body?.error ?? 'Shipment tidak dapat ditandai siap pabean.')
+  return body.shipment
 }

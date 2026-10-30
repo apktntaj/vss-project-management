@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 import type { CiplItem, CiplVersion, CustomsJob, CustomsJobStatus, JobAllocation, Shipment, ShipmentAllocation } from './types'
 
 export type ValidationIssue = { path: string; message: string }
@@ -59,3 +61,68 @@ export function validateJobTransition(previous: CustomsJobStatus, next: CustomsJ
   if (reason?.trim() && evidence.length) return valid(next)
   return invalid({ path: 'status', message: 'Perubahan status mundur atau pembukaan kembali memerlukan alasan dan evidence.' })
 }
+
+export const extractDocumentSchema = z
+  .object({
+    ownerType: z.enum(['SHIPMENT', 'CIPL_VERSION'], {
+      errorMap: () => ({ message: 'Tipe pemilik dokumen tidak didukung.' }),
+    }),
+    ownerId: z.string().trim().min(1, 'Pemilik dokumen tidak ditemukan.'),
+    intendedKind: z.enum(['CIPL', 'TRANSPORT', 'SUPPORTING'], {
+      errorMap: () => ({ message: 'Jenis dokumen tidak didukung.' }),
+    }),
+    mode: z.enum(['DETERMINISTIC', 'LLM'], {
+      errorMap: () => ({ message: 'Mode ekstraksi tidak didukung.' }),
+    }).default('DETERMINISTIC'),
+    attachmentId: z.string().trim().min(1, 'Lampiran wajib dipilih.').optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.mode === 'LLM' && !value.attachmentId) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['attachmentId'], message: 'Lampiran wajib dipilih.' })
+    }
+  })
+
+export const supportingDocumentSchema = z
+  .object({
+    ownerType: z.enum(['SHIPMENT', 'CIPL_VERSION']),
+    ownerId: z.string().trim().min(1, 'Pemilik dokumen tidak ditemukan.'),
+    label: z.string().trim().max(120, 'Label dokumen pendukung maksimal 120 karakter.').optional(),
+  })
+  .strict()
+
+export const ciplVersionFromExtractionSchema = z
+  .object({
+    ciplId: z.string().trim().min(1, 'CIPL wajib dipilih.'),
+    source: z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('COMBINED'), attachmentId: z.string().trim().min(1) }),
+      z.object({
+        kind: z.literal('SPLIT'),
+        packingListAttachmentId: z.string().trim().min(1),
+        invoiceAttachmentId: z.string().trim().min(1),
+      }),
+    ]),
+    items: z
+      .array(
+        z.object({
+          description: z.string().trim().min(1, 'Deskripsi item wajib diisi.'),
+          quantity: z.number().positive('Quantity harus positif.'),
+          unit: z.string().trim().min(1, 'Unit wajib diisi.'),
+          unitValue: z.number().nullable(),
+          currency: z.string().trim().nullable(),
+          grossWeightKg: z.number().nullable(),
+          netWeightKg: z.number().nullable(),
+          countryOfOrigin: z.string().trim().nullable(),
+        }),
+      )
+      .min(1, 'Versi CIPL harus memiliki minimal satu item.'),
+  })
+  .strict()
+
+export type CiplVersionFromExtractionInput = z.infer<typeof ciplVersionFromExtractionSchema>
+
+export const markShipmentReadySchema = z
+  .object({
+    shipmentId: z.string().trim().min(1, 'Shipment wajib dipilih.'),
+  })
+  .strict()

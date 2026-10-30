@@ -1,9 +1,10 @@
 import * as XLSX from 'xlsx'
 import type { JobDocumentParty, JobInvoiceExtraction, JobInvoiceItem, JobTransportContainer, JobTransportExtraction } from '@/domain/exhibition/source-documents'
+import { LLM_MODELS, MAX_DOCUMENT_SIZE } from '@/lib/server/extraction/config'
 
-export const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024
+export { MAX_DOCUMENT_SIZE }
 const MAX_SPREADSHEET_TEXT_LENGTH = 80_000
-const MODEL = 'gemini-3.5-flash-lite'
+const MODEL = LLM_MODELS.GEMINI
 const spreadsheetExtensions = new Set(['xls', 'xlsx', 'xlsm', 'xlsb', 'xltx', 'xltm'])
 
 export const documentTypes = [
@@ -77,7 +78,7 @@ function normalizeParty(value: unknown): JobDocumentParty | null {
   return Object.values(party).some(Boolean) ? party : null
 }
 
-function normalizeInvoice(value: unknown): JobInvoiceExtraction | null {
+export function normalizeInvoice(value: unknown): JobInvoiceExtraction | null {
   if (!value || typeof value !== 'object') return null
   const input = value as Record<string, unknown>
   const items = Array.isArray(input.items)
@@ -124,7 +125,7 @@ function normalizeInvoice(value: unknown): JobInvoiceExtraction | null {
   }
 }
 
-function normalizeTransport(value: unknown): JobTransportExtraction | null {
+export function normalizeTransport(value: unknown): JobTransportExtraction | null {
   if (!value || typeof value !== 'object') return null
   const input = value as Record<string, unknown>
   const containers = Array.isArray(input.containers)

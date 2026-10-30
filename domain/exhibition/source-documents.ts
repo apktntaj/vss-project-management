@@ -74,3 +74,47 @@ export type JobTransportExtraction = {
   volumeM3: number | null
   containers: JobTransportContainer[]
 }
+
+export type DocumentClassificationType =
+  | 'CIPL_COMBINED'
+  | 'PACKING_LIST'
+  | 'COMMERCIAL_INVOICE'
+  | 'BILL_OF_LADING'
+  | 'AIR_WAYBILL'
+  | 'SUPPORTING_DOCUMENT'
+  | 'UNREADABLE'
+
+export type ConfidenceBand = 'LOW_CONFIDENCE' | 'MEDIUM_CONFIDENCE' | 'HIGH_CONFIDENCE'
+
+/** Kunci adalah dot-path field (mis. invoice.invoiceNumber); nilai 0.00–1.00. */
+export type ConfidenceMap = Record<string, number>
+
+export type DocumentClassification = {
+  documentType: DocumentClassificationType
+  confidence: number
+  needsUserConfirmation: boolean
+  rationale: string | null
+}
+
+export type ExtractionMethod = 'DETERMINISTIC' | 'LLM'
+
+export type ExtractionResult = {
+  method: ExtractionMethod
+  classification: DocumentClassification
+  invoice: JobInvoiceExtraction | null
+  transport: JobTransportExtraction | null
+  fieldConfidence: ConfidenceMap
+  aggregateConfidence: number
+  band: ConfidenceBand
+}
+
+export type IntendedKind = 'CIPL' | 'TRANSPORT' | 'SUPPORTING'
+
+export type CiplMergeInput = { packingList: JobInvoiceExtraction; invoice: JobInvoiceExtraction }
+
+export type CiplMergeResult =
+  | { ok: true; merged: JobInvoiceExtraction }
+  | {
+      ok: false
+      unmatched: { source: 'PACKING_LIST' | 'COMMERCIAL_INVOICE'; description: string }[]
+    }
