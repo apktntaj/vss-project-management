@@ -43,7 +43,8 @@ function normalizeDate(value: unknown): string | null {
   return null
 }
 
-const prompt = `Parse this exhibition inward manifest into blocks. Each yellow header row starts one block: AGENT NAME / transport document number (BL or AWB) / configuration (LCL, or containers like 1X20', 1x20' + 1x40') / totals. Rows below list exhibitors with their package (koli) breakdown and remark milestones.
+/** Instruksi parse blok inward manifest — dikirim sebagai system prompt. */
+const manifestSystemPrompt = `Parse this exhibition inward manifest into blocks. Each yellow header row starts one block: AGENT NAME / transport document number (BL or AWB) / configuration (LCL, or containers like 1X20', 1x20' + 1x40') / totals. Rows below list exhibitors with their package (koli) breakdown and remark milestones.
 
 Return only JSON: {"blocks":[{"agentName":string,"transportDocument":{"kind":"BL"|"AWB","number":string},"loadConfiguration":{"kind":"LCL"}|{"kind":"FCL","containers":[{"containerNumber":string|null,"size":"K20"|"K40"|"K40HQ","sealNumber":string|null}]},"milestones":[{"kind":"ETA"|"SKEP"|"SPPB"|"STRIPPING_SELESAI"|"MASUK_BONDED"|"BAHANDLE_SELESAI"|"PERIKSA_SELESAI"|"DO_READY","date":"YYYY-MM-DD","documentNumber":string|null}],"notes":[{"kind":"ANOMALI_BARANG"|"PENAHANAN"|"LAINNYA","text":string}],"exhibitors":[{"name":string,"hall":string|null,"booth":string|null,"koliTotalCount":number,"kolis":[{"label":string|null,"lengthCm":number|null,"widthCm":number|null,"heightCm":number|null,"volumeCbm":number|null,"weightKg":number|null}]}]}]}
 
@@ -126,7 +127,13 @@ export async function parseManifestFile(file: File): Promise<ManifestParseResult
   if (!provider) throw new DocumentExtractionError(LLM_UNAVAILABLE_MESSAGE, 503)
 
   try {
-    const parsed = (await chatDocumentJson(provider.id, provider, prompt, file)) as { blocks?: unknown[] }
+    const parsed = (await chatDocumentJson(
+      provider.id,
+      provider,
+      'Parse this inward manifest document into blocks. Return only the JSON object described.',
+      file,
+      manifestSystemPrompt,
+    )) as { blocks?: unknown[] }
     const warnings: string[] = []
     const blocks = (Array.isArray(parsed.blocks) ? parsed.blocks : []).flatMap((block) => {
       const normalized = normalizeBlock(block)
@@ -154,7 +161,8 @@ export type CiplScanResult = {
   warnings: string[]
 }
 
-const ciplPrompt = `Parse this exhibition cargo document (inward manifest, packing list, or CIPL) into a FLAT list of exhibitor rows with their package (case/koli) breakdown.
+/** Instruksi smart scan CIPL/manifest flat — dikirim sebagai system prompt. */
+const ciplSystemPrompt = `Parse this exhibition cargo document (inward manifest, packing list, or CIPL) into a FLAT list of exhibitor rows with their package (case/koli) breakdown.
 
 Return only JSON: {"exhibitors":[{"name":string,"jobNo":string|null,"hall":string|null,"booth":string|null,"bareCaseCount":number|null,"koliTotalCount":number,"kolis":[{"label":string|null,"lengthCm":number|null,"widthCm":number|null,"heightCm":number|null,"volumeCbm":number|null,"weightKg":number|null}]}]}
 
@@ -208,7 +216,13 @@ export async function parseCiplExhibitors(file: File): Promise<CiplScanResult> {
   if (!provider) throw new DocumentExtractionError(LLM_UNAVAILABLE_MESSAGE, 503)
 
   try {
-    const parsed = (await chatDocumentJson(provider.id, provider, ciplPrompt, file)) as {
+    const parsed = (await chatDocumentJson(
+      provider.id,
+      provider,
+      'Parse this document into a flat list of exhibitor rows. Return only the JSON object described.',
+      file,
+      ciplSystemPrompt,
+    )) as {
       exhibitors?: unknown[]
     }
     const warnings: string[] = []

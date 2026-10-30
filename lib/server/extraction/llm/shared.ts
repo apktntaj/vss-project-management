@@ -34,6 +34,7 @@ const CLASSIFICATION_TYPES: DocumentClassificationType[] = [
 const CIPL_TYPES: DocumentClassificationType[] = ['CIPL_COMBINED', 'PACKING_LIST', 'COMMERCIAL_INVOICE']
 const TRANSPORT_TYPES: DocumentClassificationType[] = ['BILL_OF_LADING', 'AIR_WAYBILL']
 
+/** Instruksi klasifikasi & ekstraksi B/L, AWB, dan CIPL — dikirim sebagai system prompt. */
 export const EXTRACTION_PROMPT =
   'Classify this document into exactly one documentType from: CIPL_COMBINED, PACKING_LIST, COMMERCIAL_INVOICE, BILL_OF_LADING, AIR_WAYBILL, SUPPORTING_DOCUMENT, UNREADABLE. ' +
   'A combined invoice & packing list is CIPL_COMBINED; a document whose primary purpose is listing packages, quantities, and weights is PACKING_LIST; a document stating commercial values (prices, totals, incoterms) is COMMERCIAL_INVOICE; a sea transport receipt is BILL_OF_LADING; an air transport document is AIR_WAYBILL; certificates, receipts, permits, letters, or other supporting papers are SUPPORTING_DOCUMENT; unreadable scans are UNREADABLE. ' +
@@ -41,6 +42,10 @@ export const EXTRACTION_PROMPT =
   'invoice is null only when no invoice information is printed; otherwise return invoiceNumber, invoiceDate (YYYY-MM-DD), seller and buyer (name, address, countryCode ISO 2, taxId), currency, incoterm, incotermLocation, totalAmount, freightAmount, insuranceAmount, totalGrossWeightKg, totalNetWeightKg, totalPackageCount, packageType, and items (lineNumber, itemCode, description, hsCode, quantity, unit, unitPrice, lineTotal, currency, grossWeightKg, netWeightKg, countryOfOrigin, packageCount, packageType). ' +
   'Transport is null unless the document is a B/L or AWB; otherwise return documentNumber, documentDate, carrier, vesselOrFlight, voyageOrFlightNumber, bookingNumber, shipper, consignee, notifyParty, portOfLoading, portOfDischarge, placeOfReceipt, placeOfDelivery, etd, eta, packageCount, packageType, marksAndNumbers, grossWeightKg, netWeightKg, volumeM3, and containers (containerNumber, size, type, sealNumber). ' +
   'Also return fieldConfidence: a flat object mapping each extracted field dot-path (for example invoice.invoiceNumber, transport.eta, invoice.items.0.description, transport.shipper.name) to a number 0-1 estimating confidence in that individual value; omit paths you did not extract.'
+
+/** Pesan user pendek; isi instruksi ada di EXTRACTION_PROMPT (system). */
+export const EXTRACTION_USER_PROMPT =
+  'Classify and extract this document. Return only the JSON object described.'
 
 /** Input dokumen utk provider LLM: PDF native (base64) atau teks (spreadsheet CSV). */
 export async function documentInputForLlm(file: File): Promise<{ pdfBase64: string } | { text: string }> {

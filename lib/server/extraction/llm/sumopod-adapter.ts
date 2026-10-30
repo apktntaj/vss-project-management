@@ -3,7 +3,7 @@ import 'server-only'
 import type { ExtractionResult } from '@/domain/exhibition/source-documents'
 import type { LlmProvider } from './provider'
 import { chatDocumentJson } from './document-json'
-import { EXTRACTION_PROMPT, toExtractionResult } from './shared'
+import { EXTRACTION_PROMPT, EXTRACTION_USER_PROMPT, toExtractionResult } from './shared'
 
 /** SumoPod: gateway OpenAI-compatible; LLM_BASE_URL menimpa base URL bila memakai gateway lain. */
 export class SumopodProvider implements LlmProvider {
@@ -15,7 +15,7 @@ export class SumopodProvider implements LlmProvider {
   ) {}
 
   extract(file: File): Promise<ExtractionResult> {
-    return chatDocumentJson('SUMOPOD', { apiKey: this.apiKey, model: this.model }, EXTRACTION_PROMPT, file).then(
+    return chatDocumentJson('SUMOPOD', { apiKey: this.apiKey, model: this.model }, EXTRACTION_USER_PROMPT, file, EXTRACTION_PROMPT).then(
       (payload) => toExtractionResult('LLM', payload),
     )
   }

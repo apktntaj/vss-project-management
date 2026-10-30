@@ -41,6 +41,7 @@ async function openaiJson(
   prompt: string,
   file: File,
   supportsVision: boolean,
+  system?: string,
 ): Promise<Record<string, unknown>> {
   const payload = await documentParts(file, supportsVision)
   const content: string | VisionPart[] =
@@ -50,6 +51,9 @@ async function openaiJson(
           { type: 'text', text: `${prompt}\n\nThe document is a scanned PDF; each page image is attached in order.` },
           ...payload.urls.map((url) => ({ type: 'image_url' as const, image_url: { url } })),
         ]
+  const messages: Array<{ role: 'system' | 'user'; content: string | VisionPart[] }> = []
+  if (system) messages.push({ role: 'system', content: system })
+  messages.push({ role: 'user', content })
   const response = await fetchJsonWithTimeout(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
@@ -57,14 +61,19 @@ async function openaiJson(
       model: config.model,
       temperature: 0,
       response_format: { type: 'json_object' },
-      messages: [{ role: 'user', content }],
+      messages,
     }),
   })
   const choices = (response as { choices?: Array<{ message?: { content?: string } }> }).choices ?? []
   return parseJsonPayload(choices[0]?.message?.content ?? '')
 }
 
-async function claudeJson(config: DocumentChatConfig, prompt: string, file: File): Promise<Record<string, unknown>> {
+async function claudeJson(
+  config: DocumentChatConfig,
+  prompt: string,
+  file: File,
+  system?: string,
+): Promise<Record<string, unknown>> {
   const input = await documentInputForLlm(file)
   const source =
     'pdfBase64' in input
@@ -80,6 +89,7 @@ async function claudeJson(config: DocumentChatConfig, prompt: string, file: File
     body: JSON.stringify({
       model: config.model,
       max_tokens: 4096,
+      ...(system ? { system } : {}),
       messages: [{ role: 'user', content: [source, { type: 'text', text: prompt }] }],
     }),
   })
@@ -92,16 +102,19 @@ const OPENAI_BASE_URL: Record<string, string> = {
   SUMOPOD: 'https://ai.sumopod.com/v1',
 }
 
-/** Satu pintu "kirim dokumen + prompt, terima JSON" untuk semua provider. */
+/** Satu pintu "kirim dokumen + prompt, terima JSON" untuk semua provider.
+ *  `system` opsional: instruksi tetap dikirim sebagai system prompt provider
+ *  (pesan system OpenAI-compatible / parameter system Anthropic). */
 export async function chatDocumentJson(
   id: LlmProviderId,
   config: DocumentChatConfig,
   prompt: string,
   file: File,
+  system?: string,
 ): Promise<Record<string, unknown>> {
-  if (id === 'CLAUDE') return claudeJson(config, prompt, file)
+  if (id === 'CLAUDE') return claudeJson(config, prompt, file, system)
   // deepseek-chat tidak multimodal; SumoPod (gpt-4o-mini) membaca halaman pindai sebagai gambar.
   const supportsVision = id !== 'DEEPSEEK'
   const baseUrl = id === 'SUMOPOD' ? process.env.LLM_BASE_URL?.trim() || OPENAI_BASE_URL.SUMOPOD : OPENAI_BASE_URL[id]
-  return openaiJson(baseUrl, config, prompt, file, supportsVision)
+  return openaiJson(baseUrl, config, prompt, file, supportsVision, system)
 }
