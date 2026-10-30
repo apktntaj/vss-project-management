@@ -16,12 +16,14 @@ export type ExtractionErrorCode =
   | 'CIPL_MERGE_UNMATCHED'
   | 'CIPL_COMBINATION_INVALID'
   | 'MANDATORY_DOCUMENTS_INCOMPLETE'
+  | 'CLASSIFICATION_FAILED'
 
 export class DocumentExtractionError extends Error {
   constructor(
     message: string,
     readonly status: 400 | 413 | 502 | 503,
     readonly code: ExtractionErrorCode,
+    readonly context: Record<string, string> = {},
   ) {
     super(message)
   }

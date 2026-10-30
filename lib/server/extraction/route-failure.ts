@@ -14,7 +14,10 @@ export function extractionRouteFailure(error: unknown) {
     )
   }
   if (error instanceof DocumentExtractionError) {
-    return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })
+    return NextResponse.json(
+      { ...error.context, error: error.message, code: error.code },
+      { status: error.status },
+    )
   }
   if (error instanceof Error && error.message === 'Autentikasi diperlukan.') {
     return NextResponse.json({ error: error.message, code: 'AUTHENTICATION_REQUIRED' }, { status: 401 })

@@ -45,8 +45,12 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Pemilik dokumen tidak ditemukan.', code: 'OWNER_NOT_FOUND' }, { status: 400 })
       }
       const file = new File([downloaded.file], downloaded.fileName, { type: downloaded.mimeType })
-      const result = await runLlmExtraction(file)
-      return NextResponse.json({ attachmentId, result })
+      try {
+        const result = await runLlmExtraction(file)
+        return NextResponse.json({ attachmentId, result })
+      } catch (error) {
+        throw withAttachmentId(error, attachmentId)
+      }
     }
 
     const file = form.get('file')
@@ -70,11 +74,28 @@ export async function POST(request: Request) {
     if (input.intendedKind === 'SUPPORTING') {
       return NextResponse.json({ attachmentId }, { status: 201 })
     }
-    const result = await runDeterministicExtraction(file, input.intendedKind)
-    return NextResponse.json({ attachmentId, result })
+    // Persist-first: file sudah tersimpan, jadi kegagalan ekstraksi apa pun tetap membawa attachmentId.
+    try {
+      const result = await runDeterministicExtraction(file, input.intendedKind)
+      return NextResponse.json({ attachmentId, result })
+    } catch (error) {
+      throw withAttachmentId(error, attachmentId)
+    }
   } catch (error) {
     return extractionRouteFailure(error)
   }
+}
+
+function withAttachmentId(error: unknown, attachmentId: string): DocumentExtractionError {
+  if (error instanceof DocumentExtractionError) {
+    return new DocumentExtractionError(error.message, error.status, error.code, { attachmentId })
+  }
+  return new DocumentExtractionError(
+    error instanceof Error ? error.message : 'Dokumen tidak dapat diekstrak.',
+    502,
+    'EXTRACTION_SERVICE_UNAVAILABLE',
+    { attachmentId },
+  )
 }
 
 function parseSupportingLabel(form: FormData, ownerType: 'SHIPMENT' | 'CIPL_VERSION', ownerId: string): string | undefined {
