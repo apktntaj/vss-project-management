@@ -33,7 +33,7 @@ const familyOf = (type: DocumentClassificationType): 'CIPL' | 'TRANSPORT' | null
       : 'CIPL'
 
 /** Total: SELALU mengembalikan tepat satu nilai dari himpunan tertutup DocumentClassificationType. */
-export function classifyDocument(parsed: ParsedDocument, intendedKind: IntendedKind): DocumentClassification {
+export function classifyDocument(parsed: ParsedDocument, intendedKind?: IntendedKind): DocumentClassification {
   if (intendedKind === 'SUPPORTING') {
     return {
       documentType: 'SUPPORTING_DOCUMENT',
@@ -48,7 +48,7 @@ export function classifyDocument(parsed: ParsedDocument, intendedKind: IntendedK
   const scores = new Map<DocumentClassificationType, number>()
   for (const marker of markers) {
     if (!marker.pattern.test(text)) continue
-    const intended = familyOf(marker.type) === intendedKind ? 0.05 : 0
+    const intended = intendedKind && familyOf(marker.type) === intendedKind ? 0.05 : 0
     scores.set(marker.type, (scores.get(marker.type) ?? 0) + marker.weight + intended)
   }
 

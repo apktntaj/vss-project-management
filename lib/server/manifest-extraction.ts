@@ -6,9 +6,10 @@ import {
   type ExhibitorLogistics,
   type InwardManifest,
 } from '@/domain/job/manifest'
-import { assertSupportedDocumentFile, DocumentExtractionError, geminiDocumentInput } from './document-extraction'
-
-const MODEL = 'gemini-3.5-flash-lite'
+import { assertSupportedDocumentFile, DocumentExtractionError } from './document-extraction'
+import { configuredLlmProvider } from './extraction/config'
+import { LLM_UNAVAILABLE_MESSAGE } from './extraction/errors'
+import { chatDocumentJson } from './extraction/llm/document-json'
 
 export type ManifestBlockParse = {
   agentName: string
@@ -121,25 +122,11 @@ function normalizeBlock(value: unknown): ManifestBlockParse | null {
 /** Mem-parse file inward manifest (PDF/Excel) menjadi blok job yang sudah tervalidasi domain. */
 export async function parseManifestFile(file: File): Promise<ManifestParseResult> {
   assertSupportedDocumentFile(file)
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) throw new DocumentExtractionError('GEMINI_API_KEY belum dikonfigurasi.', 503)
+  const provider = configuredLlmProvider()
+  if (!provider) throw new DocumentExtractionError(LLM_UNAVAILABLE_MESSAGE, 503)
 
   try {
-    const input = await geminiDocumentInput(file)
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }, input] }],
-        generationConfig: { temperature: 0, responseMimeType: 'application/json' },
-      }),
-    })
-    if (!response.ok) throw new DocumentExtractionError('Manifest tidak dapat diproses oleh Gemini.', 502)
-    const payload = (await response.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
-    const responseText = payload.candidates?.[0]?.content?.parts?.find((part) => part.text)?.text
-    if (!responseText) throw new DocumentExtractionError('Gemini tidak mengembalikan data manifest.', 502)
-
-    const parsed = JSON.parse(responseText) as { blocks?: unknown[] }
+    const parsed = (await chatDocumentJson(provider.id, provider, prompt, file)) as { blocks?: unknown[] }
     const warnings: string[] = []
     const blocks = (Array.isArray(parsed.blocks) ? parsed.blocks : []).flatMap((block) => {
       const normalized = normalizeBlock(block)

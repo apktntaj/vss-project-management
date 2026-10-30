@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
-import { DocumentExtractionError, extractDocument } from '@/lib/server/document-extraction'
+import { DocumentExtractionError } from '@/lib/server/extraction/errors'
+import { classifyJobDocument } from '@/lib/server/extraction/job-classify'
 
 export const runtime = 'nodejs'
 
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    return NextResponse.json(await extractDocument(file))
+    return NextResponse.json(await classifyJobDocument(file))
   } catch (error) {
     if (error instanceof DocumentExtractionError) {
       return NextResponse.json({ error: error.message }, { status: error.status })

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { createBc23Draft } from '@/lib/ceisa/bc23-draft'
-import { DocumentExtractionError, extractDocument } from '@/lib/server/document-extraction'
+import { DocumentExtractionError } from '@/lib/server/extraction/errors'
+import { classifyJobDocument } from '@/lib/server/extraction/job-classify'
 
 export const runtime = 'nodejs'
 
@@ -20,8 +21,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const [invoiceDocument, transportDocument] = await Promise.all([
-      extractDocument(invoiceFile),
-      extractDocument(transportFile),
+      classifyJobDocument(invoiceFile),
+      classifyJobDocument(transportFile),
     ])
     if (!invoiceDocument.invoice || invoiceDocument.classification.documentType !== 'COMMERCIAL_INVOICE') {
       return NextResponse.json({ error: 'File invoice tidak teridentifikasi sebagai Commercial Invoice.' }, { status: 400 })

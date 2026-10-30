@@ -15,7 +15,7 @@ const CIPL_TYPES = ['CIPL_COMBINED', 'PACKING_LIST', 'COMMERCIAL_INVOICE']
 const TRANSPORT_TYPES = ['BILL_OF_LADING', 'AIR_WAYBILL']
 
 /** Lapis 1: deterministik tanpa LLM (R2.1); hasil tidak pernah dipersist parsial (R2.11). */
-export async function runDeterministicExtraction(file: File, intendedKind: IntendedKind): Promise<ExtractionResult> {
+export async function runDeterministicExtraction(file: File, intendedKind?: IntendedKind): Promise<ExtractionResult> {
   assertSupportedDocumentFile(file)
   let parsed
   if (isSpreadsheet(file)) {

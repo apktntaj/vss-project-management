@@ -37,7 +37,7 @@ function compare(
 
 /**
  * Compares values that should agree between a commercial invoice and B/L or AWB.
- * Empty values are reported separately, so an absent Gemini extraction is never
+ * Empty values are reported separately, so an absent LLM extraction is never
  * presented as a document discrepancy.
  */
 export function compareInvoiceWithTransport(

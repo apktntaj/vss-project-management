@@ -6,7 +6,7 @@ import { parseManifestFile } from '@/lib/server/manifest-extraction'
 
 export const runtime = 'nodejs'
 
-/** Autofill blok manifest job dari file inward manifest (PDF/Excel) via Gemini. */
+/** Autofill blok manifest job dari file inward manifest (PDF/Excel) via LLM terkonfigurasi. */
 export async function POST(request: NextRequest) {
   try {
     const session = await auth()

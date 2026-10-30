@@ -1,10 +1,6 @@
-import * as XLSX from 'xlsx'
 import type { JobDocumentParty, JobInvoiceExtraction, JobInvoiceItem, JobTransportContainer, JobTransportExtraction } from '@/domain/exhibition/source-documents'
-import { LLM_MODELS, MAX_DOCUMENT_SIZE } from '@/lib/server/extraction/config'
+import { MAX_DOCUMENT_SIZE } from '@/lib/server/extraction/config'
 
-export { MAX_DOCUMENT_SIZE }
-const MAX_SPREADSHEET_TEXT_LENGTH = 80_000
-const MODEL = LLM_MODELS.GEMINI
 const spreadsheetExtensions = new Set(['xls', 'xlsx', 'xlsm', 'xlsb', 'xltx', 'xltm'])
 
 export const documentTypes = [
@@ -164,78 +160,5 @@ export function normalizeTransport(value: unknown): JobTransportExtraction | nul
     netWeightKg: amount(input.netWeightKg),
     volumeM3: amount(input.volumeM3),
     containers,
-  }
-}
-
-function spreadsheetText(buffer: Buffer) {
-  const workbook = XLSX.read(buffer, { type: 'buffer', cellText: true, cellFormula: false, cellNF: false })
-  const content = workbook.SheetNames.map((sheetName) => {
-    const sheet = workbook.Sheets[sheetName]
-    return `Sheet: ${sheetName}\n${XLSX.utils.sheet_to_csv(sheet, { blankrows: false })}`
-  }).join('\n\n')
-  if (!content.trim()) throw new DocumentExtractionError('Spreadsheet tidak berisi sel yang dapat dibaca.', 400)
-  return content.slice(0, MAX_SPREADSHEET_TEXT_LENGTH)
-}
-
-/** Mengubah file PDF/Excel menjadi part input Gemini (inlineData untuk PDF, teks CSV untuk spreadsheet). */
-export async function geminiDocumentInput(file: File) {
-  const buffer = Buffer.from(await file.arrayBuffer())
-  return isPdf(file)
-    ? { inlineData: { mimeType: 'application/pdf', data: buffer.toString('base64') } }
-    : { text: `Spreadsheet content:\n${spreadsheetText(buffer)}` }
-}
-
-function normalizeClassification(value: unknown): DocumentClassification {
-  const input = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
-  const documentType = documentTypes.includes(input.documentType as DocumentType)
-    ? (input.documentType as DocumentType)
-    : 'UNREADABLE'
-  const confidence = typeof input.confidence === 'number' && Number.isFinite(input.confidence)
-    ? Math.max(0, Math.min(1, input.confidence))
-    : 0
-  const rationale = typeof input.rationale === 'string' && input.rationale.trim()
-    ? input.rationale.trim().slice(0, 280)
-    : null
-  return { documentType, confidence, rationale }
-}
-
-export async function extractDocument(file: File): Promise<DocumentExtraction> {
-  assertSupportedDocumentFile(file)
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) throw new DocumentExtractionError('GEMINI_API_KEY belum dikonfigurasi.', 503)
-
-  try {
-    const input = await geminiDocumentInput(file)
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            {
-              text: `Classify this ${isPdf(file) ? 'PDF' : 'spreadsheet'} into exactly one documentType: BILL_OF_LADING, AIR_WAYBILL, COMMERCIAL_INVOICE, OTHER, or UNREADABLE. A packing list, customs document, certificate, receipt, or mixed document is OTHER unless it is primarily one of the first three. Return only JSON with documentType, confidence (number 0-1), a short Indonesian rationale, invoice, and transport. Always try to extract invoice even from OTHER. invoice is null only when no invoice information is printed; otherwise return invoiceNumber, invoiceDate (YYYY-MM-DD), seller and buyer (name, address, countryCode ISO 2, taxId), currency, incoterm, incotermLocation, totalAmount, freightAmount, insuranceAmount, totalGrossWeightKg, totalNetWeightKg, totalPackageCount, packageType, and items. Transport is null unless the document is a B/L or AWB; otherwise return documentNumber, documentDate, carrier, vesselOrFlight, voyageOrFlightNumber, bookingNumber, shipper, consignee, notifyParty, portOfLoading, portOfDischarge, placeOfReceipt, placeOfDelivery, etd, eta, packageCount, packageType, marksAndNumbers, grossWeightKg, netWeightKg, volumeM3, and containers.`,
-            },
-            input,
-          ],
-        }],
-        generationConfig: { temperature: 0, responseMimeType: 'application/json' },
-      }),
-    })
-    if (!response.ok) throw new DocumentExtractionError('Dokumen tidak dapat diproses oleh Gemini.', 502)
-    const payload = (await response.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
-    const responseText = payload.candidates?.[0]?.content?.parts?.find((part) => part.text)?.text
-    if (!responseText) throw new DocumentExtractionError('Gemini tidak mengembalikan data dokumen.', 502)
-    const parsed = JSON.parse(responseText) as Record<string, unknown>
-    const classification = normalizeClassification(parsed)
-    return {
-      classification,
-      invoice: normalizeInvoice(parsed.invoice ?? (parsed.invoiceNumber || parsed.items ? parsed : null)),
-      transport: classification.documentType === 'BILL_OF_LADING' || classification.documentType === 'AIR_WAYBILL'
-        ? normalizeTransport(parsed.transport)
-        : null,
-    }
-  } catch (error) {
-    if (error instanceof DocumentExtractionError) throw error
-    throw new DocumentExtractionError('Dokumen tidak dapat diklasifikasikan. Coba lagi atau gunakan PDF lain.', 502)
   }
 }
