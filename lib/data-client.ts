@@ -197,6 +197,14 @@ export type LocalJob = {
   clientInfo: string | null
   status: 'DRAFT' | 'IN_PROGRESS' | 'ON_HOLD' | 'COMPLETED' | 'CANCELLED'
   notes: string | null
+  /** Pihak yang ditagihkan atas invoice job (mis. agent atau exhibitor). */
+  billTo?: string | null
+  /** Keterangan penyimpanan kemasan kosong (empty storage) selama pameran. */
+  emptyStorage?: string | null
+  /** Keterangan rencana/status re-ekspor barang. */
+  reExport?: string | null
+  /** Apakah invoice penagihan sudah dikirim ke pihak yang ditagih. */
+  invoiceSent?: boolean | null
   trackingToken: string
   assignedToId: string | null
   createdById?: string | null
@@ -1271,6 +1279,10 @@ export async function saveJobOperationalDetails(
     | 'assignedToId'
     | 'status'
     | 'notes'
+    | 'billTo'
+    | 'emptyStorage'
+    | 'reExport'
+    | 'invoiceSent'
   > & { operational: JobOperationalDetails },
   attachments: JobOperationalAttachment[] = [],
 ) {
@@ -1770,11 +1782,18 @@ export async function getExtractionCapabilities(): Promise<{ llmAvailable: boole
   return { llmAvailable: body?.llmAvailable === true }
 }
 
+/** Error ekstraksi dengan attachmentId bila file sudah tersimpan (persist-first) walau parsingnya gagal. */
+export type ExtractionError = Error & { attachmentId?: string }
+
 async function postExtract(form: FormData): Promise<ExtractionOutcome> {
   const response = await fetch('/api/extract-document', { method: 'POST', body: form })
-  const body = (await response.json().catch(() => null)) as (ExtractionOutcome & { error?: string }) | null
-  if (!response.ok || !body?.attachmentId || !body?.result) {
-    throw new Error(body?.error ?? 'Dokumen tidak dapat diekstrak.')
+  const body = (await response.json().catch(() => null)) as
+    | (ExtractionOutcome & { error?: string; attachmentId?: string })
+    | null
+  if (!response.ok || !body?.result) {
+    const failure = new Error(body?.error ?? 'Dokumen tidak dapat diekstrak.') as ExtractionError
+    if (!response.ok && body?.attachmentId) failure.attachmentId = body.attachmentId
+    throw failure
   }
   return { attachmentId: body.attachmentId, result: body.result }
 }

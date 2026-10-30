@@ -79,7 +79,7 @@ function DocumentComparisonSummary({ comparison }: { comparison: DocumentCompari
               ? `${differences.length} data berbeda dan perlu ditinjau.`
               : comparable.length
                 ? 'Data yang tersedia konsisten.'
-                : 'Gemini belum menemukan nilai yang sama-sama tersedia untuk dibandingkan.'}
+                : 'AI belum menemukan nilai yang sama-sama tersedia untuk dibandingkan.'}
           </p>
         </div>
       </div>
@@ -124,12 +124,25 @@ function DocumentComparisonSummary({ comparison }: { comparison: DocumentCompari
 export default function JobDetail({ params }: { params: { id: string } }) {
   const [job, setJob] = useState<LocalJob | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   useEffect(() => {
+    let active = true
     setLoading(true)
-    getJob(params.id).then((loadedJob) => {
-      setJob(loadedJob)
-      setLoading(false)
-    })
+    getJob(params.id)
+      .then((loadedJob) => {
+        if (!active) return
+        setJob(loadedJob)
+        setLoadError(loadedJob ? '' : 'Job tidak ditemukan.')
+        setLoading(false)
+      })
+      .catch((caught) => {
+        if (!active) return
+        setLoadError(caught instanceof Error ? caught.message : 'Job tidak dapat dimuat.')
+        setLoading(false)
+      })
+    return () => {
+      active = false
+    }
   }, [params.id])
   const [exhibitors, setExhibitors] = useState<LocalExhibitor[]>([])
   const [nomor, setNomor] = useState<string | null>(null)
@@ -168,7 +181,18 @@ export default function JobDetail({ params }: { params: { id: string } }) {
       active = false
     }
   }, [jobEventId, params.id])
-  if (loading || !job) return <PageSkeleton cards={2} rows={5} />
+  if (loading || !job) {
+    if (loadError)
+      return (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700" role="alert">
+          <p>{loadError}</p>
+          <Link href="/jobs" className="btn-secondary mt-3 inline-block">
+            Kembali ke Jobs
+          </Link>
+        </div>
+      )
+    return <PageSkeleton cards={2} rows={5} />
+  }
   const showManifest =
     job.kind === 'INTERNATIONAL' || Boolean(job.inward) || Boolean(job.kepulangan)
   const details = getOperationalDetails(job)
@@ -297,6 +321,15 @@ export default function JobDetail({ params }: { params: { id: string } }) {
                   </div>
                 ))}
               </div>
+            </section>
+            <section className="card p-5">
+              <h2 className="font-semibold">Penagihan &amp; logistik</h2>
+              <dl className="mt-4 grid gap-5 sm:grid-cols-2">
+                <Info label="Bill to" value={job.billTo} />
+                <Info label="Invoice terkirim" value={job.invoiceSent ? 'Sudah' : 'Belum'} />
+                <Info label="Empty storage" value={job.emptyStorage} />
+                <Info label="Re-export" value={job.reExport} />
+              </dl>
             </section>
             <section className="card p-5">
               <div className="flex items-center gap-2">

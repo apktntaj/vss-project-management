@@ -185,14 +185,33 @@ export function JobEditor({ jobId }: { jobId: string }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   useEffect(() => {
+    let active = true
     setLoading(true)
-    getJob(jobId).then((loadedJob) => {
-      setJob(loadedJob)
-      setLoading(false)
-    })
+    getJob(jobId)
+      .then((loadedJob) => {
+        if (!active) return
+        setJob(loadedJob)
+        setLoadError(loadedJob ? '' : 'Job tidak ditemukan.')
+        setLoading(false)
+      })
+      .catch((caught) => {
+        if (!active) return
+        setLoadError(caught instanceof Error ? caught.message : 'Job tidak dapat dimuat.')
+        setLoading(false)
+      })
+    return () => {
+      active = false
+    }
   }, [jobId])
-  if (loading || !job) return <FormSkeleton fields={8} />
+  if (loading) return <FormSkeleton fields={8} />
+  if (!job)
+    return (
+      <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700" role="alert">
+        {loadError || 'Job tidak ditemukan.'}
+      </div>
+    )
   const loadedJob = job
   const operational = getOperationalDetails(loadedJob)
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -248,6 +267,10 @@ export function JobEditor({ jobId }: { jobId: string }) {
           assignedToId: loadedJob.assignedToId,
           status: String(form.get('status')) as LocalJob['status'],
           notes: text(form, 'notes'),
+          billTo: text(form, 'billTo') || null,
+          emptyStorage: text(form, 'emptyStorage') || null,
+          reExport: text(form, 'reExport') || null,
+          invoiceSent: form.get('invoiceSent') === 'on',
           operational: {
             inbound: transport('inbound'),
             outbound: transport('outbound'),
@@ -409,6 +432,49 @@ export function JobEditor({ jobId }: { jobId: string }) {
           <CustomsCard kind="BC_2_5" detail={operational.customs.BC_2_5} />
           <CustomsCard kind="BC_3_0" detail={operational.customs.BC_3_0} />
           <CustomsCard kind="BC_2_7" detail={operational.customs.BC_2_7} />
+        </div>
+      </section>
+      <section className="card p-5">
+        <h2 className="font-semibold">Penagihan &amp; logistik</h2>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="label">
+            Bill to
+            <input
+              name="billTo"
+              defaultValue={job.billTo || ''}
+              className="input"
+              placeholder="Pihak yang ditagihkan invoice"
+            />
+          </label>
+          <label className="label">
+            Empty storage
+            <input
+              name="emptyStorage"
+              defaultValue={job.emptyStorage || ''}
+              className="input"
+              placeholder="Penyimpanan kemasan kosong"
+            />
+          </label>
+          <label className="label">
+            Re-export
+            <input
+              name="reExport"
+              defaultValue={job.reExport || ''}
+              className="input"
+              placeholder="Rencana / status re-ekspor"
+            />
+          </label>
+          <label className="label">
+            <span className="flex items-center gap-2 font-normal">
+              <input
+                type="checkbox"
+                name="invoiceSent"
+                defaultChecked={job.invoiceSent === true}
+                className="size-4 rounded border-slate-300"
+              />
+              Invoice terkirim
+            </span>
+          </label>
         </div>
       </section>
       <section className="card p-5">
