@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Sparkles } from 'lucide-react'
 import { toast } from '@/components/toast'
 import { ConfidenceBadge, ReviewNotice } from '@/components/confidence-badge'
@@ -73,27 +73,51 @@ export function ExtractionReviewForm({
       .catch(() => setLlmAvailable(false))
   }, [])
 
+  // Sumber yang outcome-nya masih objek sama mempertahankan baris (beserta koreksi manual);
+  // hanya sumber yang diganti (mis. ekstrak ulang LLM) atau baru yang diturunkan segar.
+  const previousOutcomes = useRef<Map<string, SourceOutcome>>(new Map())
   useEffect(() => {
-    const derived: ReviewRow[] = []
-    sources.forEach((source, sourceIndex) => {
-      source.result.invoice?.items.forEach((item, itemIndex) => {
-        derived.push({
-          key: `${source.attachmentId}-${itemIndex}`,
-          sourceIndex,
-          itemIndex,
-          description: item.description ?? '',
-          quantity: toRow(item.quantity),
-          unit: item.unit ?? '',
-          unitValue: toRow(item.unitPrice),
-          currency: item.currency ?? source.result.invoice?.currency ?? '',
-          grossWeightKg: toRow(item.grossWeightKg),
-          netWeightKg: toRow(item.netWeightKg),
-          countryOfOrigin: item.countryOfOrigin ?? '',
+    const outcomesBefore = previousOutcomes.current
+    const rederivedKeys = new Set<string>()
+    setRows((current) => {
+      const kept = new Map(current.map((row) => [row.key, row]))
+      const derived: ReviewRow[] = []
+      sources.forEach((source, sourceIndex) => {
+        const unchanged = outcomesBefore.get(source.attachmentId) === source
+        source.result.invoice?.items.forEach((item, itemIndex) => {
+          const key = `${source.attachmentId}-${itemIndex}`
+          const existing = unchanged ? kept.get(key) : undefined
+          if (existing) {
+            derived.push({ ...existing, sourceIndex })
+          } else {
+            rederivedKeys.add(key)
+            derived.push({
+              key,
+              sourceIndex,
+              itemIndex,
+              description: item.description ?? '',
+              quantity: toRow(item.quantity),
+              unit: item.unit ?? '',
+              unitValue: toRow(item.unitPrice),
+              currency: item.currency ?? source.result.invoice?.currency ?? '',
+              grossWeightKg: toRow(item.grossWeightKg),
+              netWeightKg: toRow(item.netWeightKg),
+              countryOfOrigin: item.countryOfOrigin ?? '',
+            })
+          }
         })
       })
+      return derived
     })
-    setRows(derived)
-    setRowErrors({})
+    previousOutcomes.current = new Map(sources.map((source) => [source.attachmentId, source]))
+    setRowErrors((current) => {
+      const next: Record<string, string> = {}
+      Object.entries(current).forEach(([errorKey, message]) => {
+        const rowKey = errorKey.slice(errorKey.indexOf('.') + 1)
+        if (!rederivedKeys.has(rowKey)) next[errorKey] = message
+      })
+      return next
+    })
     setFormError('')
   }, [sources])
 
@@ -124,12 +148,12 @@ export function ExtractionReviewForm({
 
   function buildSourcePayload() {
     const types = sources.map((_, index) => typeAt(index))
-    if (sources.length === 1) {
-      return { kind: 'COMBINED' as const, attachmentId: sources[0].attachmentId }
-    }
     const combinedIndex = types.findIndex((type) => type === 'CIPL_COMBINED')
     if (combinedIndex >= 0) {
-      return { kind: 'COMBINED' as const, attachmentId: sources[combinedIndex].attachmentId }
+      return { kind: 'COMBINED' as const, documentType: 'CIPL_COMBINED' as const, attachmentId: sources[combinedIndex].attachmentId }
+    }
+    if (sources.length === 1) {
+      return null
     }
     const packingListIndex = types.findIndex((type) => type === 'PACKING_LIST')
     const invoiceIndex = types.findIndex((type) => type === 'COMMERCIAL_INVOICE')

@@ -98,7 +98,7 @@ export async function POST(request: Request) {
   }
 }
 
-type SourceInput = { kind: 'COMBINED'; attachmentId: string } | { kind: 'SPLIT'; packingListAttachmentId: string; invoiceAttachmentId: string }
+type SourceInput = { kind: 'COMBINED'; documentType: 'CIPL_COMBINED'; attachmentId: string } | { kind: 'SPLIT'; packingListAttachmentId: string; invoiceAttachmentId: string }
 
 /**
  * Invariant alokasi (R5.6/R5.7): versi baru belum memiliki shipment, jadi validateShipmentAllocation

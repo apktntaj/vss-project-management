@@ -95,7 +95,13 @@ export const ciplVersionFromExtractionSchema = z
   .object({
     ciplId: z.string().trim().min(1, 'CIPL wajib dipilih.'),
     source: z.discriminatedUnion('kind', [
-      z.object({ kind: z.literal('COMBINED'), attachmentId: z.string().trim().min(1) }),
+      z.object({
+        kind: z.literal('COMBINED'),
+        documentType: z.literal('CIPL_COMBINED', {
+          errorMap: () => ({ message: 'Sumber tunggal harus dokumen CIPL gabungan, atau gabungkan Packing List dan Commercial Invoice.' }),
+        }),
+        attachmentId: z.string().trim().min(1),
+      }),
       z.object({
         kind: z.literal('SPLIT'),
         packingListAttachmentId: z.string().trim().min(1),
