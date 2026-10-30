@@ -15,12 +15,11 @@ import {
   type LocalJob,
 } from '@/lib/data-client'
 import { internationalJobJenisLabels } from '@/domain/job/types'
-import {
-  isAcceptedJobDocument,
-  jobDocumentAccept,
-  type DocumentClassification,
-  type JobDocumentExtraction,
+import type {
+  DocumentClassification,
+  JobDocumentExtraction,
 } from '@/components/job-row'
+import { isAcceptedJobDocument, jobDocumentAccept } from '@/components/job-document-file'
 
 function toast(message: string, tone: 'success' | 'error') {
   window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
@@ -101,6 +100,8 @@ export function JobInitModal({
   // Job sudah tersimpan dulu; kegagalan per-dokumen tidak membatalkan job.
   async function uploadDocuments(jobId: string) {
     let uploaded = 0
+    let classified = 0
+    let failed = 0
     for (const file of files) {
       try {
         const formData = new FormData()
@@ -121,18 +122,30 @@ export function JobInitModal({
             : payload.classification.documentType
         await saveJobDocument(jobId, file, kind, payload.invoice, payload.transport)
         uploaded += 1
+        if (kind !== 'OTHER') classified += 1
       } catch {
-        await saveJobDocument(jobId, file, 'OTHER').catch(() => undefined)
-        uploaded += 1
+        try {
+          await saveJobDocument(jobId, file, 'OTHER')
+          uploaded += 1
+        } catch {
+          failed += 1
+        }
       }
     }
     if (files.length) {
-      toast(
-        uploaded === files.length
-          ? `${uploaded} dokumen terunggah dan diperiksa AI.`
-          : `${uploaded}/${files.length} dokumen terunggah — sisanya gagal dan bisa diunggah ulang di detail job.`,
-        uploaded === files.length ? 'success' : 'error',
-      )
+      if (failed === 0 && classified === uploaded) {
+        toast(`${uploaded} dokumen terunggah dan diperiksa AI.`, 'success')
+      } else if (failed === 0) {
+        toast(
+          `${classified}/${uploaded} dokumen terunggah dan diperiksa AI — sisanya tersimpan tanpa klasifikasi dan bisa diperiksa ulang di detail job.`,
+          'success',
+        )
+      } else {
+        toast(
+          `${uploaded}/${files.length} dokumen terunggah — ${failed} gagal dan bisa diunggah ulang di detail job.`,
+          'error',
+        )
+      }
     }
   }
 
