@@ -274,13 +274,16 @@ export default function EventDetailPage() {
                   </button>
                   {isOpen && (
                     <div className="overflow-x-auto">
-                      <table className="min-w-[900px] w-full table-fixed text-left text-sm">
+                      <table className="min-w-[1200px] w-full table-fixed text-left text-sm">
                         <colgroup>
-                          <col className="w-[115px]" />
+                          <col className="w-[110px]" />
                           <col className="w-[145px]" />
-                          <col className="w-[190px]" />
-                          <col className="w-[135px]" />
-                          <col className="w-[210px]" />
+                          <col className="w-[185px]" />
+                          <col className="w-[110px]" />
+                          <col className="w-[95px]" />
+                          <col className="w-[90px]" />
+                          <col className="w-[140px]" />
+                          <col className="w-[200px]" />
                           <col className="w-[60px]" />
                         </colgroup>
                         <thead className="border-b bg-white text-slate-900 font-semibold uppercase tracking-wider">
@@ -289,6 +292,9 @@ export default function EventDetailPage() {
                             <th className="px-3 py-3">Exhibitor</th>
                             <th className="px-3 py-3">Dokumen shipment</th>
                             <th className="px-3 py-3">ETA</th>
+                            <th className="px-3 py-3">Bill to</th>
+                            <th className="px-3 py-3">Invoice terkirim</th>
+                            <th className="px-3 py-3">Remark</th>
                             <th className="px-3 py-3">Dokumen BC</th>
                             <th className="px-3 py-3">Aksi</th>
                           </tr>

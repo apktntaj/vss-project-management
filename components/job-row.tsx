@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import {
   CheckCircle2,
@@ -17,7 +17,6 @@ import {
 
 import {
   getOperationalDetails,
-  saveJobDocument,
   type LocalJob,
   type LocalJobDocument,
 } from '@/lib/data-client'
@@ -28,8 +27,8 @@ import type {
 import type { BcDocumentKind } from '@/domain/job/types'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
 import type { EditableJobDocument } from '@/components/job-document-editor-dialog'
+import { JobUploadDialog } from '@/components/job-upload-dialog'
 import { compareInvoiceWithTransport } from '@/lib/document-comparison'
 
 export type DocumentClassification = {
@@ -37,13 +36,6 @@ export type DocumentClassification = {
   confidence: number
   rationale: string | null
 }
-const spreadsheetExtensions = ['xls', 'xlsx', 'xlsm', 'xlsb', 'xltx', 'xltm']
-export const jobDocumentAccept =
-  'application/pdf,.pdf,application/vnd.ms-excel,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/vnd.ms-excel.sheet.macroEnabled.12,.xlsm,application/vnd.ms-excel.sheet.binary.macroEnabled.12,.xlsb,application/vnd.openxmlformats-officedocument.spreadsheetml.template,.xltx,application/vnd.ms-excel.template.macroEnabled.12,.xltm'
-const fileExtension = (file: File) => file.name.split('.').pop()?.toLowerCase()
-const isPdf = (file: File) => file.type === 'application/pdf' || fileExtension(file) === 'pdf'
-export const isAcceptedJobDocument = (file: File) =>
-  isPdf(file) || spreadsheetExtensions.includes(fileExtension(file) || '')
 export const date = (value: string | null) =>
   value
     ? new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }).format(
@@ -57,24 +49,6 @@ const normalizedName = (value: string | null | undefined) =>
 export type JobDocumentExtraction = {
   invoice?: JobInvoiceExtraction | null
   transport?: JobTransportExtraction | null
-}
-
-function documentDifferences(invoice: JobInvoiceExtraction, transport: JobTransportExtraction) {
-  const values = [
-    ['berat bruto', invoice.totalGrossWeightKg, transport.grossWeightKg],
-    ['berat netto', invoice.totalNetWeightKg, transport.netWeightKg],
-    ['jumlah kemasan', invoice.totalPackageCount, transport.packageCount],
-    ['jenis kemasan', invoice.packageType, transport.packageType],
-  ] as const
-  return values.flatMap(([name, invoiceValue, transportValue]) => {
-    if (invoiceValue === null || transportValue === null) return []
-    const differs =
-      typeof invoiceValue === 'number' && typeof transportValue === 'number'
-        ? Math.abs(invoiceValue - transportValue) > 0.001
-        : String(invoiceValue).trim().toLocaleUpperCase('id-ID') !==
-          String(transportValue).trim().toLocaleUpperCase('id-ID')
-    return differs ? [name] : []
-  })
 }
 
 /** Terapkan hasil upload dokumen shipment ke satu job — documents bertambah dan operational diperbarui dari ekstraksi. */
@@ -202,36 +176,6 @@ function CustomsProgress({
   )
 }
 
-function JobRowSkeleton() {
-  return (
-    <tr aria-busy="true" aria-label="Memproses dokumen shipment">
-      <td className="px-3 py-3">
-        <Skeleton className="h-5 w-20" />
-        <Skeleton className="mt-2 h-3 w-16" />
-      </td>
-      <td className="px-3 py-3">
-        <Skeleton className="h-5 w-28" />
-        <Skeleton className="mt-2 h-3 w-20" />
-      </td>
-      <td className="px-3 py-3">
-        <Skeleton className="h-5 w-36" />
-        <Skeleton className="mt-2 h-3 w-28" />
-      </td>
-      <td className="px-3 py-3">
-        <Skeleton className="h-5 w-20" />
-        <Skeleton className="mt-2 h-3 w-24" />
-      </td>
-      <td className="px-3 py-3">
-        <Skeleton className="h-12 w-full" />
-      </td>
-      <td className="px-3 py-3">
-        <Skeleton className="h-5 w-20" />
-        <Skeleton className="mt-2 h-5 w-16" />
-      </td>
-    </tr>
-  )
-}
-
 export function JobRow({
   job,
   nomor,
@@ -258,9 +202,8 @@ export function JobRow({
   onGenerate: (job: LocalJob, documentType: BcDocumentKind) => void
   onEditDocument: (job: LocalJob, kind: EditableJobDocument) => void
 }) {
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null)
-  const [uploading, setUploading] = useState(false)
+  const [uploadOpen, setUploadOpen] = useState(false)
   const operational = getOperationalDetails(job)
   const inbound = operational.inbound
   const documentComparison =
@@ -273,101 +216,16 @@ export function JobRow({
     documentComparison?.some((item) => item.status !== 'UNAVAILABLE') ?? false
   const exhibitorName = job.exhibitor?.legalName || job.clientName
   const shipperName = operational.inboundDocument?.shipper?.name || job.shipper
-  const jobInitiator = job.createdBy ?? job.assignedTo
   const exhibitorDiffersFromShipper = Boolean(
     job.exhibitor?.legalName &&
     shipperName &&
     normalizedName(job.exhibitor.legalName) !== normalizedName(shipperName),
   )
   const TransportIcon = inbound.mode === 'AIR' ? Plane : inbound.mode === 'SEA' ? Ship : Truck
-  async function uploadShipmentDocument(event: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files || [])
-    event.target.value = ''
-    if (!files.length) return
-    const acceptedFiles = files.filter(isAcceptedJobDocument)
-    if (acceptedFiles.length !== files.length) {
-      onToast(
-        'File harus berupa PDF atau Excel (.xls, .xlsx, .xlsm, .xlsb, .xltx, .xltm).',
-        'error',
-      )
-    }
-    if (!acceptedFiles.length) return
-    setUploading(true)
-    const confidences: number[] = []
-    let uploadedInvoice: JobInvoiceExtraction | null = null
-    let uploadedTransport: JobTransportExtraction | null = null
-    try {
-      for (const file of acceptedFiles) {
-        try {
-          const formData = new FormData()
-          formData.set('file', file)
-          const response = await fetch('/api/classify-job-document', {
-            method: 'POST',
-            body: formData,
-          })
-          const payload = (await response.json()) as {
-            classification?: DocumentClassification
-            invoice?: JobInvoiceExtraction | null
-            transport?: JobTransportExtraction | null
-            error?: string
-          }
-          if (!response.ok || !payload.classification)
-            throw new Error(payload.error || 'Dokumen tidak dapat diperiksa.')
-          const classification = payload.classification
-          const kind =
-            classification.documentType === 'UNREADABLE' ? 'OTHER' : classification.documentType
-          const document = await saveJobDocument(
-            job.id,
-            file,
-            kind,
-            payload.invoice,
-            payload.transport,
-          )
-          onDocumentUploaded(job.id, document, {
-            invoice: payload.invoice,
-            transport: payload.transport,
-          })
-          if (payload.invoice) uploadedInvoice = payload.invoice
-          if (payload.transport) uploadedTransport = payload.transport
-          confidences.push(classification.confidence)
-        } catch (caught) {
-          try {
-            const document = await saveJobDocument(job.id, file, 'OTHER')
-            onDocumentUploaded(job.id, document)
-            onToast(
-              `Dokumen tetap disimpan sebagai dokumen lain. ${caught instanceof Error ? caught.message : 'Gemini tidak dapat memeriksa dokumen.'}`,
-            )
-          } catch {
-            onToast('Dokumen tidak dapat disimpan.', 'error')
-          }
-        }
-      }
-      if (confidences.length) {
-        const invoice = uploadedInvoice ?? operational.invoice
-        const transport = uploadedTransport ?? operational.inboundDocument
-        const differences = invoice && transport ? documentDifferences(invoice, transport) : []
-        const confidenceMessage = `keyakinan Gemini ${confidences.map((confidence) => `${Math.round(confidence * 100)}%`).join(', ')}`
-        if (differences.length) {
-          onToast(
-            `Dokumen tersimpan · ${confidenceMessage}. Perlu cek: ${differences.join(', ')} berbeda antara Invoice dan B/L/AWB.`,
-            'error',
-          )
-        } else if (invoice && transport) {
-          onToast(
-            `Dokumen tersimpan · ${confidenceMessage}. Data Invoice dan B/L/AWB konsisten untuk field yang tersedia.`,
-          )
-        } else {
-          onToast(`Dokumen tersimpan · ${confidenceMessage}`)
-        }
-      }
-    } finally {
-      setUploading(false)
-    }
-  }
-  if (uploading) return <JobRowSkeleton />
 
   return (
-    <tr className="border-b border-slate-100 odd:bg-slate-50/70 last:border-0 hover:bg-orange-50/40">
+    <>
+      <tr className="border-b border-slate-100 odd:bg-slate-50/70 last:border-0 hover:bg-orange-50/40">
       <td className="px-3 py-3 align-top">
         <Link
           href={`/jobs/${job.id}`}
@@ -381,6 +239,9 @@ export function JobRow({
             {date(job.createdAt)}
           </span>
         </p>
+        <div className="mt-1.5">
+          <StatusBadge status={job.status} />
+        </div>
       </td>
       <td className="w-[145px] max-w-[145px] px-3 py-3 align-top">
         <p className="truncate font-medium text-slate-800" title={exhibitorName}>
@@ -399,27 +260,23 @@ export function JobRow({
             {job.agent || 'Agent belum diisi'}
           </span>
         </p>
+        <p className="mt-1.5 text-xs text-slate-500">
+          Hall: {job.exhibitor?.logistics?.hall || '—'}
+          <br />
+          Booth: {job.exhibitor?.logistics?.booth || '—'}
+        </p>
       </td>
       <td className="px-3 py-3 align-top">
         <div className="flex items-start gap-2">
           <button
             type="button"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => setUploadOpen(true)}
             aria-label={`Upload dokumen shipment untuk ${job.jobNumber}`}
-            title="Upload satu atau beberapa dokumen shipment"
+            title="Upload dokumen: CIPL, B/L atau AWB, dokumen pendukung"
             className="mt-0.5 shrink-0 rounded p-0.5 text-slate-400 hover:bg-orange-100 hover:text-orange-700"
           >
             <Upload size={16} aria-hidden="true" />
           </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept={jobDocumentAccept}
-            onChange={uploadShipmentDocument}
-            className="sr-only"
-            tabIndex={-1}
-          />
           <div className="min-w-0">
             <Button
               type="button"
@@ -489,6 +346,27 @@ export function JobRow({
         </div>
       </td>
       <td className="px-3 py-3 align-top">
+        <p className="truncate text-slate-600" title={job.billTo || undefined}>
+          {job.billTo || '—'}
+        </p>
+      </td>
+      <td className="px-3 py-3 align-top">
+        {job.invoiceSent ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
+            <CheckCircle2 size={12} aria-hidden="true" /> Terkirim
+          </span>
+        ) : (
+          <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 ring-1 ring-inset ring-slate-200">
+            Belum
+          </span>
+        )}
+      </td>
+      <td className="px-3 py-3 align-top">
+        <p className="line-clamp-2 text-slate-600" title={job.notes || undefined}>
+          {job.notes || '—'}
+        </p>
+      </td>
+      <td className="px-3 py-3 align-top">
         <CustomsProgress job={job} onGenerate={onGenerate} />
       </td>
       <td className="px-3 py-3 align-top">
@@ -550,17 +428,16 @@ export function JobRow({
               </>
             )}
           </div>
-        ) : (
-          <>
-            <p className="text-sm font-medium text-slate-700">
-              {jobInitiator?.name || 'Belum ada inisiator'}
-            </p>
-            <div className="mt-2">
-              <StatusBadge status={job.status} />
-            </div>
-          </>
-        )}
+        ) : null}
       </td>
-    </tr>
+      </tr>
+      <JobUploadDialog
+        job={job}
+        open={uploadOpen}
+        onOpenChange={setUploadOpen}
+        onDocumentUploaded={onDocumentUploaded}
+        onToast={onToast}
+      />
+    </>
   )
 }

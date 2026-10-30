@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -13,7 +13,6 @@ import {
 import {
   getOperationalDetails,
   listJobsWithEvents,
-  saveJobDocument,
   type LocalEvent,
   type LocalJob,
   type LocalJobDocument,
@@ -26,6 +25,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { NewJobDialog } from '@/components/new-job-dialog'
 import { JobInitModal } from '@/components/job-init-modal'
+import { JobUploadDialog } from '@/components/job-upload-dialog'
 import { PageSkeleton } from '@/components/loading-skeletons'
 import { getNextEventJobView, type EventJobViews } from '@/lib/event-job-view'
 import {
@@ -39,8 +39,6 @@ import {
   applyUploadedDocument,
   date,
   downloadCustomsWorkbook,
-  isAcceptedJobDocument,
-  jobDocumentAccept,
   label,
   type DocumentClassification,
   type JobDocumentExtraction,
@@ -102,8 +100,7 @@ function JobPhaseCard({
   onToast: (message: string, tone?: 'info' | 'error') => void
   onEditDocument: (job: LocalJob, kind: EditableJobDocument) => void
 }) {
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [uploading, setUploading] = useState(false)
+  const [uploadOpen, setUploadOpen] = useState(false)
   const operational = getOperationalDetails(job)
   const documentComparison =
     operational.invoice && operational.inboundDocument
@@ -118,59 +115,6 @@ function JobPhaseCard({
   ]
     .filter(Boolean)
     .join(' · ')
-
-  async function uploadShipmentDocument(event: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files || [])
-    event.target.value = ''
-    const acceptedFiles = files.filter(isAcceptedJobDocument)
-    if (acceptedFiles.length !== files.length) onToast('File harus berupa PDF atau Excel.', 'error')
-    if (!acceptedFiles.length) return
-    setUploading(true)
-    try {
-      for (const file of acceptedFiles) {
-        try {
-          const formData = new FormData()
-          formData.set('file', file)
-          const response = await fetch('/api/classify-job-document', {
-            method: 'POST',
-            body: formData,
-          })
-          const payload = (await response.json()) as {
-            classification?: DocumentClassification
-            error?: string
-          } & JobDocumentExtraction
-          if (!response.ok || !payload.classification)
-            throw new Error(payload.error || 'Dokumen tidak dapat diperiksa.')
-          const kind =
-            payload.classification.documentType === 'UNREADABLE'
-              ? 'OTHER'
-              : payload.classification.documentType
-          const document = await saveJobDocument(
-            job.id,
-            file,
-            kind,
-            payload.invoice,
-            payload.transport,
-          )
-          onDocumentUploaded(job.id, document, {
-            invoice: payload.invoice,
-            transport: payload.transport,
-          })
-        } catch (caught) {
-          const document = await saveJobDocument(job.id, file, 'OTHER')
-          onDocumentUploaded(job.id, document)
-          onToast(
-            `Dokumen disimpan sebagai dokumen lain. ${caught instanceof Error ? caught.message : ''}`,
-          )
-        }
-      }
-      onToast('Dokumen berhasil diunggah. Status job diperbarui berdasarkan kelengkapan dokumen.')
-    } catch (caught) {
-      onToast(caught instanceof Error ? caught.message : 'Dokumen tidak dapat disimpan.', 'error')
-    } finally {
-      setUploading(false)
-    }
-  }
 
   return (
     <article className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
@@ -194,28 +138,25 @@ function JobPhaseCard({
       </div>
       {phase.id === 'DRAFT' && (
         <>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept={jobDocumentAccept}
-            onChange={uploadShipmentDocument}
-            className="sr-only"
-            tabIndex={-1}
-          />
           <Button
             type="button"
             size="sm"
             className="mt-3 w-full"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
+            onClick={() => setUploadOpen(true)}
           >
             <Upload data-icon="inline-start" />
-            {uploading ? 'Mengunggah dokumen…' : 'Upload dokumen'}
+            Upload dokumen
           </Button>
           <p className="mt-2 text-xs text-slate-500">
             Upload B/L atau AWB dan Invoice untuk melanjutkan ke Prepare.
           </p>
+          <JobUploadDialog
+            job={job}
+            open={uploadOpen}
+            onOpenChange={setUploadOpen}
+            onDocumentUploaded={onDocumentUploaded}
+            onToast={onToast}
+          />
         </>
       )}
       {phase.id === 'PREPARE' && differences.length > 0 && (
@@ -319,22 +260,34 @@ export default function JobsPage() {
     kind: EditableJobDocument
   } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const initialLoadStarted = useRef(false)
+  const load = useCallback(() => {
+    listJobsWithEvents()
+      .then(({ jobs: loadedJobs, events: loadedEvents }) => {
+        setJobs(loadedJobs)
+        setEvents(loadedEvents)
+        setOpen(Object.fromEntries(loadedEvents.map((event) => [event.id, true])))
+        setLoadError('')
+        setLoading(false)
+      })
+      .catch((caught) => {
+        setLoadError(caught instanceof Error ? caught.message : 'Data jobs tidak dapat dimuat.')
+        setLoading(false)
+      })
+  }, [])
   useEffect(() => {
     if (initialLoadStarted.current) return
     initialLoadStarted.current = true
-    listJobsWithEvents().then(({ jobs: loadedJobs, events: loadedEvents }) => {
-      setJobs(loadedJobs)
-      setEvents(loadedEvents)
-      setOpen(Object.fromEntries(loadedEvents.map((event) => [event.id, true])))
-      setLoading(false)
-    })
-  }, [])
+    load()
+  }, [load])
   // Segarkan senyap setelah mutasi (mis. job baru dibuat) — tanpa skeleton halaman penuh.
   const refreshJobs = () => {
     listJobsWithEvents().then(({ jobs: loadedJobs, events: loadedEvents }) => {
       setJobs(loadedJobs)
       setEvents(loadedEvents)
+    }).catch((caught) => {
+      showToast(caught instanceof Error ? caught.message : 'Data jobs tidak dapat dimuat.', 'error')
     })
   }
   useEffect(() => {
@@ -410,6 +363,22 @@ export default function JobsPage() {
     setScope('active')
   }
   if (loading) return <PageSkeleton cards={3} rows={6} />
+  if (loadError)
+    return (
+      <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700" role="alert">
+        <p>{loadError}</p>
+        <button
+          type="button"
+          onClick={() => {
+            setLoading(true)
+            load()
+          }}
+          className="btn-secondary mt-3"
+        >
+          Coba lagi
+        </button>
+      </div>
+    )
 
   return (
     <div className="space-y-6">
@@ -540,14 +509,17 @@ export default function JobsPage() {
             </div>
             {isOpen && !showsCards && (
               <div className="overflow-x-auto">
-                <table className="min-w-[900px] w-full table-fixed text-left text-sm">
+                <table className="min-w-[1200px] w-full table-fixed text-left text-sm">
                   <colgroup>
-                    <col className="w-[115px]" />
+                    <col className="w-[110px]" />
                     <col className="w-[145px]" />
-                    <col className="w-[190px]" />
-                    <col className="w-[135px]" />
-                    <col className="w-[210px]" />
-                    <col className="w-[105px]" />
+                    <col className="w-[185px]" />
+                    <col className="w-[110px]" />
+                    <col className="w-[95px]" />
+                    <col className="w-[90px]" />
+                    <col className="w-[140px]" />
+                    <col className="w-[200px]" />
+                    <col className="w-[60px]" />
                   </colgroup>
                   <thead className="border-b bg-white text-slate-900 font-semibold uppercase tracking-wider">
                     <tr>
@@ -555,8 +527,11 @@ export default function JobsPage() {
                       <th className="px-3 py-3">Exhibitor</th>
                       <th className="px-3 py-3">Dokumen shipment</th>
                       <th className="px-3 py-3">ETA</th>
+                      <th className="px-3 py-3">Bill to</th>
+                      <th className="px-3 py-3">Invoice terkirim</th>
+                      <th className="px-3 py-3">Remark</th>
                       <th className="px-3 py-3">Dokumen BC</th>
-                      <th className="px-3 py-3">PIC (Inisiator)</th>
+                      <th className="px-3 py-3">Aksi</th>
                     </tr>
                   </thead>
                   <tbody>
