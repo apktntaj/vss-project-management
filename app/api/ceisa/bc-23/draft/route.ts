@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { createBc23Draft } from '@/lib/ceisa/bc23-draft'
 import { DocumentExtractionError } from '@/lib/server/extraction/errors'
-import { classifyJobDocument } from '@/lib/server/extraction/job-classify'
+import { classifyJobDocument, toLegacyDocumentKind } from '@/lib/server/extraction/job-classify'
 
 export const runtime = 'nodejs'
 
@@ -24,10 +24,12 @@ export async function POST(request: NextRequest) {
       classifyJobDocument(invoiceFile),
       classifyJobDocument(transportFile),
     ])
-    if (!invoiceDocument.invoice || invoiceDocument.classification.documentType !== 'COMMERCIAL_INVOICE') {
+    const invoiceKind = toLegacyDocumentKind(invoiceDocument.classification.documentType)
+    const transportKind = toLegacyDocumentKind(transportDocument.classification.documentType)
+    if (!invoiceDocument.invoice || invoiceKind !== 'COMMERCIAL_INVOICE') {
       return NextResponse.json({ error: 'File invoice tidak teridentifikasi sebagai Commercial Invoice.' }, { status: 400 })
     }
-    if (!transportDocument.transport || !['BILL_OF_LADING', 'AIR_WAYBILL'].includes(transportDocument.classification.documentType)) {
+    if (!transportDocument.transport || !['BILL_OF_LADING', 'AIR_WAYBILL'].includes(transportKind)) {
       return NextResponse.json({ error: 'File transport tidak teridentifikasi sebagai B/L atau AWB.' }, { status: 400 })
     }
 

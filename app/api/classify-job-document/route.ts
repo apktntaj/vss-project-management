@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { DocumentExtractionError } from '@/lib/server/extraction/errors'
-import { classifyJobDocument } from '@/lib/server/extraction/job-classify'
+import { classifyJobDocument, toLegacyDocumentKind } from '@/lib/server/extraction/job-classify'
 
 export const runtime = 'nodejs'
 
@@ -18,7 +18,26 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    return NextResponse.json(await classifyJobDocument(file))
+    const result = await classifyJobDocument(file)
+    return NextResponse.json({
+      // classification memakai 5 jenis legacy agar konsumen lama tetap jalan.
+      classification: {
+        ...result.classification,
+        documentType: toLegacyDocumentKind(result.classification.documentType),
+      },
+      invoice: result.invoice,
+      transport: result.transport,
+      detail: {
+        method: result.method,
+        documentType: result.classification.documentType,
+        confidence: result.classification.confidence,
+        needsUserConfirmation: result.classification.needsUserConfirmation,
+        rationale: result.classification.rationale,
+        fieldConfidence: result.fieldConfidence,
+        aggregateConfidence: result.aggregateConfidence,
+        band: result.band,
+      },
+    })
   } catch (error) {
     if (error instanceof DocumentExtractionError) {
       return NextResponse.json({ error: error.message }, { status: error.status })

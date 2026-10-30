@@ -39,7 +39,8 @@ export const EXTRACTION_PROMPT =
   'A combined invoice & packing list is CIPL_COMBINED; a document whose primary purpose is listing packages, quantities, and weights is PACKING_LIST; a document stating commercial values (prices, totals, incoterms) is COMMERCIAL_INVOICE; a sea transport receipt is BILL_OF_LADING; an air transport document is AIR_WAYBILL; certificates, receipts, permits, letters, or other supporting papers are SUPPORTING_DOCUMENT; unreadable scans are UNREADABLE. ' +
   'Return only JSON with documentType, confidence (number 0-1), a short Indonesian rationale, invoice, and transport. Always try to extract invoice even from SUPPORTING_DOCUMENT. ' +
   'invoice is null only when no invoice information is printed; otherwise return invoiceNumber, invoiceDate (YYYY-MM-DD), seller and buyer (name, address, countryCode ISO 2, taxId), currency, incoterm, incotermLocation, totalAmount, freightAmount, insuranceAmount, totalGrossWeightKg, totalNetWeightKg, totalPackageCount, packageType, and items (lineNumber, itemCode, description, hsCode, quantity, unit, unitPrice, lineTotal, currency, grossWeightKg, netWeightKg, countryOfOrigin, packageCount, packageType). ' +
-  'Transport is null unless the document is a B/L or AWB; otherwise return documentNumber, documentDate, carrier, vesselOrFlight, voyageOrFlightNumber, bookingNumber, shipper, consignee, notifyParty, portOfLoading, portOfDischarge, placeOfReceipt, placeOfDelivery, etd, eta, packageCount, packageType, marksAndNumbers, grossWeightKg, netWeightKg, volumeM3, and containers (containerNumber, size, type, sealNumber).'
+  'Transport is null unless the document is a B/L or AWB; otherwise return documentNumber, documentDate, carrier, vesselOrFlight, voyageOrFlightNumber, bookingNumber, shipper, consignee, notifyParty, portOfLoading, portOfDischarge, placeOfReceipt, placeOfDelivery, etd, eta, packageCount, packageType, marksAndNumbers, grossWeightKg, netWeightKg, volumeM3, and containers (containerNumber, size, type, sealNumber). ' +
+  'Also return fieldConfidence: a flat object mapping each extracted field dot-path (for example invoice.invoiceNumber, transport.eta, invoice.items.0.description, transport.shipper.name) to a number 0-1 estimating confidence in that individual value; omit paths you did not extract.'
 
 /** Input dokumen utk provider LLM: PDF native (base64) atau teks (spreadsheet CSV). */
 export async function documentInputForLlm(file: File): Promise<{ pdfBase64: string } | { text: string }> {
@@ -79,6 +80,16 @@ const clamp01 = (value: unknown): number => {
   return Math.max(0, Math.min(1, number))
 }
 
+/** Skor per field yang dilaporkan LLM menimpa nilai turunan (confidence klasifikasi). */
+function mergeReportedConfidence(fieldConfidence: ConfidenceMap, reported: unknown): void {
+  if (!reported || typeof reported !== 'object' || Array.isArray(reported)) return
+  for (const [path, score] of Object.entries(reported as Record<string, unknown>)) {
+    if (path in fieldConfidence && typeof score === 'number' && Number.isFinite(score)) {
+      fieldConfidence[path] = clamp01(score)
+    }
+  }
+}
+
 /** Menyusun Extraction_Result dari respons JSON LLM; confidence field = confidence klasifikasi. */
 export function toExtractionResult(method: ExtractionMethod, payload: Record<string, unknown>): ExtractionResult {
   const documentType = CLASSIFICATION_TYPES.includes(payload.documentType as DocumentClassificationType)
@@ -100,6 +111,7 @@ export function toExtractionResult(method: ExtractionMethod, payload: Record<str
   for (const [path, value] of Object.entries(fields)) {
     fieldConfidence[path] = value === null || value === undefined || value === '' ? 0 : confidence
   }
+  mergeReportedConfidence(fieldConfidence, payload.fieldConfidence)
   const aggregate = aggregateConfidence(fieldConfidence)
   return {
     method,

@@ -107,7 +107,7 @@ function PartyFields({ prefix, legend, party, onChange }: { prefix: string; lege
   </FieldGroup></FieldSet>
 }
 
-function InvoiceEditor({ value, onChange }: { value: JobInvoiceExtraction; onChange: (value: JobInvoiceExtraction) => void }) {
+export function InvoiceEditor({ value, onChange }: { value: JobInvoiceExtraction; onChange: (value: JobInvoiceExtraction) => void }) {
   const [activeView, setActiveView] = useState<'header' | 'items'>('header')
   const update = (patch: Partial<JobInvoiceExtraction>) => onChange({ ...value, ...patch })
   const updateItem = (index: number, patch: Partial<JobInvoiceItem>) => update({ items: value.items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item) })
@@ -157,7 +157,7 @@ function InvoiceEditor({ value, onChange }: { value: JobInvoiceExtraction; onCha
     </TabsContent></Tabs></div>
 }
 
-function TransportEditor({ value, onChange }: { value: JobTransportExtraction; onChange: (value: JobTransportExtraction) => void }) {
+export function TransportEditor({ value, onChange }: { value: JobTransportExtraction; onChange: (value: JobTransportExtraction) => void }) {
   const [activeView, setActiveView] = useState<'header' | 'items'>('header')
   const update = (patch: Partial<JobTransportExtraction>) => onChange({ ...value, ...patch })
   const updateContainer = (index: number, patch: Partial<JobTransportContainer>) => update({ containers: value.containers.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item) })
