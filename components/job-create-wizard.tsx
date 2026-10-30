@@ -146,6 +146,8 @@ export function JobCreateWizard({
   const [selectedEventId, setSelectedEventId] = useState<string | null>(presetEvent?.id ?? null)
   const [jobNumberInput, setJobNumberInput] = useState('')
   const [billToInput, setBillToInput] = useState('')
+  /** Benar setelah user mengetik bill to sendiri — bill to berhenti mengikuti agent. */
+  const [billToTouched, setBillToTouched] = useState(false)
   const [agents, setAgents] = useState<Agent[]>([])
   const [loadingAgents, setLoadingAgents] = useState(true)
   const [tanpaAgent, setTanpaAgent] = useState(false)
@@ -211,8 +213,27 @@ export function JobCreateWizard({
 
   function changeSelection(next: JobTypeSelection) {
     setSelection(next)
-    // Local tidak membutuhkan agent — centang "Tanpa agent" secara bawaan.
-    setTanpaAgent(next === 'LOCAL')
+    // Local tidak membutuhkan agent — centang "Tanpa agent" dan bersihkan pilihan agent.
+    const local = next === 'LOCAL'
+    setTanpaAgent(local)
+    if (local) {
+      setSelectedAgentId(null)
+      setAgentQuery('')
+    }
+  }
+
+  function changeTanpaAgent(checked: boolean) {
+    setTanpaAgent(checked)
+    if (checked) {
+      setSelectedAgentId(null)
+      setAgentQuery('')
+    }
+  }
+
+  function selectAgent(agent: Agent) {
+    setSelectedAgentId(agent.id)
+    setAgentQuery(agent.name)
+    if (!billToTouched) setBillToInput(agent.name)
   }
 
   async function resolveAgentId(): Promise<{ agentId: string | null; agentName: string }> {
@@ -644,8 +665,18 @@ export function JobCreateWizard({
               </div>
 
               <section>
-                {!creatingNew ? (
-                  <div className="flex justify-end">
+                <div className="flex items-center justify-between gap-3">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={tanpaAgent}
+                      onChange={(checkEvent) => changeTanpaAgent(checkEvent.target.checked)}
+                      className="h-4 w-4 accent-orange-600"
+                      disabled={slideOneLocked}
+                    />
+                    Tanpa agent
+                  </label>
+                  {!creatingNew ? (
                     <button
                       type="button"
                       onClick={() => setCreatingNew(true)}
@@ -655,8 +686,8 @@ export function JobCreateWizard({
                       <Plus size={13} aria-hidden="true" />
                       Tambah agent
                     </button>
-                  </div>
-                ) : null}
+                  ) : null}
+                </div>
 
                 {!tanpaAgent && creatingNew ? (
                   <div className="mt-3">
@@ -665,9 +696,11 @@ export function JobCreateWizard({
                         Nama agent
                         <input
                           value={newAgentName}
-                          onChange={(inputEvent) =>
-                            setNewAgentName(inputEvent.target.value.toLocaleUpperCase('id-ID'))
-                          }
+                          onChange={(inputEvent) => {
+                            const name = inputEvent.target.value.toLocaleUpperCase('id-ID')
+                            setNewAgentName(name)
+                            if (!billToTouched) setBillToInput(name)
+                          }}
                           className="input mt-1"
                           placeholder="cth. JS LOGISTICS"
                           disabled={slideOneLocked}
@@ -734,10 +767,7 @@ export function JobCreateWizard({
                             <li key={agent.id}>
                               <button
                                 type="button"
-                                onClick={() => {
-                                  setSelectedAgentId(agent.id)
-                                  setAgentQuery(agent.name)
-                                }}
+                                onClick={() => selectAgent(agent)}
                                 className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-orange-50"
                               >
                                 {agent.name}
@@ -754,24 +784,16 @@ export function JobCreateWizard({
                     ) : null}
                   </div>
                 )}
-
-                <label className="mt-2.5 flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={tanpaAgent}
-                    onChange={(checkEvent) => setTanpaAgent(checkEvent.target.checked)}
-                    className="h-4 w-4 accent-orange-600"
-                    disabled={slideOneLocked}
-                  />
-                  Tanpa agent
-                </label>
               </section>
 
               <label className="label">
                 Bill to <span className="font-normal text-slate-400">(opsional)</span>
                 <input
                   value={billToInput}
-                  onChange={(inputEvent) => setBillToInput(inputEvent.target.value)}
+                  onChange={(inputEvent) => {
+                    setBillToInput(inputEvent.target.value)
+                    setBillToTouched(true)
+                  }}
                   className="input mt-1"
                   placeholder="Pihak yang ditagih (mis. agent atau exhibitor)"
                   disabled={slideOneLocked}
