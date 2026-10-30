@@ -6,7 +6,6 @@ import { Plus, Search, Trash2, Upload, X } from 'lucide-react'
 import {
   createInternationalJobInit,
   createLocalJobInit,
-  deleteJob,
   listAgents,
   saveAgent,
   saveJobDocument,
@@ -22,15 +21,6 @@ import { internationalJobJenisLabels } from '@/domain/job/types'
 import type { JobTransportExtraction } from '@/domain/exhibition/source-documents'
 import { TransportEditor } from '@/components/job-document-editor-dialog'
 import { isAcceptedJobDocument, jobDocumentAccept } from '@/components/job-document-file'
-import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 
 function toast(message: string, tone: 'success' | 'error') {
   window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
@@ -126,8 +116,9 @@ function scanFileAcceptable(file: File): boolean {
 /**
  * Wizard pembuatan job tiga slide: (1) job — event via pencarian, jenis, No Job,
  * agent, bill to; (2) informasi CIPL — daftar exhibitor + rincian koli dengan smart
- * scan LLM; (3) data B/L atau AWB dengan smart scan. Job draft dibuat saat slide 1
- * selesai; membatalkan setelah itu menghapus draft.
+ * scan LLM; (3) data B/L atau AWB dengan smart scan. Seluruh isian ditahan di
+ * memori; job dibuat di database sekali saat "Selesai" bersama lampiran dan baris
+ * CIPL, sehingga membatalkan kapan pun tidak meninggalkan data.
  */
 export function JobCreateWizard({
   events,
@@ -158,9 +149,7 @@ export function JobCreateWizard({
   const [newAgentContactName, setNewAgentContactName] = useState('')
   const [newAgentEmail, setNewAgentEmail] = useState('')
   const [newAgentPhone, setNewAgentPhone] = useState('')
-  const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
-  const [jobDraft, setJobDraft] = useState<LocalJob | null>(null)
   const [ciplRows, setCiplRows] = useState<CiplRowDraft[]>([])
   const [ciplFile, setCiplFile] = useState<File | null>(null)
   const [scanningCipl, setScanningCipl] = useState(false)
@@ -169,8 +158,6 @@ export function JobCreateWizard({
   const [transportFile, setTransportFile] = useState<File | null>(null)
   const [scanningTransport, setScanningTransport] = useState(false)
   const [finishing, setFinishing] = useState(false)
-  const [confirmCancel, setConfirmCancel] = useState(false)
-  const [deleting, setDeleting] = useState(false)
   const rowKeyRef = useRef(0)
   const nextRowKey = () => `cipl-row-${++rowKeyRef.current}`
 
@@ -261,7 +248,7 @@ export function JobCreateWizard({
     return { agentId: null, agentName: '' }
   }
 
-  async function createDraftJob(): Promise<LocalJob> {
+  async function createJob(): Promise<LocalJob> {
     if (!selectedEvent) throw new Error('Pilih event untuk job ini terlebih dahulu.')
     const { agentId } = await resolveAgentId()
     return selection === 'LOCAL'
@@ -278,30 +265,20 @@ export function JobCreateWizard({
         })
   }
 
-  async function submitSlideJob(formEvent: FormEvent<HTMLFormElement>) {
+  function submitSlideJob(formEvent: FormEvent<HTMLFormElement>) {
     formEvent.preventDefault()
-    if (jobDraft) {
-      setSlide(1)
-      return
-    }
-    setCreating(true)
     setError('')
-    try {
-      const job = await createDraftJob()
-      setJobDraft(job)
-      if (selection === 'LOCAL') {
-        toast(`Job (Local) dibuat.`, 'success')
-        onCreated(job)
-        return
-      }
-      setSlide(1)
-    } catch (caught) {
-      const message = caught instanceof Error ? caught.message : 'Job tidak dapat dibuat.'
+    if (!selectedEvent) {
+      const message = 'Pilih event untuk job ini terlebih dahulu.'
       setError(message)
       toast(message, 'error')
-    } finally {
-      setCreating(false)
+      return
     }
+    if (selection === 'LOCAL') {
+      void finish()
+      return
+    }
+    setSlide(1)
   }
 
   async function scanCipl(file: File) {
@@ -429,14 +406,24 @@ export function JobCreateWizard({
   }
 
   async function finish() {
-    if (!jobDraft) return
     setFinishing(true)
+    let job: LocalJob
+    try {
+      job = await createJob()
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : 'Job tidak dapat dibuat.'
+      toast(message, 'error')
+      setError(message)
+      setSlide(0)
+      setFinishing(false)
+      return
+    }
     let failures = 0
     const manifestRows = buildManifestRows()
     const skippedNames = ciplRows.length - manifestRows.length
     if (manifestRows.length) {
       try {
-        await saveJobManifestExhibitors(jobDraft.id, manifestRows)
+        await saveJobManifestExhibitors(job.id, manifestRows)
       } catch {
         failures += 1
         toast('Baris CIPL tidak dapat disimpan — bisa dilengkapi di detail job.', 'error')
@@ -444,7 +431,7 @@ export function JobCreateWizard({
     }
     if (ciplFile) {
       try {
-        await saveJobDocument(jobDraft.id, ciplFile, 'CIPL')
+        await saveJobDocument(job.id, ciplFile, 'CIPL')
       } catch {
         failures += 1
         toast('Dokumen CIPL tidak dapat diunggah.', 'error')
@@ -453,7 +440,7 @@ export function JobCreateWizard({
     if (transportFile && transport) {
       try {
         await saveJobDocument(
-          jobDraft.id,
+          job.id,
           transportFile,
           docKind === 'AWB' ? 'AIR_WAYBILL' : 'BILL_OF_LADING',
           null,
@@ -465,7 +452,7 @@ export function JobCreateWizard({
       }
     } else if (transport) {
       try {
-        await saveJobTransportExtraction(jobDraft.id, transport)
+        await saveJobTransportExtraction(job.id, transport)
       } catch {
         failures += 1
         toast('Data B/L atau AWB tidak dapat disimpan.', 'error')
@@ -476,31 +463,10 @@ export function JobCreateWizard({
     if (transportFile) parts.push(docKind === 'AWB' ? 'AWB' : 'B/L')
     toast(`${parts.join(' · ')}.${failures ? ' Sebagian data gagal — periksa detail job.' : ''}`, failures ? 'error' : 'success')
     if (skippedNames > 0) toast(`${skippedNames} baris CIPL dilewati karena belum ada nama exhibitor.`, 'error')
-    onCreated(jobDraft)
+    onCreated(job)
   }
 
-  async function cancelAndDelete() {
-    if (!jobDraft) return
-    setDeleting(true)
-    try {
-      await deleteJob(jobDraft.id)
-      toast('Pembuatan job dibatalkan.', 'success')
-      onCancel()
-    } catch (caught) {
-      toast(caught instanceof Error ? caught.message : 'Job tidak dapat dihapus.', 'error')
-      setDeleting(false)
-      setConfirmCancel(false)
-    }
-  }
-
-  function requestClose() {
-    if (finishing || deleting) return
-    if (jobDraft) setConfirmCancel(true)
-    else onCancel()
-  }
-
-  const slideOneLocked = Boolean(jobDraft)
-  const busy = creating || scanningCipl || scanningTransport || finishing || deleting
+  const busy = scanningCipl || scanningTransport || finishing
 
   const koliSums = (row: CiplRowDraft) =>
     row.kolis.reduce(
@@ -516,7 +482,7 @@ export function JobCreateWizard({
       className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4 sm:p-8"
       role="presentation"
       onMouseDown={(mouseEvent) => {
-        if (mouseEvent.target === mouseEvent.currentTarget) requestClose()
+        if (mouseEvent.target === mouseEvent.currentTarget) onCancel()
       }}
     >
       <div
@@ -551,7 +517,7 @@ export function JobCreateWizard({
           </div>
           <button
             type="button"
-            onClick={requestClose}
+            onClick={onCancel}
             aria-label="Tutup form job baru"
             className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-black"
           >
@@ -562,13 +528,6 @@ export function JobCreateWizard({
         {slide === 0 ? (
           <form onSubmit={submitSlideJob} className="flex min-h-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-6 sm:p-8">
-              {slideOneLocked ? (
-                <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                  Job draft sudah dibuat — data di slide ini terkunci. Lanjutkan ke slide berikutnya, atau
-                  batalkan untuk menghapus job.
-                </p>
-              ) : null}
-
               <div className="relative">
                 <label className="label">
                   Event
@@ -595,7 +554,7 @@ export function JobCreateWizard({
                       placeholder="Cari nama event, venue, atau EO…"
                       aria-label="Cari event"
                       autoComplete="off"
-                      disabled={slideOneLocked || Boolean(presetEvent)}
+                      disabled={Boolean(presetEvent)}
                     />
                   </div>
                 </label>
@@ -637,8 +596,7 @@ export function JobCreateWizard({
                     value={selection}
                     onChange={(selectEvent) => changeSelection(selectEvent.target.value as JobTypeSelection)}
                     className="input mt-1"
-                    disabled={slideOneLocked}
-                  >
+                                     >
                     {jobTypeOptions.map((option) => (
                       <option key={option.value} value={option.value}>
                         {jobTypeLabel(option.value)}
@@ -659,8 +617,7 @@ export function JobCreateWizard({
                     }
                     className="input mt-1"
                     placeholder="cth. S.01/ISFEX-VPN/2026"
-                    disabled={slideOneLocked}
-                  />
+                                     />
                 </label>
               </div>
 
@@ -672,15 +629,14 @@ export function JobCreateWizard({
                       checked={tanpaAgent}
                       onChange={(checkEvent) => changeTanpaAgent(checkEvent.target.checked)}
                       className="h-4 w-4 accent-orange-600"
-                      disabled={slideOneLocked}
-                    />
+                                         />
                     Tanpa agent
                   </label>
                   {!creatingNew ? (
                     <button
                       type="button"
                       onClick={() => setCreatingNew(true)}
-                      disabled={tanpaAgent || slideOneLocked}
+                      disabled={tanpaAgent}
                       className="inline-flex items-center gap-1 text-xs font-semibold text-orange-700 hover:text-orange-800 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Plus size={13} aria-hidden="true" />
@@ -703,8 +659,7 @@ export function JobCreateWizard({
                           }}
                           className="input mt-1"
                           placeholder="cth. JS LOGISTICS"
-                          disabled={slideOneLocked}
-                        />
+                                                 />
                       </label>
                       <label className="label">
                         Nama PIC
@@ -712,8 +667,7 @@ export function JobCreateWizard({
                           value={newAgentContactName}
                           onChange={(inputEvent) => setNewAgentContactName(inputEvent.target.value)}
                           className="input mt-1"
-                          disabled={slideOneLocked}
-                        />
+                                                 />
                       </label>
                       <label className="label">
                         Telepon PIC
@@ -721,8 +675,7 @@ export function JobCreateWizard({
                           value={newAgentPhone}
                           onChange={(inputEvent) => setNewAgentPhone(inputEvent.target.value)}
                           className="input mt-1"
-                          disabled={slideOneLocked}
-                        />
+                                                 />
                       </label>
                       <label className="label sm:col-span-2">
                         Email PIC
@@ -731,8 +684,7 @@ export function JobCreateWizard({
                           value={newAgentEmail}
                           onChange={(inputEvent) => setNewAgentEmail(inputEvent.target.value)}
                           className="input mt-1"
-                          disabled={slideOneLocked}
-                        />
+                                                 />
                       </label>
                     </div>
                     <button
@@ -754,7 +706,7 @@ export function JobCreateWizard({
                         }}
                         className="input"
                         placeholder={loadingAgents ? 'Memuat agent...' : 'Ketik nama agent...'}
-                        disabled={tanpaAgent || slideOneLocked}
+                        disabled={tanpaAgent}
                         aria-label="Cari agent"
                         autoComplete="off"
                       />
@@ -796,19 +748,18 @@ export function JobCreateWizard({
                   }}
                   className="input mt-1"
                   placeholder="Pihak yang ditagih (mis. agent atau exhibitor)"
-                  disabled={slideOneLocked}
-                />
+                                 />
               </label>
             </div>
 
             <div className="shrink-0 border-t px-6 py-4 sm:px-8">
               {error && <p className="mb-4 text-sm text-rose-700">{error}</p>}
               <div className="flex justify-end gap-3">
-                <button type="button" onClick={requestClose} className="btn-secondary" disabled={busy}>
+                <button type="button" onClick={onCancel} className="btn-secondary" disabled={busy}>
                   Batal
                 </button>
                 <button type="submit" disabled={busy} className="btn-primary">
-                  {creating ? 'Menyimpan...' : jobDraft ? 'Lanjut' : selection === 'LOCAL' ? 'Buat job' : 'Lanjut'}
+                  {selection === 'LOCAL' ? (finishing ? 'Menyimpan...' : 'Buat job') : 'Lanjut'}
                 </button>
               </div>
             </div>
@@ -1178,35 +1129,6 @@ export function JobCreateWizard({
           </>
         ) : null}
       </div>
-
-      <Dialog
-        open={confirmCancel}
-        onOpenChange={(open) => {
-          if (!deleting) setConfirmCancel(open)
-        }}
-      >
-        <DialogContent className="z-[60] sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Batalkan pembuatan job?</DialogTitle>
-            <DialogDescription>
-              Job yang baru dibuat akan dihapus permanen berserta data yang sudah diisi.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setConfirmCancel(false)}
-              disabled={deleting}
-            >
-              Lanjutkan mengisi
-            </Button>
-            <Button type="button" variant="destructive" onClick={cancelAndDelete} disabled={deleting}>
-              {deleting ? 'Menghapus...' : 'Ya, batalkan'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
