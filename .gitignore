@@ -16,6 +16,11 @@ public/uploads/*
 /docs/openapi_swagger.json
 /docs/supabase/
 /remotion-demo/
-eng.traineddata 
 
-# Vss-A64A5BDB8ACA
+# Alat kerja lokal — tidak untuk repo maupun deploy Vercel
+.kiro/
+.zcode/
+.vercel/
+
+# Cache unduhan data bahasa tesseract.js saat OCR
+eng.traineddata
