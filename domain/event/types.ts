@@ -1,14 +1,7 @@
 export type EventDisplayStatus = 'unscheduled' | 'soon' | 'ongoing' | 'done'
-
 export type EventLifecycle = 'ACTIVE' | 'CANCELLED' | 'ARCHIVED'
-
-// Kelengkapan pekerjaan event — rollup dari job (docs/domain/event-data-definitions.md,
-// StatusTuntasEvent): TANPA_JOB berarti belum ada pekerjaan sama sekali (bukan menggantung).
 export type EventTuntasStatus = 'TUNTAS' | 'BELUM_TUNTAS' | 'TANPA_JOB'
 
-
-// Semua field opsional kecuali nama (keputusan 2026-10-29): event bisa lahir dengan nama saja,
-// referensi dan tanggal menyusul saat informasinya tersedia.
 export type EventInput = {
   name: string
   alias: string | null
@@ -17,10 +10,10 @@ export type EventInput = {
   picId: string | null
   startsOn: string | null
   endsOn: string | null
-  // Penanda logistik venue (opsional): tanggal barang masuk/keluar venue, bukan tanggal pameran.
   moveInOn: string | null
   moveOutOn: string | null
 }
+
 export type EventListQuery = {
   search?: string
   lifecycle?: EventLifecycle
@@ -32,8 +25,6 @@ export type EventListItem = {
   id: string
   name: string
   alias: string | null
-  // Id referensi (untuk preselect form edit) berdampingan namanya (untuk tampilan); null bila
-  // belum ditentukan (field kini opsional).
   venueId: string | null
   eventOrganizerId: string | null
   picId: string | null
@@ -46,8 +37,6 @@ export type EventListItem = {
   moveOutOn: string | null
   lifecycle: EventLifecycle
   displayStatus: EventDisplayStatus
-  // Rollup job (turunan, tidak disimpan): jumlah job, kelengkapan pekerjaan, dan jumlah job yang
-  // belum tuntas (dipakai kolom Jobs, peringatan arsip, dan badge baris).
   jobCount: number
   tuntasStatus: EventTuntasStatus
   unfinishedJobs: number

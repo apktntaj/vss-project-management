@@ -59,7 +59,7 @@ export function NewJobDialog({
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-semibold text-slate-900">Event</span>
               <span className="block text-xs text-slate-500">
-                Job pameran: {[...Object.values(internationalJobJenisLabels), 'Local'].join(', ')}.
+                Job Pameran.
               </span>
             </span>
             <ChevronRight size={16} className="shrink-0 text-slate-400" aria-hidden="true" />

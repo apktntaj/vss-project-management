@@ -28,11 +28,6 @@ function singleParam(value: string | string[] | undefined): string | undefined {
   return value
 }
 
-// Terjemahkan param UI (`search`, `status`, `pic`) ke EventListQuery domain. `status`:
-//   all     → tanpa filter
-//   active  → lifecycle ACTIVE
-//   soon|ongoing|done → displayStatus (turunan tanggal, repository menerjemahkan ke predikat tanggal)
-// `pic` → id PIC (UUID) untuk filter penugasan.
 function toQuery(searchParams: EventsPageProps['searchParams']): EventListQuery {
   const search = singleParam(searchParams?.search)?.trim() || undefined
   const status = singleParam(searchParams?.status)
@@ -78,6 +73,7 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
   let venues: { id: string; name: string }[] | undefined
   let organizers: { id: string; name: string }[] | undefined
   let pics: { id: string; name: string }[] | undefined
+
   try {
     const [venueRecords, organizerRecords, users] = await Promise.all([
       listVenueReferences(currentUser),
@@ -100,6 +96,7 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
   return (
     <div className="space-y-6">
       <h1 className="sr-only">Events</h1>
+
       <section className="space-y-5">
         <EventFilters pics={pics}>
           <EventCreateButton venues={venues} organizers={organizers} pics={pics} />
@@ -112,12 +109,7 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
             <p className="mt-1 text-sm text-slate-400">Muat ulang halaman untuk mencoba lagi.</p>
           </div>
         ) : (
-          <EventList
-            items={page.items}
-            venues={venues}
-            organizers={organizers}
-            pics={pics}
-          />
+          <EventList items={page.items} venues={venues} organizers={organizers} pics={pics} />
         )}
       </section>
     </div>

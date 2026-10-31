@@ -603,9 +603,6 @@ export function JobCreateWizard({
                       </option>
                     ))}
                   </select>
-                  <span className="mt-1 block text-xs font-normal text-slate-500">
-                    {jobTypeOptions.find((option) => option.value === selection)?.description}
-                  </span>
                 </label>
 
                 <label className="label">
@@ -770,11 +767,7 @@ export function JobCreateWizard({
           <>
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6 sm:p-8">
               <fieldset className="rounded-xl border border-dashed border-orange-300 bg-orange-50/50 p-4">
-                <legend className="px-1 text-sm font-semibold text-slate-800">Smart scan (otomatis)</legend>
-                <p className="text-sm text-slate-600">
-                  Unggah inward manifest, packing list, atau CIPL (PDF/Excel) — AI mengisi daftar exhibitor
-                  dan rincian koli di bawah untuk diperiksa.
-                </p>
+                <legend className="px-1 text-sm font-semibold text-slate-800">Smart Scan</legend>
                 <label className="mt-3 flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-black/20 bg-white px-4 py-3 text-sm text-slate-500 hover:border-orange-300 hover:bg-orange-50">
                   <span className="min-w-0 truncate">
                     {ciplFile ? `Terpindai: ${ciplFile.name}` : 'Pilih dokumen untuk dipindai'}
@@ -1082,7 +1075,7 @@ export function JobCreateWizard({
                   </select>
                 </label>
                 <fieldset className="rounded-xl border border-dashed border-orange-300 bg-orange-50/50 p-4">
-                  <legend className="px-1 text-sm font-semibold text-slate-800">Smart scan (otomatis)</legend>
+                  <legend className="px-1 text-sm font-semibold text-slate-800">Smart Scan</legend>
                   <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-black/20 bg-white px-4 py-2.5 text-sm text-slate-500 hover:border-orange-300 hover:bg-orange-50">
                     <span className="min-w-0 truncate">
                       {transportFile ? `Terpindai: ${transportFile.name}` : 'Unggah B/L atau AWB untuk dipindai'}
