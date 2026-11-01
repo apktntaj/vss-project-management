@@ -42,6 +42,7 @@ async function openaiJson(
   file: File,
   supportsVision: boolean,
   system?: string,
+  timeoutMs?: number,
 ): Promise<Record<string, unknown>> {
   const payload = await documentParts(file, supportsVision)
   const content: string | VisionPart[] =
@@ -54,7 +55,7 @@ async function openaiJson(
   const messages: Array<{ role: 'system' | 'user'; content: string | VisionPart[] }> = []
   if (system) messages.push({ role: 'system', content: system })
   messages.push({ role: 'user', content })
-  const response = await fetchJsonWithTimeout(`${baseUrl}/chat/completions`, {
+  const response = await fetchJsonWithTimeout(`${baseUrl}/chat/completions`, timeoutMs, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
     body: JSON.stringify({
@@ -73,13 +74,14 @@ async function claudeJson(
   prompt: string,
   file: File,
   system?: string,
+  timeoutMs?: number,
 ): Promise<Record<string, unknown>> {
   const input = await documentInputForLlm(file)
   const source =
     'pdfBase64' in input
       ? { type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf', data: input.pdfBase64 } }
       : { type: 'text' as const, text: `Spreadsheet content:\n${input.text}` }
-  const payload = await fetchJsonWithTimeout('https://api.anthropic.com/v1/messages', {
+  const payload = await fetchJsonWithTimeout('https://api.anthropic.com/v1/messages', timeoutMs, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -111,10 +113,11 @@ export async function chatDocumentJson(
   prompt: string,
   file: File,
   system?: string,
+  timeoutMs?: number,
 ): Promise<Record<string, unknown>> {
-  if (id === 'CLAUDE') return claudeJson(config, prompt, file, system)
+  if (id === 'CLAUDE') return claudeJson(config, prompt, file, system, timeoutMs)
   // deepseek-chat tidak multimodal; SumoPod (gpt-4o-mini) membaca halaman pindai sebagai gambar.
   const supportsVision = id !== 'DEEPSEEK'
   const baseUrl = id === 'SUMOPOD' ? process.env.LLM_BASE_URL?.trim() || OPENAI_BASE_URL.SUMOPOD : OPENAI_BASE_URL[id]
-  return openaiJson(baseUrl, config, prompt, file, supportsVision, system)
+  return openaiJson(baseUrl, config, prompt, file, supportsVision, system, timeoutMs)
 }

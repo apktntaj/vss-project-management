@@ -25,3 +25,19 @@ export function configuredLlmProvider(): { id: LlmProviderId; apiKey: string; mo
   if (!apiKey) return null
   return { id, apiKey, model: process.env.LLM_MODEL?.trim() || LLM_MODELS[id] }
 }
+
+/** Provider pintu scan CIPL: CIPL_SCAN_PROVIDER/CIPL_SCAN_MODEL menimpa global.
+ *  Pemindaian tabel konsolidasi (merged-cell) butuh model yang lebih kuat dari default. */
+export function configuredScanCiplProvider(): { id: LlmProviderId; apiKey: string; model: string } | null {
+  const requested =
+    process.env.CIPL_SCAN_PROVIDER?.trim().toUpperCase() || process.env.LLM_PROVIDER?.trim().toUpperCase()
+  const id = requested ? (requested in LLM_MODELS ? (requested as LlmProviderId) : null) : 'SUMOPOD'
+  if (!id) return null
+  const apiKey = process.env.LLM_API_KEY?.trim()
+  if (!apiKey) return null
+  return {
+    id,
+    apiKey,
+    model: process.env.CIPL_SCAN_MODEL?.trim() || process.env.LLM_MODEL?.trim() || LLM_MODELS[id],
+  }
+}

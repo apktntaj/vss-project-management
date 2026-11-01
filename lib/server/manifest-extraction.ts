@@ -5,6 +5,7 @@ import {
   inwardManifestSchema,
   type ExhibitorLogistics,
   type InwardManifest,
+  type Koli,
 } from '@/domain/job/manifest'
 import {
   barisBarangSchema,
@@ -13,7 +14,7 @@ import {
   type DisposisiBarang,
 } from '@/domain/exhibition/cipl-document'
 import { assertSupportedDocumentFile, DocumentExtractionError } from './document-extraction'
-import { configuredLlmProvider } from './extraction/config'
+import { configuredLlmProvider, configuredScanCiplProvider } from './extraction/config'
 import { LLM_UNAVAILABLE_MESSAGE } from './extraction/errors'
 import { chatDocumentJson } from './extraction/llm/document-json'
 
@@ -219,9 +220,10 @@ For each goods entry extract: original description (uraian), model/brand text (m
 ## 7. Output
 
 Return valid JSON only, exactly this shape:
-{"document":{"nomor":string|null,"tanggal":"YYYY-MM-DD"|null,"pengirim":string|null,"penerima":string|null,"namaPameran":string|null,"incoterm":string|null,"mataUang":string|null,"infoKontainer":string|null,"nilaiTotalDeklarasi":number|null},"exhibitors":[{"name":string,"jobNo":string|null,"hall":string|null,"booth":string|null,"bareCaseCount":number|null,"koliTotalCount":number,"kolis":[{"label":string|null,"lengthCm":number|null,"widthCm":number|null,"heightCm":number|null,"volumeCbm":number|null,"weightKg":number|null}],"items":[{"uraian":string,"merekModel":string|null,"kodeHs":string|null,"jumlah":number,"satuan":string|null,"nilaiSatuan":number|null,"nilaiTotal":number|null,"disposisi":"A"|"B"|"C"|null,"refKoli":string|null}]}],"itemsBelumTerpetakan":[same item shape],"issues":[string]}
+{"document":{"nomor":string|null,"tanggal":"YYYY-MM-DD"|null,"pengirim":string|null,"penerima":string|null,"namaPameran":string|null,"incoterm":string|null,"mataUang":string|null,"infoKontainer":string|null,"nilaiTotalDeklarasi":number|null},"exhibitors":[{"name":string,"jobNo":string|null,"hall":string|null,"booth":string|null,"bareCaseCount":number|null,"koliTotalCount":number,"kolis":[{"exhibitor":string|null,"label":string|null,"lengthCm":number|null,"widthCm":number|null,"heightCm":number|null,"volumeCbm":number|null,"weightKg":number|null}],"items":[{"exhibitor":string|null,"uraian":string,"merekModel":string|null,"kodeHs":string|null,"jumlah":number,"satuan":string|null,"nilaiSatuan":number|null,"nilaiTotal":number|null,"disposisi":"A"|"B"|"C"|null,"refKoli":string|null}]}],"itemsBelumTerpetakan":[same item shape],"issues":[string]}
 
 Rules for the output shape:
+- The EXHIBITOR column is a merged cell spanning all package/item rows of that exhibitor: repeat that exhibitor name in the "exhibitor" field of EVERY koli row and EVERY item row it spans. Null only when the row truly has no exhibitor context.
 - "document" is the CIPL / commercial invoice header: "INV & PL NO." → nomor, "DATE" → tanggal, the shipper block (top-left address, e.g. a logistics company) → pengirim, "CONSIGNEE" block → penerima, exhibition name line → namaPameran, incoterm (CIF/FOB...) → incoterm, currency → mataUang, "CONTAINER:" footer → infoKontainer, "TOTAL CIF AMOUNT" → nilaiTotalDeklarasi. All null when the document is an inward manifest without such a header.
 - In an inward manifest, one job row (S.01, S.02, ...) can list one or more exhibitor names; output one entry per named exhibitor with that row's package breakdown, hall and booth. jobNo is the row's job number (e.g. "S.01"), null when absent.
 - For a packing list or CIPL without per-case dimensions, still return the exhibitor (buyer/consignee) with koliTotalCount from its totals and kolis from whatever per-package lines exist.
@@ -250,8 +252,12 @@ function normalizeCiplItem(value: unknown): BarisBarang | null {
   return parsed.success ? parsed.data : null
 }
 
-function normalizeCiplItems(value: unknown): BarisBarang[] {
-  return (Array.isArray(value) ? value : []).map(normalizeCiplItem).filter((item): item is BarisBarang => item !== null)
+function normalizeCiplItems(value: unknown): Array<{ exhibitor: string | null; item: BarisBarang }> {
+  return (Array.isArray(value) ? value : []).flatMap((value) => {
+    const exhibitor = text((value as Record<string, unknown> | null)?.exhibitor)
+    const item = normalizeCiplItem(value)
+    return item ? [{ exhibitor, item }] : []
+  })
 }
 
 function normalizeCiplHeader(value: unknown): CiplDocumentHeaderParse | null {
@@ -274,46 +280,139 @@ function normalizeCiplHeader(value: unknown): CiplDocumentHeaderParse | null {
   }
 }
 
-function normalizeCiplExhibitor(value: unknown): CiplExhibitorParse | null {
+type RawKoliRow = { exhibitor: string | null; koli: Koli }
+type RawItemRow = { exhibitor: string | null; item: BarisBarang }
+type RawExhibitorEntry = {
+  name: string
+  jobNo: string | null
+  hall: string | null
+  booth: string | null
+  bareCaseCount: number | null
+  koliTotalCount: number | null
+  koliRows: RawKoliRow[]
+  itemRows: RawItemRow[]
+}
+
+function normalizeCiplKoliRow(value: unknown): RawKoliRow | null {
+  if (!value || typeof value !== 'object') return null
+  const item = value as Record<string, unknown>
+  const lengthCm = amount(item.lengthCm)
+  const widthCm = amount(item.widthCm)
+  const heightCm = amount(item.heightCm)
+  return {
+    exhibitor: text(item.exhibitor),
+    koli: {
+      label: text(item.label),
+      dimension: lengthCm !== null && widthCm !== null && heightCm !== null ? { lengthCm, widthCm, heightCm } : null,
+      volumeCbm: amount(item.volumeCbm),
+      weightKg: amount(item.weightKg),
+    },
+  }
+}
+
+function normalizeCiplExhibitor(value: unknown): RawExhibitorEntry | null {
   if (!value || typeof value !== 'object') return null
   const input = value as Record<string, unknown>
   const name = text(input.name)
   if (!name) return null
   const kolis = Array.isArray(input.kolis) ? input.kolis : []
-  const parsedCount = wholeNumber(input.koliTotalCount)
-  const totalCount = Math.max(parsedCount ?? 0, kolis.length)
-  const logistics = exhibitorLogisticsSchema.safeParse({
+  return {
+    name,
+    jobNo: text(input.jobNo),
     hall: text(input.hall),
     booth: text(input.booth),
-    koli: {
-      totalCount,
-      bareCaseCount: wholeNumber(input.bareCaseCount),
-      details: kolis.map((koli) => {
-        const item = (koli ?? {}) as Record<string, unknown>
-        const lengthCm = amount(item.lengthCm)
-        const widthCm = amount(item.widthCm)
-        const heightCm = amount(item.heightCm)
-        return {
-          label: text(item.label),
-          dimension:
-            lengthCm !== null && widthCm !== null && heightCm !== null
-              ? { lengthCm, widthCm, heightCm }
-              : null,
-          volumeCbm: amount(item.volumeCbm),
-          weightKg: amount(item.weightKg),
-        }
-      }),
-    },
-    notes: [],
-  })
-  if (!logistics.success) return null
-  return { name, jobNo: text(input.jobNo), logistics: logistics.data, items: normalizeCiplItems(input.items) }
+    bareCaseCount: wholeNumber(input.bareCaseCount),
+    koliTotalCount: wholeNumber(input.koliTotalCount),
+    koliRows: kolis.map(normalizeCiplKoliRow).filter((row): row is RawKoliRow => row !== null),
+    itemRows: normalizeCiplItems(input.items),
+  }
+}
+
+const groupKey = (value: string | null | undefined) =>
+  value ? value.toLowerCase().replace(/[^a-z0-9]+/g, '') : ''
+
+/**
+ * Kelompokkan ulang baris koli/item per exhibitor berdasar nama yang diulang di tiap
+ * baris (sel gabungan). Bila partisi benar-benar memecah entri (CIPL konsolidasi),
+ * jumlah koli per grup dihitung dari barisnya — total level entri berupa salinan total
+ * dokumen tidak dipercaya.
+ */
+function partitionCiplRows(entries: RawExhibitorEntry[]): CiplExhibitorParse[] {
+  type Group = {
+    name: string
+    jobNo: string | null
+    hall: string | null
+    booth: string | null
+    bareCaseCount: number | null
+    totalCountHint: number | null
+    details: Koli[]
+    items: BarisBarang[]
+  }
+  const groups = new Map<string, Group>()
+  const ensure = (name: string, key: string): Group => {
+    const existing = groups.get(key)
+    if (existing) return existing
+    const group: Group = {
+      name,
+      jobNo: null,
+      hall: null,
+      booth: null,
+      bareCaseCount: null,
+      totalCountHint: null,
+      details: [],
+      items: [],
+    }
+    groups.set(key, group)
+    return group
+  }
+
+  for (const entry of entries) {
+    const entryKey = groupKey(entry.name)
+    for (const row of entry.koliRows) {
+      const group = ensure(row.exhibitor ?? entry.name, groupKey(row.exhibitor) || entryKey)
+      group.details.push(row.koli)
+    }
+    for (const row of entry.itemRows) {
+      const group = ensure(row.exhibitor ?? entry.name, groupKey(row.exhibitor) || entryKey)
+      group.items.push(row.item)
+    }
+    const own = groups.get(entryKey)
+    if (own) {
+      own.jobNo ??= entry.jobNo
+      own.hall ??= entry.hall
+      own.booth ??= entry.booth
+      own.bareCaseCount ??= entry.bareCaseCount
+      own.totalCountHint = Math.max(own.totalCountHint ?? 0, entry.koliTotalCount ?? 0)
+    } else {
+      const group = ensure(entry.name, entryKey)
+      group.jobNo = entry.jobNo
+      group.hall = entry.hall
+      group.booth = entry.booth
+      group.bareCaseCount = entry.bareCaseCount
+      group.totalCountHint = entry.koliTotalCount
+    }
+  }
+
+  const partitioned = groups.size > entries.length
+  return [...groups.values()].map((group) => {
+    // Saat partisi memecah entri (CIPL konsolidasi), total level entri adalah salinan
+    // total dokumen — jumlah koli per grup dihitung dari barisnya sendiri.
+    const totalCount = partitioned ? group.details.length : Math.max(group.totalCountHint ?? 0, group.details.length)
+    const logistics = exhibitorLogisticsSchema.safeParse({
+      hall: group.hall,
+      booth: group.booth,
+      koli: { totalCount, bareCaseCount: group.bareCaseCount, details: group.details },
+      notes: [],
+    })
+    if (!logistics.success) return null
+    return { name: group.name, jobNo: group.jobNo, logistics: logistics.data, items: group.items }
+  }).filter((entry): entry is CiplExhibitorParse => entry !== null)
 }
 
 /** Smart scan slide CIPL: inward manifest atau packing list/CIPL menjadi daftar exhibitor + koli + item. */
 export async function parseCiplExhibitors(file: File): Promise<CiplScanResult> {
   assertSupportedDocumentFile(file)
-  const provider = configuredLlmProvider()
+  const provider = configuredScanCiplProvider()
   if (!provider) throw new DocumentExtractionError(LLM_UNAVAILABLE_MESSAGE, 503)
 
   try {
@@ -323,6 +422,7 @@ export async function parseCiplExhibitors(file: File): Promise<CiplScanResult> {
       'Parse this document into exhibitor rows with their koli and item lines. Return only the JSON object described.',
       file,
       ciplSystemPrompt,
+      180_000,
     )) as {
       document?: unknown
       exhibitors?: unknown[]
@@ -333,14 +433,15 @@ export async function parseCiplExhibitors(file: File): Promise<CiplScanResult> {
       const message = text(issue)
       return message ? [`AI: ${message}`] : []
     })
-    const exhibitors = (Array.isArray(parsed.exhibitors) ? parsed.exhibitors : []).flatMap((row) => {
+    const rawEntries = (Array.isArray(parsed.exhibitors) ? parsed.exhibitors : []).flatMap((row) => {
       const normalized = normalizeCiplExhibitor(row)
       if (normalized) return [normalized]
       warnings.push('Satu baris exhibitor dilewati karena tidak terbaca.')
       return []
     })
+    const exhibitors = partitionCiplRows(rawEntries)
     const header = normalizeCiplHeader(parsed.document)
-    const itemsBelumTerpetakan = normalizeCiplItems(parsed.itemsBelumTerpetakan)
+    const itemsBelumTerpetakan = normalizeCiplItems(parsed.itemsBelumTerpetakan).map((row) => row.item)
     if (!header && itemsBelumTerpetakan.length) {
       warnings.push('Ada baris barang tanpa kepala dokumen — barang tidak terpilah tidak dapat disimpan.')
     }

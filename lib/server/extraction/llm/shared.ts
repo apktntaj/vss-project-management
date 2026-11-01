@@ -54,9 +54,9 @@ export async function documentInputForLlm(file: File): Promise<{ pdfBase64: stri
   return { text: parsed.text }
 }
 
-export async function fetchJsonWithTimeout(url: string, init: RequestInit): Promise<unknown> {
+export async function fetchJsonWithTimeout(url: string, timeoutMs: number | undefined, init: RequestInit): Promise<unknown> {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS)
+  const timer = setTimeout(() => controller.abort(), timeoutMs ?? LLM_TIMEOUT_MS)
   try {
     const response = await fetch(url, { ...init, signal: controller.signal })
     if (!response.ok) throw new DocumentExtractionError(`${LLM_FAILED_MESSAGE} (${response.status})`, 503, 'LLM_EXTRACTION_FAILED')
