@@ -178,11 +178,11 @@ membawa kolom Bare Case; `bareCaseCount` tetap datang dari manifest.
 **Definisi**
 
 ```text
-CiplDocument terdiri dari nomor (NomorDokumenCipl), tanggal (TanggalOnly atau kosong),
-pengirim (PihakDokumen), penerima (PihakDokumen), namaPameran (Text atau kosong),
-incoterm (Text atau kosong), mataUang (Text atau kosong), infoKontainer (Text atau kosong),
-nilaiTotalDeklarasi (Number ≥ 0 atau kosong), entri (List<EntriExhibitor>), dan
-itemsBelumTerpetakan (List<BarisBarang>).
+CiplDocument terdiri dari nomor (NomorDokumenCipl atau kosong), tanggal (TanggalOnly atau
+kosong), pengirim (PihakDokumen atau kosong), penerima (PihakDokumen atau kosong),
+namaPameran (Text atau kosong), incoterm (Text atau kosong), mataUang (Text atau kosong),
+infoKontainer (Text atau kosong), nilaiTotalDeklarasi (Number ≥ 0 atau kosong),
+entri (List<EntriExhibitor>), dan itemsBelumTerpetakan (List<BarisBarang>).
 ```
 
 **Interpretasi** — satu dokumen CIPL utuh. S.12: pengirim Yijia, penerima JI Expo,
@@ -192,7 +192,9 @@ teks gabungan ukuran+nomor; OQ-4), `nilaiTotalDeklarasi` `34466.29` (TOTAL CIF A
 deklarasi di kertas, dipertahankan sebagai pembanding rekonsiliasi, bukan turunan).
 `entri` terurut sesuai kemunculan di dokumen. `itemsBelumTerpetakan` menampung baris barang
 yang tidak terpilah per exhibitor — jawaban domain expert 2026-11-01: "tidak selalu
-tercantum" (S.12 kebetulan terpilah lewat sel gabungan).
+tercantum" (S.12 kebetulan terpilah lewat sel gabungan). Keputusan implementasi 2026-11-01:
+nomor/pengirim/penerima boleh kosong karena dokumen sumber yang berupa inward manifest tidak
+memiliki kepala, dan kepala CIPL bisa gagal terbaca — dokumen tetap sah sebagai wadah barang.
 
 **Invariant** — footer "TTL: 40 PACKAGES" TIDAK disimpan di level dokumen: ia turunan
 Σ `koli.jumlahTotal` seluruh entri (S.12: 21+2+2+4+2+9 = 40).
@@ -277,13 +279,17 @@ menempel ke entri; `RefKoli` tidak ada; koli tidak punya berat net; disposisi ma
 
 **Usulan slice (proposal — belum disetujui, tidak dieksekusi dalam dokumen ini):**
 
-1. `domain/exhibition/cipl-document.ts` — tipe + Zod `CiplDocument`/`EntriExhibitor`/
-   `BarisBarang`/`DisposisiBarang`/`RefKoli` + test terdaftar di script `domain:test`.
-2. `koliSchema` + `beratNetKg` (gross/net berdampingan) di `domain/job/manifest.ts`.
-3. `/api/scan-cipl` menghasilkan `CiplDocument` parsial (entri + koli + item), menggantikan
-   `CiplScanResult` flat.
-4. `job.manifestExhibitors` menjadi view dari `CiplDocument`; snapshot job lama tetap tampil.
-5. Rantai alokasi (`ShipmentAllocation`/`JobAllocation` → `ciplItemId`) tetap merujuk ID
+1. ✅ `domain/exhibition/cipl-document.ts` — tipe + Zod `CiplDocument`/`EntriExhibitor`/
+   `BarisBarang`/`DisposisiBarang`/`RefKoli` + test terdaftar di script `domain:test`
+   (`f1fa8d9`, ditambah `buildCiplDocument` assembler di `dd88b8e`).
+2. ⬜ `koliSchema` + `beratNetKg` (gross/net berdampingan) di `domain/job/manifest.ts`.
+3. ✅ `/api/scan-cipl` menghasilkan kepala dokumen + baris barang + `itemsBelumTerpetakan`
+   selain baris exhibitor/koli (`dd88b8e`); wizard merakit `CiplDocument` saat Selesai dan
+   menyimpannya sebagai `job.manifestCiplDocument` (berdampingan dengan
+   `manifestExhibitors`, OQ-1 belum diputuskan). Kualitas ekstraksi multi-exhibitor
+   (sel gabungan) masih terbatas pada provider default — iterasi prompt/model menyusul.
+4. ⬜ `job.manifestExhibitors` menjadi view dari `CiplDocument`; snapshot job lama tetap tampil.
+5. ⬜ Rantai alokasi (`ShipmentAllocation`/`JobAllocation` → `ciplItemId`) tetap merujuk ID
    baris barang — tidak berubah bentuknya.
 
 ## 8. Open questions

@@ -8,6 +8,7 @@ import {
   createLocalJobInit,
   listAgents,
   saveAgent,
+  saveJobCiplDocument,
   saveJobDocument,
   saveJobManifestExhibitors,
   saveJobTransportExtraction,
@@ -16,9 +17,11 @@ import {
   type LocalEvent,
   type LocalJob,
 } from '@/lib/data-client'
+import { buildCiplDocument, type BarisBarang, type CiplDocumentHeader } from '@/domain/exhibition/cipl-document'
 import { exhibitorLogisticsSchema, type ExhibitorLogistics } from '@/domain/job/manifest'
 import { internationalJobJenisLabels } from '@/domain/job/types'
 import type { JobTransportExtraction } from '@/domain/exhibition/source-documents'
+import type { CiplScanResult } from '@/lib/server/manifest-extraction'
 import { TransportEditor } from '@/components/job-document-editor-dialog'
 import { isAcceptedJobDocument, jobDocumentAccept } from '@/components/job-document-file'
 
@@ -62,7 +65,14 @@ function jobTypeLabel(value: JobTypeSelection) {
 
 const slideLabels = ['Job', 'CIPL', 'B/L atau AWB']
 
-type KoliDraft = { label: string; length: string; width: string; height: string; cbm: string; weight: string }
+type KoliDraft = {
+  label: string
+  length: string
+  width: string
+  height: string
+  cbm: string
+  weight: string
+}
 type CiplRowDraft = {
   key: string
   jobNo: string
@@ -72,9 +82,17 @@ type CiplRowDraft = {
   hall: string
   booth: string
   kolis: KoliDraft[]
+  items: BarisBarang[]
 }
 
-const emptyKoli = (): KoliDraft => ({ label: '', length: '', width: '', height: '', cbm: '', weight: '' })
+const emptyKoli = (): KoliDraft => ({
+  label: '',
+  length: '',
+  width: '',
+  height: '',
+  cbm: '',
+  weight: '',
+})
 
 const emptyTransport = (): JobTransportExtraction => ({
   documentNumber: null,
@@ -154,6 +172,8 @@ export function JobCreateWizard({
   const [ciplRows, setCiplRows] = useState<CiplRowDraft[]>([])
   const [ciplFile, setCiplFile] = useState<File | null>(null)
   const [scanningCipl, setScanningCipl] = useState(false)
+  const [ciplHeader, setCiplHeader] = useState<CiplDocumentHeader | null>(null)
+  const [ciplBelumTerpetakan, setCiplBelumTerpetakan] = useState<BarisBarang[]>([])
   const [docKind, setDocKind] = useState<'BL' | 'AWB'>('BL')
   const [transport, setTransport] = useState<JobTransportExtraction | null>(null)
   const [transportFile, setTransportFile] = useState<File | null>(null)
@@ -184,11 +204,7 @@ export function JobCreateWizard({
     if (!search || selectedEventId) return []
     return events
       .filter((event) =>
-        [event.officialName, event.alias]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase()
-          .includes(search),
+        [event.officialName, event.alias].filter(Boolean).join(' ').toLowerCase().includes(search),
       )
       .slice(0, 6)
   }, [eventQuery, events, selectedEventId])
@@ -290,12 +306,14 @@ export function JobCreateWizard({
       body.set('file', file)
       const response = await fetch('/api/scan-cipl', { method: 'POST', body })
       const data = (await response.json().catch(() => null)) as
-        | { exhibitors?: Array<{ name: string; jobNo: string | null; logistics: ExhibitorLogistics }>; warnings?: string[] }
+        | (Partial<CiplScanResult> & { warnings?: string[] })
         | { error?: string }
         | null
       if (!response.ok || !data || !('exhibitors' in data) || !Array.isArray(data.exhibitors)) {
         throw new Error(
-          data && 'error' in data && typeof data.error === 'string' ? data.error : 'Dokumen tidak dapat dipindai.',
+          data && 'error' in data && typeof data.error === 'string'
+            ? data.error
+            : 'Dokumen tidak dapat dipindai.',
         )
       }
       const rows: CiplRowDraft[] = data.exhibitors.map((exhibitor) => ({
@@ -304,9 +322,12 @@ export function JobCreateWizard({
         name: exhibitor.name,
         totalPackage: String(exhibitor.logistics.koli.totalCount),
         bareCase:
-          exhibitor.logistics.koli.bareCaseCount == null ? '' : String(exhibitor.logistics.koli.bareCaseCount),
+          exhibitor.logistics.koli.bareCaseCount == null
+            ? ''
+            : String(exhibitor.logistics.koli.bareCaseCount),
         hall: exhibitor.logistics.hall ?? '',
         booth: exhibitor.logistics.booth ?? '',
+        items: exhibitor.items ?? [],
         kolis: exhibitor.logistics.koli.details.map((koli) => ({
           label: koli.label ?? '',
           length: koli.dimension?.lengthCm == null ? '' : String(koli.dimension.lengthCm),
@@ -317,6 +338,8 @@ export function JobCreateWizard({
         })),
       }))
       setCiplRows(rows)
+      setCiplHeader(data.header ?? null)
+      setCiplBelumTerpetakan(data.itemsBelumTerpetakan ?? [])
       setCiplFile(file)
       if (rows.length) {
         toast(
@@ -340,24 +363,28 @@ export function JobCreateWizard({
       const body = new FormData()
       body.set('file', file)
       const response = await fetch('/api/classify-job-document', { method: 'POST', body })
-      const data = (await response.json().catch(() => null)) as
-        | {
-            classification?: { documentType?: string }
-            transport?: JobTransportExtraction | null
-            detail?: { documentType?: string } | null
-            error?: string
-          }
-        | null
+      const data = (await response.json().catch(() => null)) as {
+        classification?: { documentType?: string }
+        transport?: JobTransportExtraction | null
+        detail?: { documentType?: string } | null
+        error?: string
+      } | null
       if (!response.ok || !data) {
         throw new Error(data?.error || 'Dokumen tidak dapat dipindai.')
       }
       if (!data.transport) {
-        const detected = data.detail?.documentType ?? data.classification?.documentType ?? 'tidak dikenali'
-        throw new Error(`Dokumen terdeteksi sebagai ${detected.replace(/_/g, ' ').toLowerCase()} — bukan B/L atau AWB.`)
+        const detected =
+          data.detail?.documentType ?? data.classification?.documentType ?? 'tidak dikenali'
+        throw new Error(
+          `Dokumen terdeteksi sebagai ${detected.replace(/_/g, ' ').toLowerCase()} — bukan B/L atau AWB.`,
+        )
       }
       setTransport(data.transport)
       setTransportFile(file)
-      if (data.detail?.documentType === 'AIR_WAYBILL' || data.classification?.documentType === 'AIR_WAYBILL') {
+      if (
+        data.detail?.documentType === 'AIR_WAYBILL' ||
+        data.classification?.documentType === 'AIR_WAYBILL'
+      ) {
         setDocKind('AWB')
       } else if (
         data.detail?.documentType === 'BILL_OF_LADING' ||
@@ -373,8 +400,8 @@ export function JobCreateWizard({
     }
   }
 
-  function buildManifestRows(): Array<{ name: string; logistics: ExhibitorLogistics }> {
-    const rows: Array<{ name: string; logistics: ExhibitorLogistics }> = []
+  function buildManifestRows(): Array<{ name: string; logistics: ExhibitorLogistics; items: BarisBarang[] }> {
+    const rows: Array<{ name: string; logistics: ExhibitorLogistics; items: BarisBarang[] }> = []
     for (const row of ciplRows) {
       const name = row.name.trim()
       if (!name) continue
@@ -385,7 +412,9 @@ export function JobCreateWizard({
         return {
           label: koli.label.trim() || null,
           dimension:
-            lengthCm !== null && widthCm !== null && heightCm !== null ? { lengthCm, widthCm, heightCm } : null,
+            lengthCm !== null && widthCm !== null && heightCm !== null
+              ? { lengthCm, widthCm, heightCm }
+              : null,
           volumeCbm: numberOrNull(koli.cbm),
           weightKg: numberOrNull(koli.weight),
         }
@@ -396,12 +425,13 @@ export function JobCreateWizard({
         booth: row.booth.trim() || null,
         koli: {
           totalCount,
-          bareCaseCount: numberOrNull(row.bareCase) == null ? null : Math.round(numberOrNull(row.bareCase)!),
+          bareCaseCount:
+            numberOrNull(row.bareCase) == null ? null : Math.round(numberOrNull(row.bareCase)!),
           details,
         },
         notes: [],
       })
-      if (parsed.success) rows.push({ name, logistics: parsed.data })
+      if (parsed.success) rows.push({ name, logistics: parsed.data, items: row.items })
     }
     return rows
   }
@@ -424,10 +454,22 @@ export function JobCreateWizard({
     const skippedNames = ciplRows.length - manifestRows.length
     if (manifestRows.length) {
       try {
-        await saveJobManifestExhibitors(job.id, manifestRows)
+        await saveJobManifestExhibitors(
+          job.id,
+          manifestRows.map(({ name, logistics }) => ({ name, logistics })),
+        )
       } catch {
         failures += 1
         toast('Baris CIPL tidak dapat disimpan — bisa dilengkapi di detail job.', 'error')
+      }
+    }
+    const ciplDocument = buildCiplDocument(ciplHeader, manifestRows, ciplBelumTerpetakan)
+    if (ciplDocument) {
+      try {
+        await saveJobCiplDocument(job.id, ciplDocument)
+      } catch {
+        failures += 1
+        toast('Baris barang CIPL tidak dapat disimpan — bisa dilengkapi di detail job.', 'error')
       }
     }
     if (ciplFile) {
@@ -461,9 +503,16 @@ export function JobCreateWizard({
     }
     const parts = [`Job (${jobTypeLabel(selection)}) dibuat`]
     if (manifestRows.length) parts.push(`${manifestRows.length} exhibitor CIPL`)
+    const itemCount =
+      manifestRows.reduce((sum, row) => sum + row.items.length, 0) + ciplBelumTerpetakan.length
+    if (itemCount) parts.push(`${itemCount} baris barang`)
     if (transportFile) parts.push(docKind === 'AWB' ? 'AWB' : 'B/L')
-    toast(`${parts.join(' · ')}.${failures ? ' Sebagian data gagal — periksa detail job.' : ''}`, failures ? 'error' : 'success')
-    if (skippedNames > 0) toast(`${skippedNames} baris CIPL dilewati karena belum ada nama exhibitor.`, 'error')
+    toast(
+      `${parts.join(' · ')}.${failures ? ' Sebagian data gagal — periksa detail job.' : ''}`,
+      failures ? 'error' : 'success',
+    )
+    if (skippedNames > 0)
+      toast(`${skippedNames} baris CIPL dilewati karena belum ada nama exhibitor.`, 'error')
     onCreated(job)
   }
 
@@ -497,7 +546,10 @@ export function JobCreateWizard({
             <h2 id="job-create-title" className="text-2xl font-bold">
               Job Baru
             </h2>
-            <ol className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs" aria-label="Langkah pembuatan job">
+            <ol
+              className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs"
+              aria-label="Langkah pembuatan job"
+            >
               {slideLabels.map((label, index) => (
                 <li key={label} className="flex items-center gap-1.5">
                   {index > 0 ? <span className="text-slate-300">›</span> : null}
@@ -507,7 +559,9 @@ export function JobCreateWizard({
                     disabled={busy}
                     aria-current={index === slide ? 'step' : undefined}
                     className={`rounded-full px-2 py-0.5 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                      index === slide ? 'bg-orange-100 text-orange-800' : 'text-slate-400 hover:bg-slate-100'
+                      index === slide
+                        ? 'bg-orange-100 text-orange-800'
+                        : 'text-slate-400 hover:bg-slate-100'
                     }`}
                   >
                     {index + 1}. {label}
@@ -576,7 +630,9 @@ export function JobCreateWizard({
                         >
                           {event.officialName}
                           <span className="ml-2 text-xs text-slate-400">
-                            {[event.venue?.name, event.eventOrganizer?.legalName].filter(Boolean).join(' · ')}
+                            {[event.venue?.name, event.eventOrganizer?.legalName]
+                              .filter(Boolean)
+                              .join(' · ')}
                           </span>
                         </button>
                       </li>
@@ -595,9 +651,11 @@ export function JobCreateWizard({
                   Jenis job
                   <select
                     value={selection}
-                    onChange={(selectEvent) => changeSelection(selectEvent.target.value as JobTypeSelection)}
+                    onChange={(selectEvent) =>
+                      changeSelection(selectEvent.target.value as JobTypeSelection)
+                    }
                     className="input mt-1"
-                                     >
+                  >
                     {jobTypeOptions.map((option) => (
                       <option key={option.value} value={option.value}>
                         {jobTypeLabel(option.value)}
@@ -615,7 +673,7 @@ export function JobCreateWizard({
                     }
                     className="input mt-1"
                     placeholder="cth. S.01/ISFEX-VPN/2026"
-                                     />
+                  />
                 </label>
               </div>
 
@@ -627,7 +685,7 @@ export function JobCreateWizard({
                       checked={tanpaAgent}
                       onChange={(checkEvent) => changeTanpaAgent(checkEvent.target.checked)}
                       className="h-4 w-4 accent-orange-600"
-                                         />
+                    />
                     Tanpa agent
                   </label>
                   {!creatingNew ? (
@@ -657,7 +715,7 @@ export function JobCreateWizard({
                           }}
                           className="input mt-1"
                           placeholder="cth. JS LOGISTICS"
-                                                 />
+                        />
                       </label>
                       <label className="label">
                         Nama PIC
@@ -665,7 +723,7 @@ export function JobCreateWizard({
                           value={newAgentContactName}
                           onChange={(inputEvent) => setNewAgentContactName(inputEvent.target.value)}
                           className="input mt-1"
-                                                 />
+                        />
                       </label>
                       <label className="label">
                         Telepon PIC
@@ -673,7 +731,7 @@ export function JobCreateWizard({
                           value={newAgentPhone}
                           onChange={(inputEvent) => setNewAgentPhone(inputEvent.target.value)}
                           className="input mt-1"
-                                                 />
+                        />
                       </label>
                       <label className="label sm:col-span-2">
                         Email PIC
@@ -682,7 +740,7 @@ export function JobCreateWizard({
                           value={newAgentEmail}
                           onChange={(inputEvent) => setNewAgentEmail(inputEvent.target.value)}
                           className="input mt-1"
-                                                 />
+                        />
                       </label>
                     </div>
                     <button
@@ -746,7 +804,7 @@ export function JobCreateWizard({
                   }}
                   className="input mt-1"
                   placeholder="Pihak yang ditagih (mis. agent atau exhibitor)"
-                                 />
+                />
               </label>
             </div>
 
@@ -775,7 +833,9 @@ export function JobCreateWizard({
               <div>
                 <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-black/20 bg-white px-4 py-3 text-sm text-slate-500 hover:border-orange-300 hover:bg-orange-50">
                   <span className="min-w-0 truncate">
-                    {ciplFile ? `Terpindai: ${ciplFile.name}` : 'Pilih dokumen untuk dipindai'}
+                    {ciplFile
+                      ? `Terpindai: ${ciplFile.name}`
+                      : 'Klik untuk isi otomatis dari dokumen CIPL'}
                   </span>
                   <Upload size={16} className="shrink-0 text-slate-400" aria-hidden="true" />
                   <input
@@ -795,16 +855,12 @@ export function JobCreateWizard({
                     Memeriksa dokumen dengan AI...
                   </p>
                 ) : (
-                  <p className="mt-2 text-xs text-slate-500">
-                    Isi otomatis dari dokumen — daftar exhibitor dan koli terisi dari hasil pindai.
-                  </p>
+                  <p className="mt-2 text-xs text-slate-500">.</p>
                 )}
               </div>
 
               {ciplRows.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-black/15 px-4 py-3 text-sm text-slate-500">
-                  Belum ada baris CIPL — pindai dokumen atau tambah exhibitor manual.
-                </p>
+                <p className=""></p>
               ) : (
                 <ul className="space-y-4">
                   {ciplRows.map((row, rowIndex) => {
@@ -815,14 +871,18 @@ export function JobCreateWizard({
                           <label className="label">
                             Exhibitor
                             {row.jobNo ? (
-                              <span className="ml-1 text-xs font-normal text-slate-400">{row.jobNo}</span>
+                              <span className="ml-1 text-xs font-normal text-slate-400">
+                                {row.jobNo}
+                              </span>
                             ) : null}
                             <input
                               value={row.name}
                               onChange={(inputEvent) =>
                                 setCiplRows((current) =>
                                   current.map((item, i) =>
-                                    i === rowIndex ? { ...item, name: inputEvent.target.value } : item,
+                                    i === rowIndex
+                                      ? { ...item, name: inputEvent.target.value }
+                                      : item,
                                   ),
                                 )
                               }
@@ -839,7 +899,9 @@ export function JobCreateWizard({
                               onChange={(inputEvent) =>
                                 setCiplRows((current) =>
                                   current.map((item, i) =>
-                                    i === rowIndex ? { ...item, totalPackage: inputEvent.target.value } : item,
+                                    i === rowIndex
+                                      ? { ...item, totalPackage: inputEvent.target.value }
+                                      : item,
                                   ),
                                 )
                               }
@@ -856,7 +918,9 @@ export function JobCreateWizard({
                               onChange={(inputEvent) =>
                                 setCiplRows((current) =>
                                   current.map((item, i) =>
-                                    i === rowIndex ? { ...item, bareCase: inputEvent.target.value } : item,
+                                    i === rowIndex
+                                      ? { ...item, bareCase: inputEvent.target.value }
+                                      : item,
                                   ),
                                 )
                               }
@@ -871,7 +935,9 @@ export function JobCreateWizard({
                               onChange={(inputEvent) =>
                                 setCiplRows((current) =>
                                   current.map((item, i) =>
-                                    i === rowIndex ? { ...item, hall: inputEvent.target.value } : item,
+                                    i === rowIndex
+                                      ? { ...item, hall: inputEvent.target.value }
+                                      : item,
                                   ),
                                 )
                               }
@@ -886,7 +952,9 @@ export function JobCreateWizard({
                               onChange={(inputEvent) =>
                                 setCiplRows((current) =>
                                   current.map((item, i) =>
-                                    i === rowIndex ? { ...item, booth: inputEvent.target.value } : item,
+                                    i === rowIndex
+                                      ? { ...item, booth: inputEvent.target.value }
+                                      : item,
                                   ),
                                 )
                               }
@@ -989,7 +1057,10 @@ export function JobCreateWizard({
                                     setCiplRows((current) =>
                                       current.map((item, i) =>
                                         i === rowIndex
-                                          ? { ...item, kolis: item.kolis.filter((_, j) => j !== koliIndex) }
+                                          ? {
+                                              ...item,
+                                              kolis: item.kolis.filter((_, j) => j !== koliIndex),
+                                            }
                                           : item,
                                       ),
                                     )
@@ -1008,7 +1079,9 @@ export function JobCreateWizard({
                               onClick={() =>
                                 setCiplRows((current) =>
                                   current.map((item, i) =>
-                                    i === rowIndex ? { ...item, kolis: [...item.kolis, emptyKoli()] } : item,
+                                    i === rowIndex
+                                      ? { ...item, kolis: [...item.kolis, emptyKoli()] }
+                                      : item,
                                   ),
                                 )
                               }
@@ -1019,7 +1092,8 @@ export function JobCreateWizard({
                               Tambah case
                             </button>
                             <p className="text-xs text-slate-500">
-                              Σ {sums.cbm.toLocaleString('id-ID')} CBM · {sums.kg.toLocaleString('id-ID')} kg
+                              Σ {sums.cbm.toLocaleString('id-ID')} CBM ·{' '}
+                              {sums.kg.toLocaleString('id-ID')} kg
                             </p>
                           </div>
                         </div>
@@ -1042,6 +1116,7 @@ export function JobCreateWizard({
                       bareCase: '',
                       hall: '',
                       booth: '',
+                      items: [],
                       kolis: [emptyKoli()],
                     },
                   ])
@@ -1087,7 +1162,9 @@ export function JobCreateWizard({
                   <legend className="px-1 text-sm font-semibold text-slate-800">Smart Scan</legend>
                   <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-black/20 bg-white px-4 py-2.5 text-sm text-slate-500 hover:border-orange-300 hover:bg-orange-50">
                     <span className="min-w-0 truncate">
-                      {transportFile ? `Terpindai: ${transportFile.name}` : 'Unggah B/L atau AWB untuk dipindai'}
+                      {transportFile
+                        ? `Terpindai: ${transportFile.name}`
+                        : 'Unggah B/L atau AWB untuk dipindai'}
                     </span>
                     <Upload size={16} className="shrink-0 text-slate-400" aria-hidden="true" />
                     <input

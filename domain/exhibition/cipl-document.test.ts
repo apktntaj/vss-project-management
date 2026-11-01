@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 
-import { ciplDocumentSchema, totalDokumen, versiCiplSchema } from './cipl-document'
+import { buildCiplDocument, ciplDocumentSchema, totalDokumen, versiCiplSchema } from './cipl-document'
+import type { ExhibitorLogistics } from '@/domain/job/manifest'
 
 // CIPL S.12/ALP-VPN/2026 (Shanghai Yijia, ALLPACK 2026): 1 dokumen, 6 entri exhibitor,
 // TTL 40 PACKAGES (21+2+2+4+2+9). Koli dirinci di dokumen, tetapi untuk blok S.12 pada
@@ -140,3 +141,26 @@ assert.throws(() =>
     ],
   }),
 )
+
+// buildCiplDocument: inward manifest murni (tanpa kepala, tanpa item) → null.
+const logistikKosong = { hall: null, booth: null, koli: { totalCount: 3, bareCaseCount: null, details: [] }, notes: [] } satisfies ExhibitorLogistics
+assert.equal(buildCiplDocument(null, [{ name: 'A', logistics: logistikKosong, items: [] }], []), null)
+
+// Kepala dokumen saja cukup; nama pihak jadi PihakDokumen.
+const dariHeader = buildCiplDocument(
+  { nomor: 'S.12/ALP-VPN/2026', tanggal: null, pengirim: 'YIJIA', penerima: null, namaPameran: null, incoterm: null, mataUang: null, infoKontainer: null, nilaiTotalDeklarasi: null },
+  [],
+  [],
+)
+assert.equal(dariHeader?.pengirim?.name, 'YIJIA')
+assert.equal(dariHeader?.penerima, null)
+
+// Item mengikuti entri barisnya; barang tak terpilakan masuk bucket.
+const dariScan = buildCiplDocument(
+  null,
+  [{ name: 'WUHAN PHEZER', logistics: logistikKosong, items: [{ uraian: 'INKJET PRINTER', merekModel: null, kodeHs: null, jumlah: 13, satuan: 'SET', nilaiSatuan: null, nilaiTotal: null, disposisi: 'RE_EXPORT', refKoli: '7-11' }] }],
+  [{ uraian: 'CATALOGUE', merekModel: null, kodeHs: null, jumlah: 50, satuan: 'PCE', nilaiSatuan: null, nilaiTotal: null, disposisi: 'DISPOSED', refKoli: null }],
+)
+assert.equal(dariScan?.nomor, null)
+assert.equal(dariScan?.entri[0].items[0].refKoli, '7-11')
+assert.equal(dariScan?.itemsBelumTerpetakan.length, 1)

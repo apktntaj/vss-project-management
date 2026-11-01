@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { koliCollectionSchema, summarizeKoliCollections } from '@/domain/job/manifest'
+import { koliCollectionSchema, summarizeKoliCollections, type ExhibitorLogistics } from '@/domain/job/manifest'
 
 const optionalText = z.string().trim().min(1).nullable().default(null)
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -48,10 +48,10 @@ export const entriExhibitorSchema = z.object({
 export type EntriExhibitor = z.infer<typeof entriExhibitorSchema>
 
 export const ciplDocumentSchema = z.object({
-  nomor: z.string().trim().min(1),
+  nomor: z.string().trim().min(1).nullable().default(null),
   tanggal: optionalDate,
-  pengirim: pihakDokumenSchema,
-  penerima: pihakDokumenSchema,
+  pengirim: pihakDokumenSchema.nullable().default(null),
+  penerima: pihakDokumenSchema.nullable().default(null),
   namaPameran: optionalText,
   incoterm: optionalText,
   mataUang: optionalText,
@@ -79,4 +79,50 @@ export function totalDokumen(doc: CiplDocument) {
     0,
   )
   return { entri: doc.entri.length, koli: koli.totalCount, beratKg: koli.weightKg, nilaiTotal }
+}
+
+/** Kepala dokumen hasil scan (bukti mentah sebelum jadi PihakDokumen) — kosong pada inward manifest. */
+export type CiplDocumentHeader = {
+  nomor: string | null
+  tanggal: string | null
+  pengirim: string | null
+  penerima: string | null
+  namaPameran: string | null
+  incoterm: string | null
+  mataUang: string | null
+  infoKontainer: string | null
+  nilaiTotalDeklarasi: number | null
+}
+
+/**
+ * Rakit CiplDocument dari hasil scan — entri dari baris yang sudah diedit user
+ * (nama/hall/booth/koli terbaru), item mengikuti barisnya. Null bila scan tidak
+ * menemukan kepala dokumen maupun satu pun item (inward manifest murni).
+ */
+export function buildCiplDocument(
+  header: CiplDocumentHeader | null,
+  entries: Array<{ name: string; logistics: ExhibitorLogistics; items: BarisBarang[] }>,
+  itemsBelumTerpetakan: BarisBarang[],
+): CiplDocument | null {
+  const hasItems = entries.some((entri) => entri.items.length > 0) || itemsBelumTerpetakan.length > 0
+  if (!header && !hasItems) return null
+  return ciplDocumentSchema.parse({
+    nomor: header?.nomor ?? null,
+    tanggal: header?.tanggal ?? null,
+    pengirim: header?.pengirim ? { name: header.pengirim } : null,
+    penerima: header?.penerima ? { name: header.penerima } : null,
+    namaPameran: header?.namaPameran ?? null,
+    incoterm: header?.incoterm ?? null,
+    mataUang: header?.mataUang ?? null,
+    infoKontainer: header?.infoKontainer ?? null,
+    nilaiTotalDeklarasi: header?.nilaiTotalDeklarasi ?? null,
+    entri: entries.map((entri) => ({
+      namaTertera: entri.name,
+      hall: entri.logistics.hall,
+      booth: entri.logistics.booth,
+      koli: entri.logistics.koli,
+      items: entri.items,
+    })),
+    itemsBelumTerpetakan,
+  })
 }

@@ -16,6 +16,7 @@ import type {
   Shipment,
   ShipmentAllocation,
 } from '@/domain/exhibition/types'
+import type { CiplDocument } from '@/domain/exhibition/cipl-document'
 import type {
   Contact,
   Event as EventRecord,
@@ -58,6 +59,7 @@ import {
   type InwardManifest,
   type JobReturn,
 } from '@/domain/job/manifest'
+import { ciplDocumentSchema } from '@/domain/exhibition/cipl-document'
 
 export type {
   Ticket,
@@ -220,6 +222,8 @@ export type LocalJob = {
   kepulangan?: JobReturn | null
   /** Baris exhibitor + rincian koli hasil scan CIPL/manifest saat job dibuat. */
   manifestExhibitors?: Array<{ name: string; logistics: ExhibitorLogistics }> | null
+  /** Snapshot CiplDocument hasil scan CIPL saat job dibuat (menyertakan baris barang). */
+  manifestCiplDocument?: CiplDocument | null
   sourceDocumentName?: string | null
   createdAt: string
   updatedAt: string
@@ -1474,6 +1478,14 @@ export async function saveJobManifestExhibitors(
   const previous = await getJob(jobId)
   if (!previous) throw new Error('Job tidak ditemukan.')
   return put('jobs', { ...previous, manifestExhibitors: exhibitors, updatedAt: now() })
+}
+
+/** Simpan snapshot CiplDocument hasil scan CIPL pada job. */
+export async function saveJobCiplDocument(jobId: string, document: CiplDocument): Promise<LocalJob> {
+  const previous = await getJob(jobId)
+  if (!previous) throw new Error('Job tidak ditemukan.')
+  const parsed = ciplDocumentSchema.parse(document)
+  return put('jobs', { ...previous, manifestCiplDocument: parsed, updatedAt: now() })
 }
 
 /** Simpan fase kepulangan (return list) pada job; null mengosongkannya. */

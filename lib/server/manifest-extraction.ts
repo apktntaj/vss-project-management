@@ -6,6 +6,12 @@ import {
   type ExhibitorLogistics,
   type InwardManifest,
 } from '@/domain/job/manifest'
+import {
+  barisBarangSchema,
+  type BarisBarang,
+  type CiplDocumentHeader,
+  type DisposisiBarang,
+} from '@/domain/exhibition/cipl-document'
 import { assertSupportedDocumentFile, DocumentExtractionError } from './document-extraction'
 import { configuredLlmProvider } from './extraction/config'
 import { LLM_UNAVAILABLE_MESSAGE } from './extraction/errors'
@@ -154,24 +160,81 @@ export type CiplExhibitorParse = {
   name: string
   jobNo: string | null
   logistics: ExhibitorLogistics
+  items: BarisBarang[]
 }
 
+/** Kepala dokumen CIPL (INV & PL NO., DATE, shipper, CONSIGNEE, dst.) — kosong pada inward manifest. */
+export type CiplDocumentHeaderParse = CiplDocumentHeader
+
 export type CiplScanResult = {
+  header: CiplDocumentHeaderParse | null
   exhibitors: CiplExhibitorParse[]
+  itemsBelumTerpetakan: BarisBarang[]
   warnings: string[]
 }
 
 /** Instruksi smart scan CIPL/manifest flat — dikirim sebagai system prompt. */
-const ciplSystemPrompt = `Parse this exhibition cargo document (inward manifest, packing list, or CIPL) into a FLAT list of exhibitor rows with their package (case/koli) breakdown.
+const ciplSystemPrompt = `Parse this exhibition cargo document (inward manifest, packing list, or CIPL) into exhibitor rows with their package (case/koli) breakdown, item lines, and — when present — the document header.
 
-Return only JSON: {"exhibitors":[{"name":string,"jobNo":string|null,"hall":string|null,"booth":string|null,"bareCaseCount":number|null,"koliTotalCount":number,"kolis":[{"label":string|null,"lengthCm":number|null,"widthCm":number|null,"heightCm":number|null,"volumeCbm":number|null,"weightKg":number|null}]}]}
+Return only JSON: {"document":{"nomor":string|null,"tanggal":"YYYY-MM-DD"|null,"pengirim":string|null,"penerima":string|null,"namaPameran":string|null,"incoterm":string|null,"mataUang":string|null,"infoKontainer":string|null,"nilaiTotalDeklarasi":number|null},"exhibitors":[{"name":string,"jobNo":string|null,"hall":string|null,"booth":string|null,"bareCaseCount":number|null,"koliTotalCount":number,"kolis":[{"label":string|null,"lengthCm":number|null,"widthCm":number|null,"heightCm":number|null,"volumeCbm":number|null,"weightKg":number|null}],"items":[{"uraian":string,"merekModel":string|null,"kodeHs":string|null,"jumlah":number,"satuan":string|null,"nilaiSatuan":number|null,"nilaiTotal":number|null,"disposisi":"A"|"B"|"C"|null,"refKoli":string|null}]}],"itemsBelumTerpetakan":[same item shape]}
 
 Rules:
+- "document" is the CIPL / commercial invoice header: "INV & PL NO." → nomor, "DATE" → tanggal, the shipper block (top-left address, e.g. a logistics company) → pengirim, "CONSIGNEE" block → penerima, exhibition name line, incoterm (CIF/FOB...), currency, "CONTAINER:" footer → infoKontainer, "TOTAL CIF AMOUNT" → nilaiTotalDeklarasi. The header CONSIGNEE is the exhibition venue/organizer (e.g. PT. JAKARTA INTERNATIONAL EXPO), NEVER one of the exhibitors from the table. All null when the document is an inward manifest without such a header.
 - In an inward manifest, one job row (S.01, S.02, ...) can list one or more exhibitor names; output one entry per named exhibitor with that row's package breakdown, hall and booth. jobNo is the row's job number (e.g. "S.01"), null when absent.
+- The EXHIBITOR column often uses merged cells spanning many package rows: one distinct exhibitor name = one entry, and every package/item row under that merged cell belongs to it. A consolidated CIPL like "1 document, 6 exhibitors" must produce 6 entries, not 1.
 - CASE/PKG/PK lines carrying Dimension L W H are koli rows. The "Total Package" column (e.g. "3 PKG") is koliTotalCount, never a koli row. A "Bare Case" column value (e.g. "7 PKG") is bareCaseCount; null when the row shows no bare case value.
-- Bottom row totals (sum CBM / weight per job) are NOT koli rows; skip them.
+- Bottom row totals (sum CBM / weight per job, TTL, TOTAL CIF AMOUNT) are NOT koli rows and NOT items; skip them.
+- In a CIPL, item rows (DESCRIPTION OF GOODS, MODEL, HS Code, QUANTITY, CIF VALUE) belong to the exhibitor of their table section; attach each item to that exhibitor's "items". Scan ALL pages of the document. The remarks mark A/B/C (A: RE-EXPORT AFTER EXHIBITION, B: DISPOSED OR CONSUMED, C: GIVE AWAY/SOLD) → disposisi, read per item row. refKoli is the package number or range the item sits in, exactly as written (e.g. "7-11", "22", "in package No. 22"); null when unclear.
+- Item lines that cannot be attributed to any exhibitor go to "itemsBelumTerpetakan".
 - For a packing list or CIPL without per-case dimensions, still return the exhibitor (buyer/consignee) with koliTotalCount from its totals and kolis from whatever per-package lines exist.
 - Drop unreadable rows instead of guessing.`
+
+const disposisiFromMark = (mark: unknown): DisposisiBarang =>
+  mark === 'A' ? 'RE_EXPORT' : mark === 'B' ? 'DISPOSED' : mark === 'C' ? 'GIVE_AWAY' : 'TIDAK_DISEBUT'
+
+function normalizeCiplItem(value: unknown): BarisBarang | null {
+  if (!value || typeof value !== 'object') return null
+  const input = value as Record<string, unknown>
+  const uraian = text(input.uraian)
+  const jumlah = amount(input.jumlah)
+  if (!uraian || jumlah === null || jumlah <= 0) return null
+  const parsed = barisBarangSchema.safeParse({
+    uraian,
+    merekModel: text(input.merekModel),
+    kodeHs: text(input.kodeHs),
+    jumlah,
+    satuan: text(input.satuan) ?? 'UNIT',
+    nilaiSatuan: amount(input.nilaiSatuan),
+    nilaiTotal: amount(input.nilaiTotal),
+    disposisi: disposisiFromMark(input.disposisi),
+    refKoli: text(input.refKoli),
+  })
+  return parsed.success ? parsed.data : null
+}
+
+function normalizeCiplItems(value: unknown): BarisBarang[] {
+  return (Array.isArray(value) ? value : []).map(normalizeCiplItem).filter((item): item is BarisBarang => item !== null)
+}
+
+function normalizeCiplHeader(value: unknown): CiplDocumentHeaderParse | null {
+  if (!value || typeof value !== 'object') return null
+  const input = value as Record<string, unknown>
+  const nomor = text(input.nomor)
+  const pengirim = text(input.pengirim)
+  const penerima = text(input.penerima)
+  if (!nomor && !pengirim && !penerima) return null
+  return {
+    nomor,
+    tanggal: normalizeDate(input.tanggal),
+    pengirim,
+    penerima,
+    namaPameran: text(input.namaPameran),
+    incoterm: text(input.incoterm),
+    mataUang: text(input.mataUang),
+    infoKontainer: text(input.infoKontainer),
+    nilaiTotalDeklarasi: amount(input.nilaiTotalDeklarasi),
+  }
+}
 
 function normalizeCiplExhibitor(value: unknown): CiplExhibitorParse | null {
   if (!value || typeof value !== 'object') return null
@@ -206,10 +269,10 @@ function normalizeCiplExhibitor(value: unknown): CiplExhibitorParse | null {
     notes: [],
   })
   if (!logistics.success) return null
-  return { name, jobNo: text(input.jobNo), logistics: logistics.data }
+  return { name, jobNo: text(input.jobNo), logistics: logistics.data, items: normalizeCiplItems(input.items) }
 }
 
-/** Smart scan slide CIPL: inward manifest atau packing list/CIPL menjadi daftar exhibitor + koli. */
+/** Smart scan slide CIPL: inward manifest atau packing list/CIPL menjadi daftar exhibitor + koli + item. */
 export async function parseCiplExhibitors(file: File): Promise<CiplScanResult> {
   assertSupportedDocumentFile(file)
   const provider = configuredLlmProvider()
@@ -219,11 +282,13 @@ export async function parseCiplExhibitors(file: File): Promise<CiplScanResult> {
     const parsed = (await chatDocumentJson(
       provider.id,
       provider,
-      'Parse this document into a flat list of exhibitor rows. Return only the JSON object described.',
+      'Parse this document into exhibitor rows with their koli and item lines. Return only the JSON object described.',
       file,
       ciplSystemPrompt,
     )) as {
+      document?: unknown
       exhibitors?: unknown[]
+      itemsBelumTerpetakan?: unknown[]
     }
     const warnings: string[] = []
     const exhibitors = (Array.isArray(parsed.exhibitors) ? parsed.exhibitors : []).flatMap((row) => {
@@ -232,7 +297,12 @@ export async function parseCiplExhibitors(file: File): Promise<CiplScanResult> {
       warnings.push('Satu baris exhibitor dilewati karena tidak terbaca.')
       return []
     })
-    return { exhibitors, warnings }
+    const header = normalizeCiplHeader(parsed.document)
+    const itemsBelumTerpetakan = normalizeCiplItems(parsed.itemsBelumTerpetakan)
+    if (!header && itemsBelumTerpetakan.length) {
+      warnings.push('Ada baris barang tanpa kepala dokumen — barang tidak terpilah tidak dapat disimpan.')
+    }
+    return { header, exhibitors, itemsBelumTerpetakan, warnings }
   } catch (error) {
     if (error instanceof DocumentExtractionError) throw error
     throw new DocumentExtractionError('Dokumen tidak dapat dipindai. Coba lagi atau gunakan file lain.', 502)
