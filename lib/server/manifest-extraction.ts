@@ -13,6 +13,7 @@ import {
   type CiplDocumentHeader,
   type DisposisiBarang,
 } from '@/domain/exhibition/cipl-document'
+import { reconcileKoliTotal } from '@/domain/exhibition/cipl-autofill'
 import { assertSupportedDocumentFile, DocumentExtractionError } from './document-extraction'
 import { configuredLlmProvider, configuredScanCiplProvider } from './extraction/config'
 import { LLM_UNAVAILABLE_MESSAGE } from './extraction/errors'
@@ -135,7 +136,6 @@ export async function parseManifestFile(file: File): Promise<ManifestParseResult
 
   try {
     const parsed = (await chatDocumentJson(
-      provider.id,
       provider,
       'Parse this inward manifest document into blocks. Return only the JSON object described.',
       file,
@@ -161,6 +161,11 @@ export type CiplExhibitorParse = {
   name: string
   jobNo: string | null
   logistics: ExhibitorLogistics
+  /**
+   * Total paket yang disebut dokumen untuk exhibitor ini (kolom "Total Package" inward manifest),
+   * `null` bila dokumen tidak menyebutnya per exhibitor — lihat domain/exhibition/cipl-autofill.
+   */
+  statedTotalCount: number | null
   items: BarisBarang[]
 }
 
@@ -204,7 +209,8 @@ First identify: event information; shipper; consignee; invoice information; exhi
 ## 4. Package identification
 
 - Distinguish package type, package identifier/case number, number of packages, and goods inside packages. Preserve the original package terminology and label text ("PKG 1", "PK 2", "7-11") — do not rename or renumber.
-- CASE/PKG/PK rows carrying Dimension L W H are koli rows. koliTotalCount = the number of package rows/numbers belonging to that exhibitor in the table (count the package numbers 1..40 under the exhibitor's merged cell, or the exhibitor's own "Total Package" column when present) — NEVER the document footer "TTL: N PACKAGES". A "Bare Case" column value (e.g. "7 PKG") goes to bareCaseCount as written; null when the row shows none.
+- CASE/PKG/PK rows carrying Dimension L W H are koli rows. Copy each row's package-number cell into "label" EXACTLY as printed — "1", "PKG 1", "PK 2", a range "7-11", or the literal "in package No. 22" — because the package count is computed from that text, not from the number of rows. Never rewrite a range as a single number and never expand it into several rows.
+- koliTotalCount = the exhibitor's own "Total Package" column ONLY when the document prints one per exhibitor (inward manifests do; consolidated CIPLs do not). Use null when it does not — do NOT count rows yourself, and NEVER use the document footer "TTL: N PACKAGES", which belongs to the whole container. A "Bare Case" column value (e.g. "7 PKG") goes to bareCaseCount as written; null when the row shows none.
 - Bottom totals (sum CBM / weight per job, TTL, TOTAL CIF AMOUNT) are neither koli rows nor items; skip them.
 
 ## 5. Goods extraction
@@ -382,7 +388,12 @@ function partitionCiplRows(entries: RawExhibitorEntry[]): CiplExhibitorParse[] {
       own.hall ??= entry.hall
       own.booth ??= entry.booth
       own.bareCaseCount ??= entry.bareCaseCount
-      own.totalCountHint = Math.max(own.totalCountHint ?? 0, entry.koliTotalCount ?? 0)
+      // null dipertahankan: "dokumen tidak menyebut total per exhibitor" berbeda artinya dari
+      // "dokumen menyebut 0" — pembedaan itu yang menentukan apakah label koli berwenang.
+      own.totalCountHint =
+        own.totalCountHint === null && entry.koliTotalCount === null
+          ? null
+          : Math.max(own.totalCountHint ?? 0, entry.koliTotalCount ?? 0)
     } else {
       const group = ensure(entry.name, entryKey)
       group.jobNo = entry.jobNo
@@ -395,9 +406,10 @@ function partitionCiplRows(entries: RawExhibitorEntry[]): CiplExhibitorParse[] {
 
   const partitioned = groups.size > entries.length
   return [...groups.values()].map((group) => {
-    // Saat partisi memecah entri (CIPL konsolidasi), total level entri adalah salinan
-    // total dokumen — jumlah koli per grup dihitung dari barisnya sendiri.
-    const totalCount = partitioned ? group.details.length : Math.max(group.totalCountHint ?? 0, group.details.length)
+    // Saat partisi memecah entri (CIPL konsolidasi), total level entri adalah salinan total
+    // dokumen — ia TIDAK menyebut total per exhibitor, jadi label barislah yang berwenang.
+    const statedTotalCount = partitioned ? null : group.totalCountHint
+    const totalCount = reconcileKoliTotal(group.details, statedTotalCount)
     const logistics = exhibitorLogisticsSchema.safeParse({
       hall: group.hall,
       booth: group.booth,
@@ -405,7 +417,13 @@ function partitionCiplRows(entries: RawExhibitorEntry[]): CiplExhibitorParse[] {
       notes: [],
     })
     if (!logistics.success) return null
-    return { name: group.name, jobNo: group.jobNo, logistics: logistics.data, items: group.items }
+    return {
+      name: group.name,
+      jobNo: group.jobNo,
+      logistics: logistics.data,
+      statedTotalCount: statedTotalCount ?? null,
+      items: group.items,
+    }
   }).filter((entry): entry is CiplExhibitorParse => entry !== null)
 }
 
@@ -417,12 +435,11 @@ export async function parseCiplExhibitors(file: File): Promise<CiplScanResult> {
 
   try {
     const parsed = (await chatDocumentJson(
-      provider.id,
       provider,
       'Parse this document into exhibitor rows with their koli and item lines. Return only the JSON object described.',
       file,
       ciplSystemPrompt,
-      180_000,
+      300_000,
     )) as {
       document?: unknown
       exhibitors?: unknown[]

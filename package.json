@@ -9,13 +9,12 @@
     "lint": "next lint",
     "guard:arch": "tsx scripts/guard-architecture.ts",
     "data:build": "node scripts/build-discovery-dataset.mjs",
-    "domain:demo": "tsx domain/v2/demo.ts",
-    "domain:test": "bun test domain/v2/validation.test.ts domain/event/validation.test.ts domain/event/reference-validation.test.ts domain/event/tuntas.test.ts domain/exhibition/validation.test.ts domain/exhibition/cipl-document.test.ts domain/it-inventory/ledger.test.ts domain/job/manifest.test.ts domain/user/validation.test.ts domain/user/user.test.ts domain/ticket/validation.test.ts domain/ticket/timeline.test.ts lib/document-comparison.test.ts lib/manifest-view.test.ts lib/operational-details.test.ts lib/job-number.test.ts lib/ceisa/bc23-draft.test.ts lib/server/ceisa/crypto.test.ts features/auth/auth.config.test.ts",
+    "domain:test": "bun test domain/event/validation.test.ts domain/event/reference-validation.test.ts domain/event/tuntas.test.ts domain/exhibition/validation.test.ts domain/exhibition/cipl-document.test.ts domain/exhibition/cipl-autofill.test.ts domain/event/exhibitor-matching.test.ts domain/shared/package-refs.test.ts domain/it-inventory/ledger.test.ts domain/job/manifest.test.ts domain/user/validation.test.ts domain/user/user.test.ts domain/ticket/validation.test.ts domain/ticket/timeline.test.ts lib/document-comparison.test.ts lib/manifest-view.test.ts lib/operational-details.test.ts lib/job-number.test.ts lib/ceisa/bc23-draft.test.ts lib/server/ceisa/crypto.test.ts features/auth/auth.config.test.ts",
     "supabase:create-user": "tsx scripts/create-supabase-user.ts",
-    "supabase:seed-reference": "tsx scripts/seed-exhibition-reference.ts",
-    "domain:validate-samples": "tsx domain/v2/validate-samples.mts"
+    "supabase:seed-reference": "tsx scripts/seed-exhibition-reference.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
     "@base-ui/react": "^1.8.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
@@ -35,8 +34,8 @@
     "server-only": "0.0.1",
     "tailwind-merge": "2.6.0",
     "tesseract.js": "7.0.0",
-    "xlsx": "^0.18.5",
-    "zod": "3.24.4"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "zod": "3.25.76"
   },
   "devDependencies": {
     "@types/node": "22.10.2",

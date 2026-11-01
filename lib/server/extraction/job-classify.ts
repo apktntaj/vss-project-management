@@ -22,7 +22,7 @@ export function toLegacyDocumentKind(documentType: string): DocumentType {
   return LEGACY_TYPES[documentType] ?? 'OTHER'
 }
 
-/** Klasifikasi dokumen job: provider LLM terkonfigurasi (LLM_PROVIDER) dicoba lebih dulu;
+/** Klasifikasi dokumen job: Claude (LLM_API_KEY) dicoba lebih dulu;
  *  gagal atau tak dikonfigurasi → lapisan deterministik (regex + OCR). */
 export async function classifyJobDocument(file: File): Promise<ExtractionResult> {
   assertSupportedDocumentFile(file)

@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { CONFIDENCE_THRESHOLD, LLM_TIMEOUT_MS } from '../config'
+import { CONFIDENCE_THRESHOLD } from '../config'
 import { DocumentExtractionError, LLM_FAILED_MESSAGE, LLM_UNAVAILABLE_MESSAGE } from '../errors'
 import { isPdf } from '../file-guard'
 import { parseSpreadsheet } from '../deterministic/xlsx-parser'
@@ -52,22 +52,6 @@ export async function documentInputForLlm(file: File): Promise<{ pdfBase64: stri
   if (isPdf(file)) return { pdfBase64: Buffer.from(await file.arrayBuffer()).toString('base64') }
   const parsed = await parseSpreadsheet(file)
   return { text: parsed.text }
-}
-
-export async function fetchJsonWithTimeout(url: string, timeoutMs: number | undefined, init: RequestInit): Promise<unknown> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs ?? LLM_TIMEOUT_MS)
-  try {
-    const response = await fetch(url, { ...init, signal: controller.signal })
-    if (!response.ok) throw new DocumentExtractionError(`${LLM_FAILED_MESSAGE} (${response.status})`, 503, 'LLM_EXTRACTION_FAILED')
-    return await response.json()
-  } catch (error) {
-    if (error instanceof DocumentExtractionError) throw error
-    const aborted = error instanceof Error && error.name === 'AbortError'
-    throw new DocumentExtractionError(LLM_FAILED_MESSAGE, 503, aborted ? 'LLM_EXTRACTION_TIMEOUT' : 'LLM_EXTRACTION_FAILED')
-  } finally {
-    clearTimeout(timer)
-  }
 }
 
 export function parseJsonPayload(rawText: string): Record<string, unknown> {

@@ -6,15 +6,13 @@ import { chatDocumentJson } from './document-json'
 import { EXTRACTION_PROMPT, EXTRACTION_USER_PROMPT, toExtractionResult } from './shared'
 
 export class ClaudeProvider implements LlmProvider {
-  readonly id = 'CLAUDE' as const
-
   constructor(
     private readonly apiKey: string,
     private readonly model: string,
   ) {}
 
   extract(file: File): Promise<ExtractionResult> {
-    return chatDocumentJson('CLAUDE', { apiKey: this.apiKey, model: this.model }, EXTRACTION_USER_PROMPT, file, EXTRACTION_PROMPT).then(
+    return chatDocumentJson({ apiKey: this.apiKey, model: this.model }, EXTRACTION_USER_PROMPT, file, EXTRACTION_PROMPT).then(
       (payload) => toExtractionResult('LLM', payload),
     )
   }

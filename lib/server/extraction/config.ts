@@ -7,37 +7,18 @@ export const LLM_TIMEOUT_MS = 90_000
 export const CONFIDENCE_THRESHOLD = 0.7
 export const CONFIDENCE_BANDS = { LOW: 0.5, MEDIUM: 0.8 } as const
 
-export type LlmProviderId = 'CLAUDE' | 'DEEPSEEK' | 'SUMOPOD'
+export const DEFAULT_LLM_MODEL = 'claude-sonnet-5-5'
 
-export const LLM_MODELS: Record<LlmProviderId, string> = {
-  CLAUDE: 'claude-3-5-haiku-latest',
-  DEEPSEEK: 'deepseek-chat',
-  SUMOPOD: 'gpt-4o-mini',
-}
-
-/** Membaca LLM_PROVIDER + LLM_API_KEY; tanpa LLM_PROVIDER default SUMOPOD.
- *  LLM_MODEL opsional menimpa model bawaan provider. */
-export function configuredLlmProvider(): { id: LlmProviderId; apiKey: string; model: string } | null {
-  const requested = process.env.LLM_PROVIDER?.trim().toUpperCase()
-  const id = requested ? (requested in LLM_MODELS ? (requested as LlmProviderId) : null) : 'SUMOPOD'
-  if (!id) return null
+/** Membaca LLM_API_KEY (Anthropic). LLM_MODEL opsional menimpa model default. */
+export function configuredLlmProvider(): { apiKey: string; model: string } | null {
   const apiKey = process.env.LLM_API_KEY?.trim()
   if (!apiKey) return null
-  return { id, apiKey, model: process.env.LLM_MODEL?.trim() || LLM_MODELS[id] }
+  return { apiKey, model: process.env.LLM_MODEL?.trim() || DEFAULT_LLM_MODEL }
 }
 
-/** Provider pintu scan CIPL: CIPL_SCAN_PROVIDER/CIPL_SCAN_MODEL menimpa global.
- *  Pemindaian tabel konsolidasi (merged-cell) butuh model yang lebih kuat dari default. */
-export function configuredScanCiplProvider(): { id: LlmProviderId; apiKey: string; model: string } | null {
-  const requested =
-    process.env.CIPL_SCAN_PROVIDER?.trim().toUpperCase() || process.env.LLM_PROVIDER?.trim().toUpperCase()
-  const id = requested ? (requested in LLM_MODELS ? (requested as LlmProviderId) : null) : 'SUMOPOD'
-  if (!id) return null
+/** Pintu scan CIPL: CIPL_SCAN_MODEL menimpa model global; tabel konsolidasi butuh model lebih kuat. */
+export function configuredScanCiplProvider(): { apiKey: string; model: string } | null {
   const apiKey = process.env.LLM_API_KEY?.trim()
   if (!apiKey) return null
-  return {
-    id,
-    apiKey,
-    model: process.env.CIPL_SCAN_MODEL?.trim() || process.env.LLM_MODEL?.trim() || LLM_MODELS[id],
-  }
+  return { apiKey, model: process.env.CIPL_SCAN_MODEL?.trim() || process.env.LLM_MODEL?.trim() || DEFAULT_LLM_MODEL }
 }
