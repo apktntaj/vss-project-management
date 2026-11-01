@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Plus, Search, Trash2, Upload, X } from 'lucide-react'
+import { ChevronRight, Plus, Search, Trash2, Upload, X } from 'lucide-react'
 
 import {
   createInternationalJobInit,
@@ -507,11 +507,7 @@ export function JobCreateWizard({
                     disabled={busy}
                     aria-current={index === slide ? 'step' : undefined}
                     className={`rounded-full px-2 py-0.5 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                      index === slide
-                        ? 'bg-orange-100 text-orange-800'
-                        : index < slide
-                          ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                          : 'text-slate-400 hover:bg-slate-100'
+                      index === slide ? 'bg-slate-900 text-white' : 'text-slate-400 hover:bg-slate-100'
                     }`}
                   >
                     {index + 1}. {label}
@@ -765,9 +761,20 @@ export function JobCreateWizard({
                     {finishing ? 'Menyimpan...' : 'Selesai'}
                   </button>
                 ) : null}
-                <button type="submit" disabled={busy} className="btn-primary">
-                  {selection === 'LOCAL' ? (finishing ? 'Menyimpan...' : 'Buat job') : 'Lanjut'}
-                </button>
+                {selection === 'LOCAL' ? (
+                  <button type="submit" disabled={busy} className="btn-primary">
+                    {finishing ? 'Menyimpan...' : 'Buat job'}
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    aria-label="Lanjut ke bagian CIPL"
+                    className="btn-primary w-10 !px-0"
+                  >
+                    <ChevronRight size={18} aria-hidden="true" />
+                  </button>
+                )}
               </div>
             </div>
           </form>
@@ -1063,8 +1070,14 @@ export function JobCreateWizard({
                 <button type="button" onClick={finish} className="btn-secondary" disabled={busy}>
                   {finishing ? 'Menyimpan...' : 'Selesai'}
                 </button>
-                <button type="button" onClick={() => setSlide(2)} className="btn-primary" disabled={busy}>
-                  Lanjut
+                <button
+                  type="button"
+                  onClick={() => setSlide(2)}
+                  aria-label="Lanjut ke bagian B/L atau AWB"
+                  className="btn-primary w-10 !px-0"
+                  disabled={busy}
+                >
+                  <ChevronRight size={18} aria-hidden="true" />
                 </button>
               </div>
             </div>
