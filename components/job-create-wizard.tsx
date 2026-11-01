@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { ChevronRight, Plus, Search, Trash2, Upload, X } from 'lucide-react'
+import { Plus, Search, Trash2, Upload, X } from 'lucide-react'
 
 import {
   createInternationalJobInit,
@@ -490,7 +490,7 @@ export function JobCreateWizard({
         role="dialog"
         aria-modal="true"
         aria-labelledby="job-create-title"
-        className="card flex max-h-[calc(100vh-2rem)] min-h-0 w-full max-w-3xl flex-col overflow-hidden"
+        className="card flex h-[min(720px,calc(100vh-2rem))] min-h-0 w-full max-w-3xl flex-col overflow-hidden"
       >
         <div className="flex shrink-0 items-center justify-between gap-4 border-b px-6 py-5 sm:px-8">
           <div className="min-w-0">
@@ -507,7 +507,7 @@ export function JobCreateWizard({
                     disabled={busy}
                     aria-current={index === slide ? 'step' : undefined}
                     className={`rounded-full px-2 py-0.5 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                      index === slide ? 'bg-slate-900 text-white' : 'text-slate-400 hover:bg-slate-100'
+                      index === slide ? 'bg-orange-100 text-orange-800' : 'text-slate-400 hover:bg-slate-100'
                     }`}
                   >
                     {index + 1}. {label}
@@ -756,25 +756,14 @@ export function JobCreateWizard({
                 <button type="button" onClick={onCancel} className="btn-secondary" disabled={busy}>
                   Batal
                 </button>
-                {selection !== 'LOCAL' ? (
-                  <button type="button" onClick={finish} className="btn-secondary" disabled={busy}>
-                    {finishing ? 'Menyimpan...' : 'Selesai'}
-                  </button>
-                ) : null}
-                {selection === 'LOCAL' ? (
-                  <button type="submit" disabled={busy} className="btn-primary">
-                    {finishing ? 'Menyimpan...' : 'Buat job'}
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    disabled={busy}
-                    aria-label="Lanjut ke bagian CIPL"
-                    className="btn-primary w-10 !px-0"
-                  >
-                    <ChevronRight size={18} aria-hidden="true" />
-                  </button>
-                )}
+                <button
+                  type={selection === 'LOCAL' ? 'submit' : 'button'}
+                  onClick={selection === 'LOCAL' ? undefined : finish}
+                  disabled={busy}
+                  className="btn-primary"
+                >
+                  {finishing ? 'Menyimpan...' : 'Selesai'}
+                </button>
               </div>
             </div>
           </form>
@@ -1064,20 +1053,11 @@ export function JobCreateWizard({
 
             <div className="shrink-0 border-t px-6 py-4 sm:px-8">
               <div className="flex justify-end gap-3">
-                <button type="button" onClick={() => setSlide(0)} className="btn-secondary" disabled={busy}>
-                  Kembali
+                <button type="button" onClick={onCancel} className="btn-secondary" disabled={busy}>
+                  Batal
                 </button>
-                <button type="button" onClick={finish} className="btn-secondary" disabled={busy}>
+                <button type="button" onClick={finish} disabled={busy} className="btn-primary">
                   {finishing ? 'Menyimpan...' : 'Selesai'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSlide(2)}
-                  aria-label="Lanjut ke bagian B/L atau AWB"
-                  className="btn-primary w-10 !px-0"
-                  disabled={busy}
-                >
-                  <ChevronRight size={18} aria-hidden="true" />
                 </button>
               </div>
             </div>
@@ -1137,8 +1117,8 @@ export function JobCreateWizard({
 
             <div className="shrink-0 border-t px-6 py-4 sm:px-8">
               <div className="flex justify-end gap-3">
-                <button type="button" onClick={() => setSlide(1)} className="btn-secondary" disabled={busy}>
-                  Kembali
+                <button type="button" onClick={onCancel} className="btn-secondary" disabled={busy}>
+                  Batal
                 </button>
                 <button type="button" onClick={finish} disabled={busy} className="btn-primary">
                   {finishing ? 'Menyimpan...' : 'Selesai'}
