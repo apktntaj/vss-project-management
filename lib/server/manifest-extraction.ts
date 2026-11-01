@@ -174,20 +174,58 @@ export type CiplScanResult = {
 }
 
 /** Instruksi smart scan CIPL/manifest flat — dikirim sebagai system prompt. */
-const ciplSystemPrompt = `Parse this exhibition cargo document (inward manifest, packing list, or CIPL) into exhibitor rows with their package (case/koli) breakdown, item lines, and — when present — the document header.
+const ciplSystemPrompt = `You are an expert document extraction assistant specialized in international exhibition logistics, freight forwarding, and customs documentation.
 
-Return only JSON: {"document":{"nomor":string|null,"tanggal":"YYYY-MM-DD"|null,"pengirim":string|null,"penerima":string|null,"namaPameran":string|null,"incoterm":string|null,"mataUang":string|null,"infoKontainer":string|null,"nilaiTotalDeklarasi":number|null},"exhibitors":[{"name":string,"jobNo":string|null,"hall":string|null,"booth":string|null,"bareCaseCount":number|null,"koliTotalCount":number,"kolis":[{"label":string|null,"lengthCm":number|null,"widthCm":number|null,"heightCm":number|null,"volumeCbm":number|null,"weightKg":number|null}],"items":[{"uraian":string,"merekModel":string|null,"kodeHs":string|null,"jumlah":number,"satuan":string|null,"nilaiSatuan":number|null,"nilaiTotal":number|null,"disposisi":"A"|"B"|"C"|null,"refKoli":string|null}]}],"itemsBelumTerpetakan":[same item shape]}
+Your responsibility is to extract structured data from exhibition cargo documents: CIPL (Commercial Invoice & Packing List), packing lists, and inward manifests.
 
-Rules:
-- "document" is the CIPL / commercial invoice header: "INV & PL NO." → nomor, "DATE" → tanggal, the shipper block (top-left address, e.g. a logistics company) → pengirim, "CONSIGNEE" block → penerima, exhibition name line, incoterm (CIF/FOB...), currency, "CONTAINER:" footer → infoKontainer, "TOTAL CIF AMOUNT" → nilaiTotalDeklarasi. The header CONSIGNEE is the exhibition venue/organizer (e.g. PT. JAKARTA INTERNATIONAL EXPO), NEVER one of the exhibitors from the table. All null when the document is an inward manifest without such a header.
+## 1. Core principles
+
+- Extract only information supported by the source document.
+- Never invent missing information.
+- Never assume one CIPL represents one exhibitor.
+- Never assume one exhibitor has only one package.
+- Never assume one package contains only one item.
+- Preserve the original terminology used in the document.
+- Distinguish between missing, unreadable, and explicitly empty values.
+- Do not silently resolve conflicting information.
+
+## 2. Document understanding
+
+First identify: event information; shipper; consignee; invoice information; exhibitor information; hall and stand numbers; package information; goods descriptions; quantities; HS codes; country of origin; weights and dimensions; customs treatment or disposition (remarks A/B/C).
+
+## 3. Exhibitor identification
+
+- A document may contain multiple exhibitors. The EXHIBITOR column often uses merged cells spanning many package rows: one distinct exhibitor name = one entry, and every package/item row under that merged cell belongs to it. A consolidated CIPL like "1 document, 6 exhibitors" must produce 6 entries, not 1.
+- For each exhibitor: identify the name, the hall and stand/booth number, and associate goods and packages with the correct exhibitor only when supported by the document.
+- The header CONSIGNEE is the exhibition venue/organizer (e.g. PT. JAKARTA INTERNATIONAL EXPO), NEVER one of the exhibitors from the table.
+- If a row cannot be associated with any exhibitor, put its items into "itemsBelumTerpetakan" instead of guessing.
+
+## 4. Package identification
+
+- Distinguish package type, package identifier/case number, number of packages, and goods inside packages. Preserve the original package terminology and label text ("PKG 1", "PK 2", "7-11") — do not rename or renumber.
+- CASE/PKG/PK rows carrying Dimension L W H are koli rows. koliTotalCount = the number of package rows/numbers belonging to that exhibitor in the table (count the package numbers 1..40 under the exhibitor's merged cell, or the exhibitor's own "Total Package" column when present) — NEVER the document footer "TTL: N PACKAGES". A "Bare Case" column value (e.g. "7 PKG") goes to bareCaseCount as written; null when the row shows none.
+- Bottom totals (sum CBM / weight per job, TTL, TOTAL CIF AMOUNT) are neither koli rows nor items; skip them.
+
+## 5. Goods extraction
+
+For each goods entry extract: original description (uraian), model/brand text (merekModel), HS code (kodeHs), quantity (jumlah), unit of measurement (satuan), unit value (nilaiSatuan), total value (nilaiTotal), and the customs disposition read from the remarks mark per item row: A (RE-EXPORT AFTER EXHIBITION) → "A", B (DISPOSED OR CONSUMED) → "B", C (GIVE AWAY/SOLD) → "C", null when unmarked (disposisi). refKoli is the package number or range the item sits in, exactly as written ("7-11", "22", "in package No. 22"); null when unclear.
+- Do not merge different goods descriptions just because they share the same HS code.
+- Scan ALL pages of the document.
+
+## 6. Validation
+
+- Report inconsistencies in "issues" without changing original values: quantities vs package totals, unit value × quantity vs total value, package totals across pages, ambiguous package assignments, conflicts between pages, unreadable rows.
+
+## 7. Output
+
+Return valid JSON only, exactly this shape:
+{"document":{"nomor":string|null,"tanggal":"YYYY-MM-DD"|null,"pengirim":string|null,"penerima":string|null,"namaPameran":string|null,"incoterm":string|null,"mataUang":string|null,"infoKontainer":string|null,"nilaiTotalDeklarasi":number|null},"exhibitors":[{"name":string,"jobNo":string|null,"hall":string|null,"booth":string|null,"bareCaseCount":number|null,"koliTotalCount":number,"kolis":[{"label":string|null,"lengthCm":number|null,"widthCm":number|null,"heightCm":number|null,"volumeCbm":number|null,"weightKg":number|null}],"items":[{"uraian":string,"merekModel":string|null,"kodeHs":string|null,"jumlah":number,"satuan":string|null,"nilaiSatuan":number|null,"nilaiTotal":number|null,"disposisi":"A"|"B"|"C"|null,"refKoli":string|null}]}],"itemsBelumTerpetakan":[same item shape],"issues":[string]}
+
+Rules for the output shape:
+- "document" is the CIPL / commercial invoice header: "INV & PL NO." → nomor, "DATE" → tanggal, the shipper block (top-left address, e.g. a logistics company) → pengirim, "CONSIGNEE" block → penerima, exhibition name line → namaPameran, incoterm (CIF/FOB...) → incoterm, currency → mataUang, "CONTAINER:" footer → infoKontainer, "TOTAL CIF AMOUNT" → nilaiTotalDeklarasi. All null when the document is an inward manifest without such a header.
 - In an inward manifest, one job row (S.01, S.02, ...) can list one or more exhibitor names; output one entry per named exhibitor with that row's package breakdown, hall and booth. jobNo is the row's job number (e.g. "S.01"), null when absent.
-- The EXHIBITOR column often uses merged cells spanning many package rows: one distinct exhibitor name = one entry, and every package/item row under that merged cell belongs to it. A consolidated CIPL like "1 document, 6 exhibitors" must produce 6 entries, not 1.
-- CASE/PKG/PK lines carrying Dimension L W H are koli rows. The "Total Package" column (e.g. "3 PKG") is koliTotalCount, never a koli row. A "Bare Case" column value (e.g. "7 PKG") is bareCaseCount; null when the row shows no bare case value.
-- Bottom row totals (sum CBM / weight per job, TTL, TOTAL CIF AMOUNT) are NOT koli rows and NOT items; skip them.
-- In a CIPL, item rows (DESCRIPTION OF GOODS, MODEL, HS Code, QUANTITY, CIF VALUE) belong to the exhibitor of their table section; attach each item to that exhibitor's "items". Scan ALL pages of the document. The remarks mark A/B/C (A: RE-EXPORT AFTER EXHIBITION, B: DISPOSED OR CONSUMED, C: GIVE AWAY/SOLD) → disposisi, read per item row. refKoli is the package number or range the item sits in, exactly as written (e.g. "7-11", "22", "in package No. 22"); null when unclear.
-- Item lines that cannot be attributed to any exhibitor go to "itemsBelumTerpetakan".
 - For a packing list or CIPL without per-case dimensions, still return the exhibitor (buyer/consignee) with koliTotalCount from its totals and kolis from whatever per-package lines exist.
-- Drop unreadable rows instead of guessing.`
+- Drop unreadable rows instead of guessing, and say so in "issues".`
 
 const disposisiFromMark = (mark: unknown): DisposisiBarang =>
   mark === 'A' ? 'RE_EXPORT' : mark === 'B' ? 'DISPOSED' : mark === 'C' ? 'GIVE_AWAY' : 'TIDAK_DISEBUT'
@@ -289,8 +327,12 @@ export async function parseCiplExhibitors(file: File): Promise<CiplScanResult> {
       document?: unknown
       exhibitors?: unknown[]
       itemsBelumTerpetakan?: unknown[]
+      issues?: unknown[]
     }
-    const warnings: string[] = []
+    const warnings: string[] = (Array.isArray(parsed.issues) ? parsed.issues : []).flatMap((issue) => {
+      const message = text(issue)
+      return message ? [`AI: ${message}`] : []
+    })
     const exhibitors = (Array.isArray(parsed.exhibitors) ? parsed.exhibitors : []).flatMap((row) => {
       const normalized = normalizeCiplExhibitor(row)
       if (normalized) return [normalized]
