@@ -7,7 +7,8 @@ export const LLM_TIMEOUT_MS = 90_000
 export const CONFIDENCE_THRESHOLD = 0.7
 export const CONFIDENCE_BANDS = { LOW: 0.5, MEDIUM: 0.8 } as const
 
-export const DEFAULT_LLM_MODEL = 'claude-sonnet-5-5'
+/** Haiku default demi biaya; dokumen sulit (tabel konsolidasi) bisa pakai CIPL_SCAN_MODEL/LLM_MODEL=claude-sonnet-5-5. */
+export const DEFAULT_LLM_MODEL = 'claude-haiku-5-5'
 
 /** Membaca LLM_API_KEY (Anthropic). LLM_MODEL opsional menimpa model default. */
 export function configuredLlmProvider(): { apiKey: string; model: string } | null {
