@@ -19,7 +19,8 @@ import {
   type MilestoneKind,
   type OperationalNoteKind,
 } from '@/domain/job/manifest'
-import { saveExhibitorLogistics, saveJobInward, saveJobKepulangan, type LocalExhibitor, type LocalJob } from '@/lib/data-client'
+import { saveExhibitorLogistics, saveJobInward, saveJobKepulangan, type LocalJob } from '@/lib/data-client'
+import type { ManifestPeserta, MasterPeserta } from '@/lib/manifest-view'
 import type { ManifestBlockParse } from '@/lib/server/manifest-extraction'
 
 function toast(message: string, tone: 'success' | 'error') {
@@ -146,7 +147,7 @@ export function JobManifestEditorModal({
 }: {
   job: LocalJob
   eventId: string | null
-  peserta: Array<{ exhibitor: LocalExhibitor; logistics: LocalExhibitor['logistics'] }>
+  peserta: ManifestPeserta[]
   onClose: () => void
   onSaved: (job: LocalJob) => void
   onPesertaLogisticsSaved: (exhibitorId: string, logistics: ExhibitorLogistics) => void
@@ -158,6 +159,7 @@ export function JobManifestEditorModal({
   const [importError, setImportError] = useState('')
   const [importResult, setImportResult] = useState<{ blocks: ManifestBlockParse[]; warnings: string[] } | null>(null)
   const [appliedExhibitorIds, setAppliedExhibitorIds] = useState<Set<string>>(new Set())
+  const masterPeserta = peserta.filter((item): item is MasterPeserta => item.origin === 'MASTER')
   const usedMilestoneKinds = new Set(draft.milestones.map((milestone) => milestone.kind))
   const appliedBlock = importResult
     ? (job.agent ? importResult.blocks.find((block) => namesOverlap(block.agentName, job.agent!)) : undefined) ??
@@ -270,7 +272,7 @@ export function JobManifestEditorModal({
     }
   }
 
-  async function applyExhibitorLogistics(target: { exhibitor: LocalExhibitor }, logistics: ExhibitorLogistics) {
+  async function applyExhibitorLogistics(target: MasterPeserta, logistics: ExhibitorLogistics) {
     if (!eventId) return
     try {
       const saved = await saveExhibitorLogistics(eventId, target.exhibitor.id, logistics)
@@ -350,7 +352,7 @@ export function JobManifestEditorModal({
                       </p>
                       <ul className="divide-y divide-slate-100">
                         {appliedBlock.exhibitors.map((exhibitor) => {
-                          const target = peserta.find((item) => namesOverlap(item.exhibitor.name, exhibitor.name))
+                          const target = masterPeserta.find((item) => namesOverlap(item.name, exhibitor.name))
                           const applied = target && appliedExhibitorIds.has(target.exhibitor.id)
                           return (
                             <li key={exhibitor.name} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">

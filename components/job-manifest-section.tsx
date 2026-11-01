@@ -65,9 +65,14 @@ function PesertaRow({
     <>
       <tr className="border-b border-slate-100 odd:bg-slate-50/70 last:border-0">
         <td className="px-3 py-3 align-top">
-          <p className="font-medium text-slate-800" title={peserta.exhibitor.name}>
-            {peserta.exhibitor.name}
+          <p className="font-medium text-slate-800" title={peserta.name}>
+            {peserta.name}
           </p>
+          {peserta.origin === 'CIPL_SCAN' && (
+            <span className="mt-1 inline-flex rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700 ring-1 ring-inset ring-orange-200">
+              dari scan CIPL
+            </span>
+          )}
           {anomalyNotes.map((note, index) => (
             <p key={index} className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-700">
               <TriangleAlert size={12} aria-hidden="true" /> {note.text}
@@ -110,13 +115,17 @@ function PesertaRow({
           </div>
         </td>
         <td className="px-3 py-3 align-top text-right">
-          <button
-            type="button"
-            onClick={() => onEdit(peserta.exhibitor)}
-            className="text-xs font-semibold text-orange-700 hover:text-orange-800"
-          >
-            Edit koli
-          </button>
+          {peserta.origin === 'MASTER' ? (
+            <button
+              type="button"
+              onClick={() => onEdit(peserta.exhibitor)}
+              className="text-xs font-semibold text-orange-700 hover:text-orange-800"
+            >
+              Edit koli
+            </button>
+          ) : (
+            <span className="text-xs text-slate-400">Data scan</span>
+          )}
         </td>
       </tr>
       {expanded &&
@@ -236,7 +245,7 @@ export function JobManifestSection({
           </thead>
           <tbody>
             {view.peserta.map((peserta) => (
-              <PesertaRow key={peserta.exhibitor.id} peserta={peserta} onEdit={onEditPeserta} />
+              <PesertaRow key={peserta.key} peserta={peserta} onEdit={onEditPeserta} />
             ))}
             {!view.peserta.length && (
               <tr>

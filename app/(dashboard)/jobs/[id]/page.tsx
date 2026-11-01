@@ -194,7 +194,10 @@ export default function JobDetail({ params }: { params: { id: string } }) {
     return <PageSkeleton cards={2} rows={5} />
   }
   const showManifest =
-    job.kind === 'INTERNATIONAL' || Boolean(job.inward) || Boolean(job.kepulangan)
+    job.kind === 'INTERNATIONAL' ||
+    Boolean(job.inward) ||
+    Boolean(job.kepulangan) ||
+    Boolean(job.manifestExhibitors?.length)
   const details = getOperationalDetails(job)
   const completed = Object.values(details.customs).filter(
     (item) => item.applicable && item.status === 'COMPLETED',
