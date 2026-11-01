@@ -114,11 +114,12 @@ function scanFileAcceptable(file: File): boolean {
 }
 
 /**
- * Wizard pembuatan job tiga slide: (1) job — event via pencarian, jenis, No Job,
+ * Wizard pembuatan job tiga bagian: (1) job — event via pencarian, jenis, No Job,
  * agent, bill to; (2) informasi CIPL — daftar exhibitor + rincian koli dengan smart
- * scan LLM; (3) data B/L atau AWB dengan smart scan. Seluruh isian ditahan di
- * memori; job dibuat di database sekali saat "Selesai" bersama lampiran dan baris
- * CIPL, sehingga membatalkan kapan pun tidak meninggalkan data.
+ * scan LLM; (3) data B/L atau AWB dengan smart scan. Bagian dapat diisi dalam urutan
+ * bebas lewat langkah di header; "Selesai" tersedia di semua bagian dan menyimpan
+ * seluruh isian yang sudah terisi (syarat wajib hanya event pada bagian job), sehingga
+ * membatalkan kapan pun tidak meninggalkan data.
  */
 export function JobCreateWizard({
   events,
@@ -200,10 +201,10 @@ export function JobCreateWizard({
 
   function changeSelection(next: JobTypeSelection) {
     setSelection(next)
-    // Local tidak membutuhkan agent — centang "Tanpa agent" dan bersihkan pilihan agent.
-    const local = next === 'LOCAL'
-    setTanpaAgent(local)
-    if (local) {
+    // Local dan road shipment tidak membutuhkan agent — centang "Tanpa agent" dan bersihkan pilihan agent.
+    const tanpaAgentDefault = next === 'LOCAL' || next === 'ROAD_SHIPMENT'
+    setTanpaAgent(tanpaAgentDefault)
+    if (tanpaAgentDefault) {
       setSelectedAgentId(null)
       setAgentQuery('')
     }
@@ -500,17 +501,21 @@ export function JobCreateWizard({
               {slideLabels.map((label, index) => (
                 <li key={label} className="flex items-center gap-1.5">
                   {index > 0 ? <span className="text-slate-300">›</span> : null}
-                  <span
-                    className={`rounded-full px-2 py-0.5 font-medium ${
+                  <button
+                    type="button"
+                    onClick={() => setSlide(index)}
+                    disabled={busy}
+                    aria-current={index === slide ? 'step' : undefined}
+                    className={`rounded-full px-2 py-0.5 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                       index === slide
                         ? 'bg-orange-100 text-orange-800'
                         : index < slide
-                          ? 'bg-emerald-50 text-emerald-700'
-                          : 'text-slate-400'
+                          ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                          : 'text-slate-400 hover:bg-slate-100'
                     }`}
                   >
                     {index + 1}. {label}
-                  </span>
+                  </button>
                 </li>
               ))}
             </ol>
@@ -755,6 +760,11 @@ export function JobCreateWizard({
                 <button type="button" onClick={onCancel} className="btn-secondary" disabled={busy}>
                   Batal
                 </button>
+                {selection !== 'LOCAL' ? (
+                  <button type="button" onClick={finish} className="btn-secondary" disabled={busy}>
+                    {finishing ? 'Menyimpan...' : 'Selesai'}
+                  </button>
+                ) : null}
                 <button type="submit" disabled={busy} className="btn-primary">
                   {selection === 'LOCAL' ? (finishing ? 'Menyimpan...' : 'Buat job') : 'Lanjut'}
                 </button>
@@ -1049,6 +1059,9 @@ export function JobCreateWizard({
               <div className="flex justify-end gap-3">
                 <button type="button" onClick={() => setSlide(0)} className="btn-secondary" disabled={busy}>
                   Kembali
+                </button>
+                <button type="button" onClick={finish} className="btn-secondary" disabled={busy}>
+                  {finishing ? 'Menyimpan...' : 'Selesai'}
                 </button>
                 <button type="button" onClick={() => setSlide(2)} className="btn-primary" disabled={busy}>
                   Lanjut
