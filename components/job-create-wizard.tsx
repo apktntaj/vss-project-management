@@ -772,9 +772,8 @@ export function JobCreateWizard({
         {slide === 1 ? (
           <>
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6 sm:p-8">
-              <fieldset className="rounded-xl border border-dashed border-orange-300 bg-orange-50/50 p-4">
-                <legend className="px-1 text-sm font-semibold text-slate-800">Smart Scan</legend>
-                <label className="mt-3 flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-black/20 bg-white px-4 py-3 text-sm text-slate-500 hover:border-orange-300 hover:bg-orange-50">
+              <div>
+                <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-black/20 bg-white px-4 py-3 text-sm text-slate-500 hover:border-orange-300 hover:bg-orange-50">
                   <span className="min-w-0 truncate">
                     {ciplFile ? `Terpindai: ${ciplFile.name}` : 'Pilih dokumen untuk dipindai'}
                   </span>
@@ -795,8 +794,12 @@ export function JobCreateWizard({
                   <p className="mt-2 text-sm font-medium text-orange-700" aria-live="polite">
                     Memeriksa dokumen dengan AI...
                   </p>
-                ) : null}
-              </fieldset>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Isi otomatis dari dokumen — daftar exhibitor dan koli terisi dari hasil pindai.
+                  </p>
+                )}
+              </div>
 
               {ciplRows.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-black/15 px-4 py-3 text-sm text-slate-500">
