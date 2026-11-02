@@ -8,13 +8,15 @@ import {
   listUserReferences,
   listVenueReferences,
 } from '@/features/events'
-import type { EventListPage, EventListQuery } from '@/domain/event/types'
+import type { EventListPage } from '@/domain/event/types'
 import type { CurrentUser } from '@/domain/auth/types'
 import { ApiError } from '@/lib/server/errors'
 
 import { EventCreateButton } from '@/features/events/components/event-create-button'
+import { EventExportButton } from '@/features/events/components/event-export-button'
 import { EventFilters } from '@/features/events/components/event-filters'
 import { EventList } from '@/features/events/components/event-list'
+import { parseEventListQuery } from '@/features/events/list-query'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,20 +30,8 @@ function singleParam(value: string | string[] | undefined): string | undefined {
   return value
 }
 
-function toQuery(searchParams: EventsPageProps['searchParams']): EventListQuery {
-  const search = singleParam(searchParams?.search)?.trim() || undefined
-  const status = singleParam(searchParams?.status)
-  const pic = singleParam(searchParams?.pic)?.trim() || undefined
-
-  const query: EventListQuery = {}
-  if (search) query.search = search
-  if (pic) query.picId = pic
-  if (status === 'active') {
-    query.lifecycle = 'ACTIVE'
-  } else if (status === 'soon' || status === 'ongoing' || status === 'done') {
-    query.displayStatus = status
-  }
-  return query
+function toQuery(searchParams: EventsPageProps['searchParams']) {
+  return parseEventListQuery((key) => singleParam(searchParams?.[key]))
 }
 
 export default async function EventsPage({ searchParams }: EventsPageProps) {
@@ -99,7 +89,10 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
 
       <section className="flex min-h-0 flex-1 flex-col gap-3">
         <EventFilters pics={pics}>
-          <EventCreateButton venues={venues} organizers={organizers} pics={pics} />
+          <div className="flex items-center gap-3">
+            <EventExportButton />
+            <EventCreateButton venues={venues} organizers={organizers} pics={pics} />
+          </div>
         </EventFilters>
 
         {loadFailed || !page ? (

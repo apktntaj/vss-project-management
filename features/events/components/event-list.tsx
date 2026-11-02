@@ -63,7 +63,7 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
               Venue
             </th>
             <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2">
-              EO
+              Event Organizer
             </th>
             <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2">
               PIC

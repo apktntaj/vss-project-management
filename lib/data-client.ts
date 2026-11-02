@@ -263,6 +263,22 @@ export async function downloadEventManifest(eventId: string): Promise<{ blob: Bl
   return { blob: await response.blob(), filename }
 }
 
+/**
+ * Unduh daftar event (Excel) dengan filter yang sama dengan layar. `search` adalah query string
+ * halaman events (`search`/`status`/`pic`); parameter lain diabaikan server.
+ */
+export async function downloadEventsExport(search: string): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(`/api/events/export${search ? `?${search}` : ''}`, {
+    cache: 'no-store',
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null
+    throw new Error(body?.error ?? 'Daftar event tidak dapat diekspor.')
+  }
+  const filename = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '')?.[1] ?? 'events.xlsx'
+  return { blob: await response.blob(), filename }
+}
+
 /** Returns attachment bytes without leaking the active storage implementation to UI code. */
 export async function getAttachmentContent(attachmentId: string): Promise<Blob | null> {
   const response = await fetch(`/api/attachments?id=${encodeURIComponent(attachmentId)}`, {
