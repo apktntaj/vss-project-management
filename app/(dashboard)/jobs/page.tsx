@@ -4,15 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, Search } from 'lucide-react'
 
 import { listEvents, listJobs, type BcDocumentKind, type Job, type LocalEvent } from '@/lib/data-client'
-import {
-  internationalJobJenisLabels,
-  internationalJobJenisValues,
-  invoiceStatusLabels,
-  invoiceStatuses,
-  jobStatuses,
-  transportModeLabels,
-  transportModes,
-} from '@/domain/job/types'
+import { internationalJobJenisLabels, internationalJobJenisValues } from '@/domain/job/types'
 import {
   emptyJobTableFilters,
   filterJobs,
@@ -28,7 +20,8 @@ import { Button } from '@/components/ui/button'
 import { NewJobDialog } from '@/components/new-job-dialog'
 import { JobCreateWizard } from '@/components/job-create-wizard'
 import { PageSkeleton } from '@/components/loading-skeletons'
-import { JobRow, downloadCustomsWorkbook, label } from '@/components/job-row'
+import { downloadCustomsWorkbook, label } from '@/components/job-row'
+import { JobTable } from '@/components/job-table'
 
 type JobSegment = 'EVENT' | 'GENERAL_CARGO' | 'PROJECT'
 
@@ -38,15 +31,7 @@ const segmentLabels: Record<JobSegment, string> = {
   PROJECT: 'Project',
 }
 
-const jobStatusLabels: Record<(typeof jobStatuses)[number], string> = {
-  DRAFT: 'Draf',
-  IN_PROGRESS: 'Diproses',
-  ON_HOLD: 'Ditahan',
-  COMPLETED: 'Selesai',
-  CANCELLED: 'Dibatalkan',
-}
-
-const selectClass = 'input m-0 w-auto min-w-[150px] bg-slate-50 py-2 text-sm'
+const selectClass = 'input m-0 max-w-48 border-0 bg-slate-50 py-2 text-sm shadow-none'
 
 function toListEvent(event: LocalEvent): JobListEvent {
   return {
@@ -173,40 +158,37 @@ export default function JobsPage() {
 
       {segment === 'EVENT' ? (
         <>
-          <section aria-label="Filter job" className="space-y-3">
+          <section aria-label="Filter job">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-              <label className="relative w-full lg:w-96 lg:flex-none">
-                <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
+              <label className="relative w-full lg:w-80 lg:flex-none">
+                <span className="sr-only">Cari job</span>
+                <Search className="absolute left-3 top-2.5 text-slate-400" size={18} aria-hidden="true" />
                 <input
+                  type="search"
                   value={filters.search}
                   onChange={(event) => setFilter('search', event.target.value)}
                   className="input m-0 border-0 bg-slate-50 pl-10 shadow-none"
-                  placeholder="Cari No Job, VSS, B/L/AWB, invoice, pihak, exhibitor"
-                  aria-label="Cari job"
+                  placeholder="Cari No Job, VSS, B/L, invoice, pihak"
                 />
               </label>
-              <div className="inline-flex rounded-lg bg-slate-100 p-1 text-sm font-medium">
-                <button
-                  type="button"
-                  onClick={() => setFilter('activeOnly', true)}
-                  className={`rounded-md px-3 py-1.5 ${filters.activeOnly ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
-                >
-                  Event aktif
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilter('activeOnly', false)}
-                  className={`rounded-md px-3 py-1.5 ${!filters.activeOnly ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
-                >
-                  Semua
-                </button>
-              </div>
-              <Button type="button" onClick={() => setShowNewJob(true)} className="lg:ml-auto">
-                <Plus data-icon="inline-start" />
-                Job baru
-              </Button>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
+              <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-2 px-0 py-2">
+                <legend className="sr-only">Filter event aktif</legend>
+                {([
+                  [true, 'Event aktif'],
+                  [false, 'Semua'],
+                ] as const).map(([value, text]) => (
+                  <label key={text} className="flex items-center gap-2 text-sm text-slate-500">
+                    <input
+                      type="radio"
+                      name="job-active"
+                      checked={filters.activeOnly === value}
+                      onChange={() => setFilter('activeOnly', value)}
+                      className="h-4 w-4 accent-orange-600"
+                    />
+                    {text}
+                  </label>
+                ))}
+              </fieldset>
               <select
                 className={selectClass}
                 value={filters.eventId}
@@ -234,111 +216,31 @@ export default function JobsPage() {
                 ))}
                 <option value="LOCAL">Local</option>
               </select>
-              <select
-                className={selectClass}
-                value={filters.transportMode}
-                onChange={(event) =>
-                  setFilter('transportMode', event.target.value as JobTableFilters['transportMode'])
-                }
-                aria-label="Filter jalur"
-              >
-                <option value="">Semua jalur</option>
-                {transportModes.map((mode) => (
-                  <option key={mode} value={mode}>
-                    {transportModeLabels[mode]}
-                  </option>
-                ))}
-              </select>
-              <select
-                className={selectClass}
-                value={filters.status}
-                onChange={(event) => setFilter('status', event.target.value as JobTableFilters['status'])}
-                aria-label="Filter status job"
-              >
-                <option value="">Semua status</option>
-                {jobStatuses.map((status) => (
-                  <option key={status} value={status}>
-                    {jobStatusLabels[status]}
-                  </option>
-                ))}
-              </select>
-              <select
-                className={selectClass}
-                value={filters.invoiceStatus}
-                onChange={(event) =>
-                  setFilter('invoiceStatus', event.target.value as JobTableFilters['invoiceStatus'])
-                }
-                aria-label="Filter status tagihan"
-              >
-                <option value="">Semua tagihan</option>
-                {invoiceStatuses.map((status) => (
-                  <option key={status} value={status}>
-                    {invoiceStatusLabels[status]}
-                  </option>
-                ))}
-              </select>
-              {hasFilters && (
-                <button
-                  type="button"
-                  onClick={() => setFilters(emptyJobTableFilters)}
-                  className="px-2 text-sm font-semibold text-orange-700 hover:text-orange-800"
-                >
-                  Reset filter
-                </button>
-              )}
-              <span className="ml-auto text-sm text-slate-500">{rows.length} job</span>
+              <Button type="button" onClick={() => setShowNewJob(true)} className="lg:ml-auto">
+                <Plus data-icon="inline-start" />
+                Job baru
+              </Button>
             </div>
+            {hasFilters ? (
+              <button
+                type="button"
+                onClick={() => setFilters(emptyJobTableFilters)}
+                className="mt-3 text-sm font-semibold text-orange-700 hover:text-orange-800"
+              >
+                Reset filter
+              </button>
+            ) : null}
           </section>
 
           {rows.length ? (
-            <section className="card overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1380px] table-fixed text-left text-sm">
-                  <colgroup>
-                    <col className="w-[120px]" />
-                    <col className="w-[170px]" />
-                    <col className="w-[145px]" />
-                    <col className="w-[185px]" />
-                    <col className="w-[110px]" />
-                    <col className="w-[95px]" />
-                    <col className="w-[90px]" />
-                    <col className="w-[140px]" />
-                    <col className="w-[200px]" />
-                    <col className="w-[40px]" />
-                  </colgroup>
-                  <thead className="border-b bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-600">
-                    <tr>
-                      <th className="px-3 py-3">No Job</th>
-                      <th className="px-3 py-3">Event · Jenis</th>
-                      <th className="px-3 py-3">Pihak</th>
-                      <th className="px-3 py-3">Dokumen shipment</th>
-                      <th className="px-3 py-3">ETA</th>
-                      <th className="px-3 py-3">Tagihan</th>
-                      <th className="px-3 py-3">Status tagihan</th>
-                      <th className="px-3 py-3">Remark</th>
-                      <th className="px-3 py-3">Dokumen BC</th>
-                      <th className="px-3 py-3">
-                        <span className="sr-only">Aksi</span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((job) => (
-                      <JobRow
-                        key={job.id}
-                        job={job}
-                        nomor={job.jobNumber ?? undefined}
-                        event={eventById.get(job.eventId) ?? null}
-                        onJobUpdated={handleJobUpdated}
-                        onToast={showToast}
-                        onGenerate={generateCustomsWorkbook}
-                        onEditDocument={(selectedJob, kind) => setEditingDocument({ job: selectedJob, kind })}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+            <JobTable
+              jobs={rows}
+              eventById={eventById}
+              onJobUpdated={handleJobUpdated}
+              onToast={showToast}
+              onGenerate={generateCustomsWorkbook}
+              onEditDocument={(selectedJob, kind) => setEditingDocument({ job: selectedJob, kind })}
+            />
           ) : (
             <section className="card p-12 text-center">
               <p className="font-semibold text-slate-800">Tidak ada Job yang sesuai</p>
