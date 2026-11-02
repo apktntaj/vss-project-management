@@ -6,21 +6,21 @@ import { Plus, Search, Trash2, Upload, X } from 'lucide-react'
 
 import {
   applyCiplAutofill,
-  createInternationalJobInit,
-  createLocalJobInit,
+  createJob as createJobRecord,
   listAgents,
   listEventExhibitors,
   saveAgent,
-  saveJobCiplDocument,
   saveJobDocument,
-  saveJobManifestExhibitors,
+  saveJobOperationalDetails,
   saveJobTransportExtraction,
   type Agent,
+  type Exhibitor,
   type InternationalJobJenis,
   type LocalEvent,
-  type LocalExhibitor,
-  type LocalJob,
+  type Job,
+  type TransportMode,
 } from '@/lib/data-client'
+import { transportModeLabels, transportModes } from '@/domain/job/types'
 import {
   barisBarangSchema,
   buildCiplDocument,
@@ -115,7 +115,7 @@ type CiplRowDraft = {
 }
 
 /** Badge status penautan satu baris terhadap exhibitor event — diturunkan dari nama, bukan disimpan. */
-function rowLinkStatus(name: string, pool: ReadonlyArray<LocalExhibitor>) {
+function rowLinkStatus(name: string, pool: ReadonlyArray<Exhibitor>) {
   const trimmed = name.trim()
   if (!trimmed) return null
   const match = matchExhibitorByName(trimmed, pool)
@@ -261,17 +261,15 @@ export function JobCreateWizard({
 }: {
   events: LocalEvent[]
   presetEvent?: LocalEvent | null
-  onCreated: (job: LocalJob) => void
+  onCreated: (job: Job) => void
   onCancel: () => void
 }) {
   const [slide, setSlide] = useState(0)
   const [selection, setSelection] = useState<JobTypeSelection>('TPPB_BC_23')
   const [eventQuery, setEventQuery] = useState(presetEvent?.officialName ?? '')
   const [selectedEventId, setSelectedEventId] = useState<string | null>(presetEvent?.id ?? null)
-  const [jobNumberInput, setJobNumberInput] = useState('')
-  const [billToInput, setBillToInput] = useState('')
-  /** Benar setelah user mengetik bill to sendiri — bill to berhenti mengikuti agent. */
-  const [billToTouched, setBillToTouched] = useState(false)
+  /** Jalur kiriman — bersama jenis job menentukan awalan No Job (S/A/ATA/…). */
+  const [transportMode, setTransportMode] = useState<TransportMode | ''>('SEA')
   const [agents, setAgents] = useState<Agent[]>([])
   const [loadingAgents, setLoadingAgents] = useState(true)
   const [tanpaAgent, setTanpaAgent] = useState(false)
@@ -288,7 +286,7 @@ export function JobCreateWizard({
   const [scanningCipl, setScanningCipl] = useState(false)
   const [ciplHeader, setCiplHeader] = useState<CiplDocumentHeader | null>(null)
   /** Exhibitor event terpilih — kolam pencocokan autofill CIPL. */
-  const [eventExhibitors, setEventExhibitors] = useState<LocalExhibitor[]>([])
+  const [eventExhibitors, setEventExhibitors] = useState<Exhibitor[]>([])
   const [ciplBelumTerpetakan, setCiplBelumTerpetakan] = useState<BarisBarang[]>([])
   const [docKind, setDocKind] = useState<'BL' | 'AWB'>('BL')
   const [transport, setTransport] = useState<JobTransportExtraction | null>(null)
@@ -353,7 +351,9 @@ export function JobCreateWizard({
 
   function changeSelection(next: JobTypeSelection) {
     setSelection(next)
-    // Local dan road shipment tidak membutuhkan agent — centang "Tanpa agent" dan bersihkan pilihan agent.
+    if (next === 'ROAD_SHIPMENT') setTransportMode('ROAD')
+    else if (transportMode === 'ROAD') setTransportMode('SEA')
+    // Local dan road shipment selalu dipegang exhibitor — tanpa agent.
     const tanpaAgentDefault = next === 'LOCAL' || next === 'ROAD_SHIPMENT'
     setTanpaAgent(tanpaAgentDefault)
     if (tanpaAgentDefault) {
@@ -373,7 +373,6 @@ export function JobCreateWizard({
   function selectAgent(agent: Agent) {
     setSelectedAgentId(agent.id)
     setAgentQuery(agent.name)
-    if (!billToTouched) setBillToInput(agent.name)
   }
 
   async function resolveAgentId(): Promise<{ agentId: string | null; agentName: string }> {
@@ -401,21 +400,21 @@ export function JobCreateWizard({
     return { agentId: null, agentName: '' }
   }
 
-  async function createJob(): Promise<LocalJob> {
+  /** Local & Road Shipment selalu dipegang exhibitor (aturan server/DB). */
+  const exhibitorOnlySelection = selection === 'LOCAL' || selection === 'ROAD_SHIPMENT'
+
+  async function createJob(): Promise<Job> {
     if (!selectedEvent) throw new Error('Pilih event untuk job ini terlebih dahulu.')
-    const { agentId } = await resolveAgentId()
-    return selection === 'LOCAL'
-      ? await createLocalJobInit(selectedEvent.id, agentId, null, {
-          jobNumber: jobNumberInput,
-          billTo: billToInput,
-        })
-      : await createInternationalJobInit({
-          eventId: selectedEvent.id,
-          agentId,
-          internationalJenis: selection,
-          jobNumber: jobNumberInput,
-          billTo: billToInput,
-        })
+    const { agentId } = exhibitorOnlySelection ? { agentId: null } : await resolveAgentId()
+    return createJobRecord({
+      eventId: selectedEvent.id,
+      kind: selection === 'LOCAL' ? 'LOCAL' : 'INTERNATIONAL',
+      internationalJenis: selection === 'LOCAL' ? null : selection,
+      transportMode: transportMode || null,
+      agentId,
+      // Pihak exhibitor ditetapkan sesudah CIPL tersimpan (exhibitor-nya bisa baru dibuat di sana).
+      exhibitorId: null,
+    })
   }
 
   function submitSlideJob(formEvent: FormEvent<HTMLFormElement>) {
@@ -626,7 +625,7 @@ export function JobCreateWizard({
 
   async function finish() {
     setFinishing(true)
-    let job: LocalJob
+    let job: Job
     try {
       job = await createJob()
     } catch (caught) {
@@ -644,43 +643,40 @@ export function JobCreateWizard({
     // ternormalisasi, yang belum didaftarkan di sini, lalu hall/booth/koli-nya ikut tersimpan.
     const plan = resolveCiplAutofill(scanEntries, eventExhibitors)
     const manifestRows = plan.rows
+    // Setiap langkah di bawah menulis aggregate yang sama dan menaikkan versinya; `job` selalu
+    // diganti dengan hasil terbaru agar langkah berikutnya tidak ditolak sebagai versi basi.
     let autofill: Awaited<ReturnType<typeof applyCiplAutofill>> | null = null
-    if (manifestRows.length) {
+    const ciplDocument = buildCiplDocument(ciplHeader, manifestRows, ciplBelumTerpetakan)
+    if (manifestRows.length || ciplDocument) {
       try {
-        autofill = job.eventId
-          ? await applyCiplAutofill({
-              jobId: job.id,
-              eventId: job.eventId,
-              agentId: job.agentId ?? null,
-              rows: manifestRows,
-            })
-          : // Tanpa event tidak ada master exhibitor yang bisa dituju; baris tetap disimpan di
-            // job apa adanya supaya hasil scan tidak hilang.
-            await saveJobManifestExhibitors(
-              job.id,
-              manifestRows.map((row) => ({
-                exhibitorId: null,
-                name: row.name,
-                logistics: row.logistics,
-              })),
-            ).then(() => null)
+        autofill = await applyCiplAutofill({
+          job,
+          rows: manifestRows,
+          ciplDocument,
+          eventExhibitors,
+        })
+        job = autofill.job
       } catch {
         failures += 1
         toast('Baris CIPL tidak dapat disimpan — bisa dilengkapi di detail job.', 'error')
       }
     }
-    const ciplDocument = buildCiplDocument(ciplHeader, manifestRows, ciplBelumTerpetakan)
-    if (ciplDocument) {
+    // Tanpa agent: pihak yang ditagih adalah exhibitor. Bila CIPL hanya menyebut satu exhibitor
+    // yang sudah tertaut, tetapkan langsung; selebihnya dipilih operator di detail job.
+    const linkedExhibitorIds = [...new Set(job.ciplLines.flatMap((line) => (line.exhibitorId ? [line.exhibitorId] : [])))]
+    if (!job.party && !job.agentId && linkedExhibitorIds.length === 1) {
       try {
-        await saveJobCiplDocument(job.id, ciplDocument)
+        job = await saveJobOperationalDetails(job, {
+          party: { agentId: null, exhibitorId: linkedExhibitorIds[0] },
+        })
       } catch {
         failures += 1
-        toast('Baris barang CIPL tidak dapat disimpan — bisa dilengkapi di detail job.', 'error')
+        toast('Pihak job belum bisa ditetapkan — pilih di detail job.', 'error')
       }
     }
     if (ciplFile) {
       try {
-        await saveJobDocument(job.id, ciplFile, 'CIPL')
+        await saveJobDocument(job, ciplFile, 'CIPL')
       } catch {
         failures += 1
         toast('Dokumen CIPL tidak dapat diunggah.', 'error')
@@ -688,20 +684,21 @@ export function JobCreateWizard({
     }
     if (transportFile && transport) {
       try {
-        await saveJobDocument(
-          job.id,
+        const result = await saveJobDocument(
+          job,
           transportFile,
           docKind === 'AWB' ? 'AIR_WAYBILL' : 'BILL_OF_LADING',
           null,
           transport,
         )
+        if (result.job) job = result.job
       } catch {
         failures += 1
         toast('Dokumen B/L atau AWB tidak dapat diunggah.', 'error')
       }
     } else if (transport) {
       try {
-        await saveJobTransportExtraction(job.id, transport)
+        job = await saveJobTransportExtraction(job, transport)
       } catch {
         failures += 1
         toast('Data B/L atau AWB tidak dapat disimpan.', 'error')
@@ -891,15 +888,23 @@ export function JobCreateWizard({
                 </label>
 
                 <label className="label">
-                  No Job <span className="font-normal text-slate-400">(opsional)</span>
-                  <input
-                    value={jobNumberInput}
-                    onChange={(inputEvent) =>
-                      setJobNumberInput(inputEvent.target.value.toLocaleUpperCase('id-ID'))
-                    }
+                  Jalur
+                  <select
+                    value={transportMode}
+                    disabled={selection === 'ROAD_SHIPMENT'}
+                    onChange={(selectEvent) => setTransportMode(selectEvent.target.value as TransportMode | '')}
                     className="input mt-1"
-                    placeholder="cth. S.01/ISFEX-VPN/2026"
-                  />
+                  >
+                    <option value="">Belum diketahui</option>
+                    {transportModes.map((mode) => (
+                      <option key={mode} value={mode} disabled={mode !== 'ROAD' && selection === 'ROAD_SHIPMENT'}>
+                        {transportModeLabels[mode]}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="mt-1 block text-xs font-normal text-slate-500">
+                    No Job (S.01, A.01, …) ditetapkan di detail job sesuai urutan barang datang.
+                  </span>
                 </label>
               </div>
 
@@ -909,10 +914,11 @@ export function JobCreateWizard({
                     <input
                       type="checkbox"
                       checked={tanpaAgent}
+                      disabled={exhibitorOnlySelection}
                       onChange={(checkEvent) => changeTanpaAgent(checkEvent.target.checked)}
                       className="h-4 w-4 accent-orange-600"
                     />
-                    Tanpa agent
+                    Tanpa agent{exhibitorOnlySelection ? ' (Local & Road Shipment selalu dipegang exhibitor)' : ''}
                   </label>
                   {!creatingNew ? (
                     <button
@@ -937,7 +943,6 @@ export function JobCreateWizard({
                           onChange={(inputEvent) => {
                             const name = inputEvent.target.value.toLocaleUpperCase('id-ID')
                             setNewAgentName(name)
-                            if (!billToTouched) setBillToInput(name)
                           }}
                           className="input mt-1"
                           placeholder="cth. JS LOGISTICS"
@@ -1020,18 +1025,10 @@ export function JobCreateWizard({
                 )}
               </section>
 
-              <label className="label">
-                Bill to <span className="font-normal text-slate-400">(opsional)</span>
-                <input
-                  value={billToInput}
-                  onChange={(inputEvent) => {
-                    setBillToInput(inputEvent.target.value)
-                    setBillToTouched(true)
-                  }}
-                  className="input mt-1"
-                  placeholder="Pihak yang ditagih (mis. agent atau exhibitor)"
-                />
-              </label>
+              <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                Tagihan job dikirim ke agent; tanpa agent, ke exhibitor pemilik barang (ditetapkan dari
+                CIPL atau di detail job).
+              </p>
             </div>
 
             <div className="shrink-0 border-t px-6 py-4 sm:px-8">

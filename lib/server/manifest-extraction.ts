@@ -15,12 +15,15 @@ import {
 } from '@/domain/exhibition/cipl-document'
 import { reconcileKoliTotal } from '@/domain/exhibition/cipl-autofill'
 import { assertSupportedDocumentFile, DocumentExtractionError } from './document-extraction'
+import { transportDocumentSchema, type InwardTransportDocument } from '@/domain/job/manifest'
 import { configuredLlmProvider, configuredScanCiplProvider } from './extraction/config'
 import { LLM_UNAVAILABLE_MESSAGE } from './extraction/errors'
 import { chatDocumentJson } from './extraction/llm/document-json'
 
 export type ManifestBlockParse = {
   agentName: string
+  /** Dokumen angkut blok ini — milik job (bukan bagian `inward`). */
+  transportDocument: InwardTransportDocument
   inward: InwardManifest
   exhibitors: Array<{ name: string; logistics: ExhibitorLogistics }>
 }
@@ -118,20 +121,25 @@ function normalizeBlock(value: unknown): ManifestBlockParse | null {
     const item = (milestone ?? {}) as Record<string, unknown>
     return { ...item, date: normalizeDate(item.date) }
   })
+  const transportDocument = transportDocumentSchema.safeParse(payload.data.transportDocument)
   const inward = inwardManifestSchema.safeParse({
-    transportDocument: payload.data.transportDocument,
     loadConfiguration: payload.data.loadConfiguration,
     milestones: milestoneDates,
     notes: payload.data.notes,
   })
-  if (!inward.success) return null
+  if (!transportDocument.success || !inward.success) return null
   const exhibitors = payload.data.exhibitors
     .map(normalizeExhibitor)
     .filter(
       (exhibitor): exhibitor is { name: string; logistics: ExhibitorLogistics } =>
         exhibitor !== null,
     )
-  return { agentName: payload.data.agentName, inward: inward.data, exhibitors }
+  return {
+    agentName: payload.data.agentName,
+    transportDocument: transportDocument.data,
+    inward: inward.data,
+    exhibitors,
+  }
 }
 
 /** Mem-parse file inward manifest (PDF/Excel) menjadi blok job yang sudah tervalidasi domain. */

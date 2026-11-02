@@ -1,6 +1,6 @@
 // Perhitungan StatusTuntasEvent (docs/domain/event-data-definitions.md, keputusan 2026-10-29).
 // Murni: tanpa I/O, tanpa import lintas lapisan — bentuk job diterima structural typing agar
-// payload jsonb `jobs` (sisi server) maupun LocalJob (data-client) sama-sama bisa dipakai.
+// kolom tabel `jobs` (sisi server) maupun DTO Job (data-client) sama-sama bisa dipakai.
 
 import type { EventTuntasStatus } from '@/domain/event/types'
 

@@ -141,8 +141,11 @@ export type LoadConfiguration = z.infer<typeof loadConfigurationSchema>
 
 // ---------- Aggregate job / exhibitor ----------
 
+/**
+ * Blok inward manifest sebuah job: muatan, milestone, catatan. Nomor dokumen angkut BUKAN bagian
+ * blok ini — job = satu B/L/AWB, jadi nomornya milik job (`transportDocumentType/Number`).
+ */
 export const inwardManifestSchema = z.object({
-  transportDocument: transportDocumentSchema,
   loadConfiguration: loadConfigurationSchema,
   milestones: z.array(milestoneSchema),
   notes: z.array(operationalNoteSchema),

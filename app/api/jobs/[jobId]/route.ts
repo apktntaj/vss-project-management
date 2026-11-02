@@ -1,57 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { eventApiFailure, getEventApiContext } from '@/lib/supabase/event-api'
+// Route TIPIS untuk satu aggregate Job. Setiap tulis membawa `version` yang terakhir dibaca klien;
+// use-case menolak dengan 409 bila job sudah diubah orang lain sejak itu.
+
+import { requireCurrentUser } from '@/features/auth'
+import { deleteJob, getJob, updateJobDetails } from '@/features/jobs'
+import { jobDetailsPatchSchema } from '@/domain/job/validation'
+import { toErrorResponse } from '@/lib/server/errors'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 type RouteContext = { params: { jobId: string } }
 
-// Hapus permanen job beserta rekam operasional yang terikat padanya.
-// Tabel tanpa FK dihapus lewat filter payload; urutannya anak sebelum induk.
+export async function GET(_request: NextRequest, { params }: RouteContext) {
+  try {
+    const currentUser = await requireCurrentUser()
+    const job = await getJob(currentUser, params.jobId)
+    return NextResponse.json(job, { headers: { 'Cache-Control': 'no-store' } })
+  } catch (error) {
+    return toErrorResponse(error)
+  }
+}
+
+export async function PATCH(request: NextRequest, { params }: RouteContext) {
+  try {
+    const currentUser = await requireCurrentUser()
+    const patch = jobDetailsPatchSchema.parse(await request.json())
+    const job = await updateJobDetails(currentUser, params.jobId, patch)
+    return NextResponse.json(job, { headers: { 'Cache-Control': 'no-store' } })
+  } catch (error) {
+    return toErrorResponse(error)
+  }
+}
+
+/** Hapus job beserta lampiran dan tiket berkonteks job ini. 204 tanpa body. */
 export async function DELETE(_request: NextRequest, { params }: RouteContext) {
   try {
-    const { client, workspaceId } = await getEventApiContext()
-    const { data: existing, error: existingError } = await client
-      .from('jobs')
-      .select('id')
-      .eq('workspace_id', workspaceId)
-      .eq('id', params.jobId)
-      .maybeSingle<{ id: string }>()
-    if (existingError) throw existingError
-    if (!existing) throw new Error('Job tidak ditemukan.')
-
-    const deleteByPayload = async (table: string, values: string[]) => {
-      if (!values.length) return
-      const { error } = await client
-        .from(table)
-        .delete()
-        .eq('workspace_id', workspaceId)
-        .in('payload->>jobId', values)
-      if (error) throw error
-    }
-    await deleteByPayload('job_stages', [params.jobId])
-    await deleteByPayload('job_documents', [params.jobId])
-    await deleteByPayload('shipments', [params.jobId])
-    await deleteByPayload('customs_jobs', [params.jobId])
-
-    const { error: ticketsError } = await client
-      .from('tickets')
-      .delete()
-      .eq('workspace_id', workspaceId)
-      .eq('context_kind', 'JOB')
-      .eq('context_id', params.jobId)
-    if (ticketsError) throw ticketsError
-
-    const { error: deleteError } = await client
-      .from('jobs')
-      .delete()
-      .eq('workspace_id', workspaceId)
-      .eq('id', params.jobId)
-    if (deleteError) throw deleteError
-
+    const currentUser = await requireCurrentUser()
+    await deleteJob(currentUser, params.jobId)
     return new NextResponse(null, { status: 204 })
   } catch (error) {
-    return eventApiFailure(error)
+    return toErrorResponse(error)
   }
 }

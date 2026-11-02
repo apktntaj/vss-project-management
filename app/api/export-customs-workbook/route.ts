@@ -2,8 +2,12 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
-import { auth } from '@/auth'
-import type { LocalJob } from '@/lib/data-client'
+import { z } from 'zod'
+
+import { requireCurrentUser } from '@/features/auth'
+import { getJob } from '@/features/jobs'
+import { ApiError, toErrorResponse } from '@/lib/server/errors'
+import type { Job } from '@/domain/job/types'
 
 export const runtime = 'nodejs'
 
@@ -40,11 +44,11 @@ function appendRows(workbook: XLSX.WorkBook, sheetName: string, rows: Record<str
   if (rows.length) XLSX.utils.sheet_add_json(sheet, rows, { skipHeader: true, origin: 'A2' })
 }
 
-function createWorkbook(job: LocalJob, documentType: CustomsDocumentType, template: Buffer) {
+function createWorkbook(job: Job, documentType: CustomsDocumentType, template: Buffer) {
   const operational = job.operational
   if (!operational) throw new Error('Data operasional Job belum tersedia.')
   const invoice = operational.invoice
-  const transport = operational.inboundDocument
+  const transport = job.transportDocument
   if (!invoice || !transport) throw new Error('Upload Invoice dan B/L/AWB yang telah berhasil diekstrak sebelum membuat BC 2.3.')
   if (documentType !== 'BC_2_3') {
     throw new Error('BC 2.5 dan BC 3.0 memerlukan alokasi item turunan dari BC 2.3; alokasi tersebut belum tersedia pada Job ini.')
@@ -87,7 +91,7 @@ function createWorkbook(job: LocalJob, documentType: CustomsDocumentType, templa
     ...(transport.documentNumber ? [{ 'NOMOR AJU': ajuNumber, 'SERI': 2, 'KODE DOKUMEN': 705, 'NOMOR DOKUMEN': transport.documentNumber, 'TANGGAL DOKUMEN': text(transport.documentDate) }] : []),
   ])
   appendRows(workbook, 'PENGANGKUT', [{
-    'NOMOR AJU': ajuNumber, 'SERI': 1, 'KODE CARA ANGKUT': operational.inbound.documentType === 'AWB' ? 4 : 1,
+    'NOMOR AJU': ajuNumber, 'SERI': 1, 'KODE CARA ANGKUT': job.transportDocumentType === 'AWB' ? 4 : 1,
     'NAMA PENGANGKUT': text(transport.vesselOrFlight ?? transport.carrier), 'NOMOR PENGANGKUT': text(transport.voyageOrFlightNumber),
   }])
   appendRows(workbook, 'KEMASAN', transport.packageCount !== null ? [{
@@ -112,22 +116,35 @@ function createWorkbook(job: LocalJob, documentType: CustomsDocumentType, templa
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
 }
 
+const requestSchema = z.object({
+  jobId: z.string().min(1, 'Job wajib dipilih.'),
+  documentType: z.enum(['BC_2_3', 'BC_2_5', 'BC_3_0', 'BC_2_7']),
+})
+
+/** Body `{ jobId, documentType }`. Job dimuat dari database — tidak pernah dipercaya dari klien. */
 export async function POST(request: NextRequest) {
-  const session = await auth()
-  if (!session?.user) return NextResponse.json({ error: 'Autentikasi diperlukan.' }, { status: 401 })
   try {
-    const { job, documentType } = await request.json() as { job?: LocalJob; documentType?: CustomsDocumentType }
-    if (!job || !documentType || !(documentType in templates)) return NextResponse.json({ error: 'Permintaan dokumen BC tidak valid.' }, { status: 400 })
-    const template = await readFile(path.join(process.cwd(), 'docs', templates[documentType]))
-    const workbook = createWorkbook(job, documentType, template)
-    const filename = `${documentType.replaceAll('_', '-')}-${job.jobNumber}.xlsx`
+    const currentUser = await requireCurrentUser()
+    const { jobId, documentType } = requestSchema.parse(await request.json())
+    if (!(documentType in templates)) {
+      throw new ApiError(400, 'Template dokumen BC ini belum tersedia.')
+    }
+    const job = await getJob(currentUser, jobId)
+    const template = await readFile(path.join(process.cwd(), 'docs', templates[documentType as CustomsDocumentType]))
+    let workbook: Buffer
+    try {
+      workbook = createWorkbook(job, documentType as CustomsDocumentType, template)
+    } catch (error) {
+      throw new ApiError(400, error instanceof Error ? error.message : 'File BC tidak dapat dibuat.')
+    }
+    const filename = `${documentType.replaceAll('_', '-')}-${job.jobNumber ?? job.vssNumber}.xlsx`
     return new NextResponse(workbook, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
       },
     })
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'File BC tidak dapat dibuat.' }, { status: 400 })
+    return toErrorResponse(error)
   }
 }

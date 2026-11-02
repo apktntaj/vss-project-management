@@ -157,8 +157,8 @@ export type ReferenceEventOrganizerInputParsed = z.infer<typeof referenceEventOr
 // Mengapa dipertahankan: clean cutover (DD-A4) memindahkan file ini ke bentuk redesign, tetapi
 // modul build-lama di luar scope task 8 MASIH mengimpor skema di bawah dari sini
 // (`domain/agent/validation.ts` → contactSchema; `app/api/event-records` & `app/api/settings` →
-// venueInputSchema/eventOrganizerInputSchema; `app/api/events/[eventId]/exhibitors` →
-// exhibitorInputSchema). Menghapusnya sekarang memutus `npx tsc --noEmit` dengan menyentuh kode di
+// venueInputSchema/eventOrganizerInputSchema). Exhibitor sudah pindah ke `domain/exhibitor/`.
+// Menghapusnya sekarang memutus `npx tsc --noEmit` dengan menyentuh kode di
 // luar scope. Diisolasi di sini dan dibuang saat konsumen lama diganti di slice berikutnya.
 
 const legacyOptionalText = z.string().trim().min(1).nullable()
@@ -186,14 +186,3 @@ export const venueInputSchema = z.object({
   website: z.string().trim().url('Website harus berupa URL.').nullable(),
   loadingAccessNotes: legacyOptionalText,
 })
-
-const legacyExhibitorBaseSchema = z.object({
-  name: z.string().trim().min(1, 'Nama exhibitor wajib diisi.'),
-  contact: contactSchema.omit({ isPrimary: true }),
-  agentId: z.string().uuid().nullable(),
-})
-
-export const exhibitorInputSchema = z.discriminatedUnion('kind', [
-  legacyExhibitorBaseSchema.extend({ kind: z.literal('LOCAL'), npwp: legacyOptionalText }).strict(),
-  legacyExhibitorBaseSchema.extend({ kind: z.literal('INTERNATIONAL') }).strict(),
-])

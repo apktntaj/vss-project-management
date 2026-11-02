@@ -18,6 +18,11 @@ export type Capability =
   | 'event:delete'
   | 'event:read'
   | 'reference:create'
+  | 'job:read'
+  | 'job:create'
+  | 'job:update'
+  | 'job:delete'
+  | 'exhibitor:write'
 
 /**
  * Pemetaan peran → Capability: SATU tabel eksplisit, tanpa logika bercabang.
@@ -29,6 +34,12 @@ export type Capability =
  *   pengecekan kepemilikan PIC-vs-SUPERVISOR adalah guard per-objek yang DISUPLAI use-case,
  *   bukan dibakar ke dalam `can`.
  * - `reference:create` — STAFF dan SUPERVISOR (pembuatan master data venue/EO inline).
+ * - `job:read` — semua peran boleh membaca.
+ * - `job:create` / `job:delete` — STAFF dan SUPERVISOR, sama seperti event.
+ * - `job:update` — STAFF, SUPERVISOR, dan DOCUMENT_ASSISTANT (mengunggah dokumen job dan
+ *   mengoreksi hasil ekstraksinya). CUSTOMER_SERVICE hanya membaca.
+ * - `exhibitor:write` — daftarkan/ubah exhibitor event (dari scan CIPL atau penautan baris CIPL):
+ *   STAFF, SUPERVISOR, DOCUMENT_ASSISTANT. Membaca exhibitor mengikuti `event:read`.
  *
  * SUPERVISOR memegang set capability terluas. CUSTOMER_SERVICE dan DOCUMENT_ASSISTANT saat ini
  * hanya boleh membaca event.
@@ -41,6 +52,11 @@ const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     'event:cancel',
     'event:delete',
     'reference:create',
+    'job:read',
+    'job:create',
+    'job:update',
+    'job:delete',
+    'exhibitor:write',
   ]),
   STAFF: new Set<Capability>([
     'event:read',
@@ -49,9 +65,19 @@ const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     'event:cancel',
     'event:delete',
     'reference:create',
+    'job:read',
+    'job:create',
+    'job:update',
+    'job:delete',
+    'exhibitor:write',
   ]),
-  CUSTOMER_SERVICE: new Set<Capability>(['event:read']),
-  DOCUMENT_ASSISTANT: new Set<Capability>(['event:read']),
+  CUSTOMER_SERVICE: new Set<Capability>(['event:read', 'job:read']),
+  DOCUMENT_ASSISTANT: new Set<Capability>([
+    'event:read',
+    'job:read',
+    'job:update',
+    'exhibitor:write',
+  ]),
 }
 
 /**

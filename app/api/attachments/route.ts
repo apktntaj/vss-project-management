@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { auth } from '@/auth'
-import { downloadAttachment, uploadAttachment } from '@/lib/supabase/attachments'
+import {
+  attachmentOwners,
+  downloadAttachment,
+  uploadAttachment,
+  type AttachmentOwner,
+} from '@/lib/supabase/attachments'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const owners = new Set(['CIPL_VERSION', 'SHIPMENT', 'CUSTOMS_JOB', 'LEGACY_JOB'])
+const owners = new Set<string>(attachmentOwners)
 
 export async function POST(request: NextRequest) {
   if (!(await auth())?.user) return NextResponse.json({ error: 'Autentikasi diperlukan.' }, { status: 401 })
@@ -20,7 +25,7 @@ export async function POST(request: NextRequest) {
     if (typeof id !== 'string' || typeof ownerId !== 'string' || typeof ownerType !== 'string' || !owners.has(ownerType) || !(file instanceof File)) {
       return NextResponse.json({ error: 'Lampiran tidak valid.' }, { status: 400 })
     }
-    return NextResponse.json(await uploadAttachment({ id, ownerId, ownerType: ownerType as 'CIPL_VERSION' | 'SHIPMENT' | 'CUSTOMS_JOB' | 'LEGACY_JOB', kind: typeof kind === 'string' ? kind : null, file }))
+    return NextResponse.json(await uploadAttachment({ id, ownerId, ownerType: ownerType as AttachmentOwner, kind: typeof kind === 'string' ? kind : null, file }))
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Lampiran tidak dapat diunggah.' }, { status: 503 })
   }

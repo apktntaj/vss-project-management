@@ -13,12 +13,10 @@ import {
 } from 'lucide-react'
 import {
   getOperationalDetails,
-  listEventsWithExhibitors,
-  listJobsWithEvents,
+  listEvents,
+  listJobs,
   type LocalEvent,
-  type LocalExhibitor,
-  type LocalJob,
-  type LocalJobDocument,
+  type Job,
 } from '@/lib/data-client'
 import {
   JobDocumentEditorDialog,
@@ -37,11 +35,7 @@ import {
 } from '@/lib/job-operational-phase'
 import { compareInvoiceWithTransport } from '@/lib/document-comparison'
 import { EventManifestTree } from '@/components/event-manifest-tree'
-import {
-  applyUploadedDocument,
-  date,
-  type JobDocumentExtraction,
-} from '@/components/job-row'
+import { date } from '@/components/job-row'
 
 type Scope = 'active' | 'all'
 
@@ -56,11 +50,11 @@ const segmentLabels: Record<JobSegment, string> = {
 const activeEvent = (event: LocalEvent | undefined) =>
   !!event && new Date(`${event.endsOn}T23:59:59`) >= new Date()
 
-function operationalPhaseFor(job: LocalJob) {
+function operationalPhaseFor(job: Job) {
   const operational = getOperationalDetails(job)
   return getJobOperationalPhase({
     status: job.status,
-    hasInboundDocument: Boolean(operational.inbound.documentNumber),
+    hasInboundDocument: Boolean(job.transportDocumentNumber),
     hasInvoice: Boolean(operational.invoiceNumber),
     ciplStatus: operational.cipl.status,
     customsDocuments: Object.values(operational.customs),
@@ -85,30 +79,26 @@ const exceptionalJobPhases: ReadonlyArray<JobOperationalPhase> = [
 function JobPhaseCard({
   job,
   phase,
-  onDocumentUploaded,
+  onJobUpdated,
   onToast,
   onEditDocument,
 }: {
-  job: LocalJob
+  job: Job
   phase: JobOperationalPhase
-  onDocumentUploaded: (
-    jobId: string,
-    document: LocalJobDocument,
-    extraction?: JobDocumentExtraction,
-  ) => void
+  onJobUpdated: (job: Job) => void
   onToast: (message: string, tone?: 'info' | 'error') => void
-  onEditDocument: (job: LocalJob, kind: EditableJobDocument) => void
+  onEditDocument: (job: Job, kind: EditableJobDocument) => void
 }) {
   const [uploadOpen, setUploadOpen] = useState(false)
   const operational = getOperationalDetails(job)
   const documentComparison =
-    operational.invoice && operational.inboundDocument
-      ? compareInvoiceWithTransport(operational.invoice, operational.inboundDocument)
+    operational.invoice && job.transportDocument
+      ? compareInvoiceWithTransport(operational.invoice, job.transportDocument)
       : null
   const differences = documentComparison?.filter((item) => item.status === 'DIFFERENT') ?? []
   const documentSummary = [
-    operational.inbound.documentNumber
-      ? `${operational.inbound.documentType || 'Dokumen'} ${operational.inbound.documentNumber}`
+    job.transportDocumentNumber
+      ? `${job.transportDocumentType || 'Dokumen'} ${job.transportDocumentNumber}`
       : null,
     operational.invoiceNumber ? `Invoice ${operational.invoiceNumber}` : null,
   ]
@@ -122,10 +112,10 @@ function JobPhaseCard({
           href={`/jobs/${job.id}`}
           className="block truncate font-semibold text-slate-900 hover:text-orange-700"
         >
-          {job.jobNumber || 'No Job belum diisi'}
+          {job.jobNumber || job.vssNumber}
         </Link>
         <p className="mt-1 truncate text-sm text-slate-600">
-          {job.exhibitor?.legalName || job.clientName}
+          {job.party?.name || 'Pihak belum ditetapkan'}
         </p>
       </div>
       <p className="mt-3 truncate text-xs text-slate-500" title={documentSummary || undefined}>
@@ -153,7 +143,7 @@ function JobPhaseCard({
             job={job}
             open={uploadOpen}
             onOpenChange={setUploadOpen}
-            onDocumentUploaded={onDocumentUploaded}
+            onJobUpdated={onJobUpdated}
             onToast={onToast}
           />
         </>
@@ -197,19 +187,15 @@ function JobPhaseCard({
 function JobPhaseChunk({
   phase,
   jobs,
-  onDocumentUploaded,
+  onJobUpdated,
   onToast,
   onEditDocument,
 }: {
   phase: JobOperationalPhase
-  jobs: LocalJob[]
-  onDocumentUploaded: (
-    jobId: string,
-    document: LocalJobDocument,
-    extraction?: JobDocumentExtraction,
-  ) => void
+  jobs: Job[]
+  onJobUpdated: (job: Job) => void
   onToast: (message: string, tone?: 'info' | 'error') => void
-  onEditDocument: (job: LocalJob, kind: EditableJobDocument) => void
+  onEditDocument: (job: Job, kind: EditableJobDocument) => void
 }) {
   return (
     <section
@@ -231,7 +217,7 @@ function JobPhaseChunk({
             key={job.id}
             job={job}
             phase={phase}
-            onDocumentUploaded={onDocumentUploaded}
+            onJobUpdated={onJobUpdated}
             onToast={onToast}
             onEditDocument={onEditDocument}
           />
@@ -243,9 +229,8 @@ function JobPhaseChunk({
 }
 
 export default function JobsPage() {
-  const [jobs, setJobs] = useState<LocalJob[]>([])
+  const [jobs, setJobs] = useState<Job[]>([])
   const [events, setEvents] = useState<LocalEvent[]>([])
-  const [exhibitorsByEvent, setExhibitorsByEvent] = useState<Record<string, LocalExhibitor[]>>({})
   const router = useRouter()
   const [segment, setSegment] = useState<JobSegment>('EVENT')
   const [showNewJob, setShowNewJob] = useState(false)
@@ -257,18 +242,17 @@ export default function JobsPage() {
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [toast, setToast] = useState<{ message: string; tone: 'info' | 'error' } | null>(null)
   const [editingDocument, setEditingDocument] = useState<{
-    job: LocalJob
+    job: Job
     kind: EditableJobDocument
   } | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const initialLoadStarted = useRef(false)
   const load = useCallback(() => {
-    Promise.all([listJobsWithEvents(), listEventsWithExhibitors()])
-      .then(([{ jobs: loadedJobs }, { events: loadedEvents, exhibitorsByEvent: loadedExhibitors }]) => {
+    Promise.all([listJobs(), listEvents()])
+      .then(([loadedJobs, loadedEvents]) => {
         setJobs(loadedJobs)
         setEvents(loadedEvents)
-        setExhibitorsByEvent(loadedExhibitors)
         setOpen(Object.fromEntries(loadedEvents.map((event) => [event.id, true])))
         setLoadError('')
         setLoading(false)
@@ -285,11 +269,10 @@ export default function JobsPage() {
   }, [load])
   // Segarkan senyap setelah mutasi (mis. job baru dibuat) — tanpa skeleton halaman penuh.
   const refreshJobs = () => {
-    Promise.all([listJobsWithEvents(), listEventsWithExhibitors()])
-      .then(([{ jobs: loadedJobs }, { events: loadedEvents, exhibitorsByEvent: loadedExhibitors }]) => {
+    Promise.all([listJobs(), listEvents()])
+      .then(([loadedJobs, loadedEvents]) => {
         setJobs(loadedJobs)
         setEvents(loadedEvents)
-        setExhibitorsByEvent(loadedExhibitors)
       })
       .catch((caught) => {
         showToast(caught instanceof Error ? caught.message : 'Data jobs tidak dapat dimuat.', 'error')
@@ -302,36 +285,22 @@ export default function JobsPage() {
   }, [toast])
   const showToast = (message: string, tone: 'info' | 'error' = 'info') =>
     setToast({ message, tone })
-  const handleDocumentSaved = (updated: LocalJob) => {
+  // Ganti job di daftar dengan versi terbaru dari server (sesudah unggah/edit dokumen).
+  const handleJobUpdated = (updated: Job) => {
     setJobs((current) => current.map((job) => (job.id === updated.id ? updated : job)))
-  }
-  const handleDocumentUploaded = (
-    jobId: string,
-    document: LocalJobDocument,
-    extraction?: JobDocumentExtraction,
-  ) => {
-    setJobs((current) =>
-      current.map((job) =>
-        job.id === jobId ? applyUploadedDocument(job, document, extraction) : job,
-      ),
-    )
   }
   const eventById = useMemo(() => new Map(events.map((event) => [event.id, event])), [events])
   const filtered = useMemo(
     () =>
       jobs.filter((job) => {
-        const operational = getOperationalDetails(job)
         const haystack = [
           job.jobNumber,
-          job.blNumber,
-          job.awbNumber,
-          operational.inbound.documentNumber,
-          operational.outbound.documentNumber,
-          ...Object.values(operational.customs).flatMap((item) =>
-            item.billing.kind === 'INVOICED' || item.billing.kind === 'PAID'
-              ? [item.billing.reference]
-              : [],
-          ),
+          job.vssNumber,
+          job.transportDocumentNumber,
+          job.commercialInvoiceNumber,
+          job.invoice.number,
+          job.party?.name,
+          ...job.ciplLines.map((line) => line.exhibitor?.name ?? line.nameOnDocument),
         ]
           .filter(Boolean)
           .join(' ')
@@ -346,7 +315,7 @@ export default function JobsPage() {
   )
   const grouped = useMemo(
     () =>
-      filtered.reduce<Record<string, LocalJob[]>>((all, job) => {
+      filtered.reduce<Record<string, Job[]>>((all, job) => {
         const key = job.eventId || 'without-event'
         ;(all[key] ||= []).push(job)
         return all
@@ -507,7 +476,6 @@ export default function JobsPage() {
             {isOpen && !showsCards && (
               <EventManifestTree
                 jobs={eventJobs}
-                exhibitors={exhibitorsByEvent[eventId] ?? []}
                 onOpenJob={(jobId) => router.push(`/jobs/${jobId}`)}
               />
             )}
@@ -523,7 +491,7 @@ export default function JobsPage() {
                         key={phase.id}
                         phase={phase}
                         jobs={jobs}
-                        onDocumentUploaded={handleDocumentUploaded}
+                        onJobUpdated={handleJobUpdated}
                         onToast={showToast}
                         onEditDocument={(selectedJob, kind) =>
                           setEditingDocument({ job: selectedJob, kind })
@@ -538,7 +506,7 @@ export default function JobsPage() {
                       jobs={phasedJobs
                         .filter((item) => item.phase.id === phase.id)
                         .map((item) => item.job)}
-                      onDocumentUploaded={handleDocumentUploaded}
+                      onJobUpdated={handleJobUpdated}
                       onToast={showToast}
                       onEditDocument={(selectedJob, kind) =>
                         setEditingDocument({ job: selectedJob, kind })
@@ -596,7 +564,7 @@ export default function JobsPage() {
         onOpenChange={(nextOpen) => {
           if (!nextOpen) setEditingDocument(null)
         }}
-        onSaved={handleDocumentSaved}
+        onSaved={handleJobUpdated}
         onToast={showToast}
       />
       {toast && (

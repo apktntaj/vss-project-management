@@ -18,9 +18,9 @@ async function jobDefaultAssignee(
   context: { kind: 'GENERAL' } | { kind: 'EVENT'; id: string } | { kind: 'JOB'; id: string },
 ) {
   if (context.kind !== 'JOB') return null
-  const { data, error } = await client.from('jobs').select('payload').eq('workspace_id', workspaceId).eq('id', context.id).maybeSingle<{ payload: { assignedToId?: string | null } }>()
+  const { data, error } = await client.from('jobs').select('assigned_to_id').eq('workspace_id', workspaceId).eq('id', context.id).maybeSingle<{ assigned_to_id: string | null }>()
   if (error || !data) throw new Error('Job tidak ditemukan.')
-  return data.payload.assignedToId ?? null
+  return data.assigned_to_id
 }
 
 export async function GET(request: NextRequest) {

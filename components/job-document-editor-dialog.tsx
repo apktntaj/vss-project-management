@@ -6,7 +6,7 @@ import {
   getOperationalDetails,
   saveJobInvoiceExtraction,
   saveJobTransportExtraction,
-  type LocalJob,
+  type Job,
 } from '@/lib/data-client'
 import type {
   JobDocumentParty,
@@ -42,7 +42,7 @@ const emptyContainer = (): JobTransportContainer => ({ containerNumber: null, si
 const nullableText = (value: string) => value.trim() || null
 const nullableNumber = (value: string) => value === '' ? null : Number(value)
 
-function invoiceFrom(job: LocalJob): JobInvoiceExtraction {
+function invoiceFrom(job: Job): JobInvoiceExtraction {
   const operational = getOperationalDetails(job)
   const current = operational.invoice
   return current ?? {
@@ -64,18 +64,18 @@ function invoiceFrom(job: LocalJob): JobInvoiceExtraction {
   }
 }
 
-function transportFrom(job: LocalJob): JobTransportExtraction {
+function transportFrom(job: Job): JobTransportExtraction {
   const operational = getOperationalDetails(job)
-  return operational.inboundDocument ?? {
-    documentNumber: operational.inbound.documentNumber,
+  return job.transportDocument ?? {
+    documentNumber: job.transportDocumentNumber,
     documentDate: null,
     carrier: operational.inbound.carrier,
     vesselOrFlight: null,
     voyageOrFlightNumber: null,
     bookingNumber: null,
-    shipper: { ...emptyParty(), name: job.shipper },
-    consignee: { ...emptyParty(), name: job.consignee },
-    notifyParty: { ...emptyParty(), name: job.notifyParty },
+    shipper: emptyParty(),
+    consignee: emptyParty(),
+    notifyParty: emptyParty(),
     portOfLoading: null,
     portOfDischarge: null,
     placeOfReceipt: null,
@@ -204,7 +204,7 @@ export function TransportEditor({ value, onChange }: { value: JobTransportExtrac
     </TabsContent></Tabs></div>
 }
 
-export function JobDocumentEditorDialog({ job, kind, open, onOpenChange, onSaved, onToast }: { job: LocalJob | null; kind: EditableJobDocument; open: boolean; onOpenChange: (open: boolean) => void; onSaved: (job: LocalJob) => void; onToast: (message: string, tone?: 'info' | 'error') => void }) {
+export function JobDocumentEditorDialog({ job, kind, open, onOpenChange, onSaved, onToast }: { job: Job | null; kind: EditableJobDocument; open: boolean; onOpenChange: (open: boolean) => void; onSaved: (job: Job) => void; onToast: (message: string, tone?: 'info' | 'error') => void }) {
   const [invoice, setInvoice] = useState<JobInvoiceExtraction | null>(null)
   const [transport, setTransport] = useState<JobTransportExtraction | null>(null)
   const [saving, setSaving] = useState(false)
@@ -219,9 +219,9 @@ export function JobDocumentEditorDialog({ job, kind, open, onOpenChange, onSaved
     setSaving(true)
     try {
       const updated = kind === 'INVOICE' && invoice
-        ? await saveJobInvoiceExtraction(job.id, invoice)
+        ? await saveJobInvoiceExtraction(job, invoice)
         : kind === 'TRANSPORT' && transport
-          ? await saveJobTransportExtraction(job.id, transport)
+          ? await saveJobTransportExtraction(job, transport)
           : null
       if (!updated) throw new Error('Data dokumen belum tersedia.')
       onSaved(updated)
@@ -234,7 +234,7 @@ export function JobDocumentEditorDialog({ job, kind, open, onOpenChange, onSaved
     }
   }
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="flex h-[min(90vh,900px)] max-h-[90vh] w-[calc(100%-1rem)] max-w-none flex-col overflow-hidden p-0 sm:w-[calc(100%-2rem)] sm:max-w-[min(92vw,860px)]"><form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
-    <DialogHeader className="border-b border-primary/20 bg-primary/10 px-5 py-5 pr-12 sm:px-6"><DialogTitle className="text-primary">Edit {kind === 'INVOICE' ? 'Invoice' : 'B/L atau AWB'}</DialogTitle><DialogDescription>Periksa dan koreksi data hasil ekstraksi dokumen untuk Job <span className="font-medium text-foreground">{job?.jobNumber ?? ''}</span>.</DialogDescription></DialogHeader>
+    <DialogHeader className="border-b border-primary/20 bg-primary/10 px-5 py-5 pr-12 sm:px-6"><DialogTitle className="text-primary">Edit {kind === 'INVOICE' ? 'Invoice' : 'B/L atau AWB'}</DialogTitle><DialogDescription>Periksa dan koreksi data hasil ekstraksi dokumen untuk Job <span className="font-medium text-foreground">{job?.jobNumber ?? job?.vssNumber ?? ''}</span>.</DialogDescription></DialogHeader>
     {kind === 'INVOICE' && invoice ? <InvoiceEditor value={invoice} onChange={setInvoice} /> : transport ? <TransportEditor value={transport} onChange={setTransport} /> : null}
     <DialogFooter className="mx-0 mb-0 shrink-0 rounded-none border-primary/15 bg-primary/5 px-5 py-4 sm:px-6"><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Batal</Button><Button type="submit" disabled={saving}>{saving ? 'Menyimpan…' : 'Simpan perubahan'}</Button></DialogFooter>
   </form></DialogContent></Dialog>

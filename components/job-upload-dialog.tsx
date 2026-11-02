@@ -2,7 +2,7 @@
 
 import { useRef, useState, type ChangeEvent } from 'react'
 import { FileText, FilePlus2, Loader2, Ship, X } from 'lucide-react'
-import { saveJobDocument, type LocalJob, type LocalJobDocument } from '@/lib/data-client'
+import { saveJobDocument, type Job, type JobRef } from '@/lib/data-client'
 import type { JobInvoiceExtraction, JobTransportExtraction } from '@/domain/exhibition/source-documents'
 import type { DocumentClassification, JobDocumentExtraction } from '@/components/job-row'
 import { isAcceptedJobDocument, jobDocumentAccept } from '@/components/job-document-file'
@@ -61,17 +61,14 @@ export function JobUploadDialog({
   job,
   open,
   onOpenChange,
-  onDocumentUploaded,
+  onJobUpdated,
   onToast,
 }: {
-  job: LocalJob
+  job: Job
   open: boolean
   onOpenChange: (open: boolean) => void
-  onDocumentUploaded: (
-    jobId: string,
-    document: LocalJobDocument,
-    extraction?: JobDocumentExtraction,
-  ) => void
+  /** Job terbaru dari server bila hasil ekstraksi mengubahnya. */
+  onJobUpdated: (job: Job) => void
   onToast: (message: string, tone?: 'info' | 'error') => void
 }) {
   const [zoneFiles, setZoneFiles] = useState<Record<ZoneKey, File[]>>(EMPTY_ZONES)
@@ -134,13 +131,21 @@ export function JobUploadDialog({
     const warnings: string[] = []
     let invoice: JobInvoiceExtraction | null = null
     let transport: JobTransportExtraction | null = null
+    // Setiap ekstraksi menaikkan versi job; file berikutnya harus menulis di atas versi terbaru.
+    let current: JobRef = job
+    const upload = async (file: File, kind: Parameters<typeof saveJobDocument>[2], extraction?: JobDocumentExtraction) => {
+      const result = await saveJobDocument(current, file, kind, extraction?.invoice, extraction?.transport)
+      if (result.job) {
+        current = result.job
+        onJobUpdated(result.job)
+      }
+    }
     try {
       for (const zone of ZONES) {
         for (const file of zoneFiles[zone.key].filter(isAcceptedJobDocument)) {
           try {
             if (zone.key === 'SUPPORTING') {
-              const document = await saveJobDocument(job.id, file, 'OTHER')
-              onDocumentUploaded(job.id, document)
+              await upload(file, 'OTHER')
               uploaded += 1
               withoutAi += 1
               continue
@@ -148,8 +153,7 @@ export function JobUploadDialog({
             const payload = await classifyFile(file)
             const documentType = payload.classification.documentType
             const kind = documentType === 'UNREADABLE' ? 'OTHER' : documentType
-            const document = await saveJobDocument(job.id, file, kind, payload.invoice, payload.transport)
-            onDocumentUploaded(job.id, document, { invoice: payload.invoice, transport: payload.transport })
+            await upload(file, kind, { invoice: payload.invoice, transport: payload.transport })
             uploaded += 1
             if (payload.invoice) invoice = payload.invoice
             if (payload.transport) transport = payload.transport
@@ -158,8 +162,7 @@ export function JobUploadDialog({
           } catch (caught) {
             const reason = caught instanceof Error ? caught.message : 'dokumen tidak dapat diperiksa'
             try {
-              const document = await saveJobDocument(job.id, file, 'OTHER')
-              onDocumentUploaded(job.id, document)
+              await upload(file, 'OTHER')
               uploaded += 1
               withoutAi += 1
               warnings.push(`${file.name}: ${reason}`)

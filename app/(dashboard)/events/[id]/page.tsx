@@ -10,8 +10,7 @@ import {
   listEventJobs,
   listEventsWithExhibitors,
   type LocalEvent,
-  type LocalJob,
-  type LocalJobDocument,
+  type Job,
 } from '@/lib/data-client'
 import { type BcDocumentKind } from '@/domain/job/types'
 import { groupJobsByJenis, jobJenisLabel } from '@/lib/job-jenis'
@@ -23,13 +22,7 @@ import {
   JobDocumentEditorDialog,
   type EditableJobDocument,
 } from '@/components/job-document-editor-dialog'
-import {
-  JobRow,
-  applyUploadedDocument,
-  downloadCustomsWorkbook,
-  label,
-  type JobDocumentExtraction,
-} from '@/components/job-row'
+import { JobRow, downloadCustomsWorkbook, label } from '@/components/job-row'
 
 function formatDateRange(startsAt: string, endsAt: string) {
   const formatter = new Intl.DateTimeFormat('id-ID', {
@@ -45,15 +38,15 @@ export default function EventDetailPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
   const [event, setEvent] = useState<LocalEvent | null>(null)
-  const [jobs, setJobs] = useState<LocalJob[]>([])
+  const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [showNewJob, setShowNewJob] = useState(false)
   const [editingDocument, setEditingDocument] = useState<{
-    job: LocalJob
+    job: Job
     kind: EditableJobDocument
   } | null>(null)
   const [openJenis, setOpenJenis] = useState<Record<string, boolean>>({})
-  const [deletingJob, setDeletingJob] = useState<LocalJob | null>(null)
+  const [deletingJob, setDeletingJob] = useState<Job | null>(null)
   const [deleting, setDeleting] = useState(false)
 
   const nomorByJobId = useMemo(() => buildJobNomor(jobs), [jobs])
@@ -87,21 +80,11 @@ export default function EventDetailPage() {
       }),
     )
   }
-  const handleDocumentSaved = (updated: LocalJob) => {
+  // Ganti job di daftar dengan versi terbaru dari server (sesudah unggah/edit dokumen).
+  const handleJobUpdated = (updated: Job) => {
     setJobs((current) => current.map((job) => (job.id === updated.id ? updated : job)))
   }
-  const handleDocumentUploaded = (
-    jobId: string,
-    document: LocalJobDocument,
-    extraction?: JobDocumentExtraction,
-  ) => {
-    setJobs((current) =>
-      current.map((job) =>
-        job.id === jobId ? applyUploadedDocument(job, document, extraction) : job,
-      ),
-    )
-  }
-  async function generateCustomsWorkbook(job: LocalJob, documentType: BcDocumentKind) {
+  async function generateCustomsWorkbook(job: Job, documentType: BcDocumentKind) {
     try {
       await downloadCustomsWorkbook(job, documentType)
       showToast(`${label(documentType)} berhasil diunduh.`)
@@ -114,7 +97,7 @@ export default function EventDetailPage() {
     setDeleting(true)
     try {
       await deleteJob(deletingJob.id)
-      showToast(`${deletingJob.jobNumber} dihapus.`)
+      showToast(`${deletingJob.jobNumber || 'Job'} dihapus.`)
       setDeletingJob(null)
       loadData()
     } catch (caught) {
@@ -246,11 +229,11 @@ export default function EventDetailPage() {
                         <thead className="border-b bg-white text-slate-900 font-semibold uppercase tracking-wider">
                           <tr>
                             <th className="px-3 py-3">No Job</th>
-                            <th className="px-3 py-3">Exhibitor</th>
+                            <th className="px-3 py-3">Pihak</th>
                             <th className="px-3 py-3">Dokumen shipment</th>
                             <th className="px-3 py-3">ETA</th>
-                            <th className="px-3 py-3">Bill to</th>
-                            <th className="px-3 py-3">Invoice terkirim</th>
+                            <th className="px-3 py-3">Tagihan</th>
+                            <th className="px-3 py-3">Status tagihan</th>
                             <th className="px-3 py-3">Remark</th>
                             <th className="px-3 py-3">Dokumen BC</th>
                             <th className="px-3 py-3">Aksi</th>
@@ -266,7 +249,7 @@ export default function EventDetailPage() {
                                 onEdit: (editedJob) => router.push(`/jobs/${editedJob.id}/edit`),
                                 onDelete: (deletedJob) => setDeletingJob(deletedJob),
                               }}
-                              onDocumentUploaded={handleDocumentUploaded}
+                              onJobUpdated={handleJobUpdated}
                               onToast={showToast}
                               onGenerate={generateCustomsWorkbook}
                               onEditDocument={(selectedJob, kind) =>
@@ -296,7 +279,7 @@ export default function EventDetailPage() {
         onOpenChange={(nextOpen) => {
           if (!nextOpen) setEditingDocument(null)
         }}
-        onSaved={handleDocumentSaved}
+        onSaved={handleJobUpdated}
         onToast={showToast}
       />
       {deletingJob && (

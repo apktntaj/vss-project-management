@@ -7,20 +7,17 @@ import { containerLabel } from '@/domain/job/manifest'
 import { buildManifestView, type ManifestBlockView } from '@/lib/manifest-view'
 import { groupJobsByJenis, jobJenisLabel } from '@/lib/job-jenis'
 import { JobManifestSheet } from '@/components/job-manifest-sheet'
-import type { LocalExhibitor, LocalJob } from '@/lib/data-client'
+import type { Job } from '@/lib/data-client'
 
 const numberID = (value: number) =>
   new Intl.NumberFormat('id-ID', { maximumFractionDigits: 3 }).format(value)
 
-/** No. B/L atau AWB job — dari blok inward bila ada, jatuh ke field job mentah. */
-function transportSummary(view: ManifestBlockView, job: LocalJob): string {
-  if (view.inward) {
-    const document = view.inward.transportDocument
-    return `${document.kind === 'BL' ? 'B/L' : 'AWB'} ${document.number}`
-  }
-  if (job.blNumber) return `B/L ${job.blNumber}`
-  if (job.awbNumber) return `AWB ${job.awbNumber}`
-  return 'Dokumen angkut belum diisi'
+/** No. B/L atau AWB job — identitas kiriman. */
+function transportSummary(view: ManifestBlockView): string {
+  const document = view.transportDocument
+  return document
+    ? `${document.type === 'BL' ? 'B/L' : 'AWB'} ${document.number}`
+    : 'Dokumen angkut belum diisi'
 }
 
 /** Ukuran muatan: daftar kontainer untuk FCL, jumlah paket untuk LCL/tak terdefinisi. */
@@ -40,15 +37,13 @@ function chip(extra = '') {
  */
 function JobRowSummary({
   job,
-  exhibitors,
   onOpenJob,
 }: {
-  job: LocalJob
-  exhibitors: LocalExhibitor[]
+  job: Job
   onOpenJob: (jobId: string) => void
 }) {
   const [open, setOpen] = useState(false)
-  const view = buildManifestView(job, exhibitors)
+  const view = buildManifestView(job)
 
   return (
     <div className="border-b border-slate-100 last:border-0">
@@ -61,12 +56,17 @@ function JobRowSummary({
         <span className="text-yellow-700">
           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
-        <span className="w-[72px] shrink-0 font-bold text-slate-900">{job.jobNumber || '—'}</span>
-        <span className="min-w-0 flex-1 truncate font-semibold text-slate-900" title={view.agentName}>
-          {view.agentName}
+        <span
+          className="w-[110px] shrink-0 truncate font-bold text-slate-900"
+          title={job.jobNumber ? `${job.jobNumber} · ${job.vssNumber}` : job.vssNumber}
+        >
+          {job.jobNumber ?? job.vssNumber}
+        </span>
+        <span className="min-w-0 flex-1 truncate font-semibold text-slate-900" title={view.partyName}>
+          {view.partyName}
         </span>
         <span className={`${chip('bg-white/70 text-sky-800 ring-yellow-300')} hidden sm:inline-flex`}>
-          {transportSummary(view, job)}
+          {transportSummary(view)}
         </span>
         <span className={`${chip('bg-white/70 text-violet-800 ring-yellow-300')} hidden md:inline-flex`}>
           <Package size={12} aria-hidden="true" /> {loadSummary(view)}
@@ -86,11 +86,9 @@ function JobRowSummary({
  */
 export function EventManifestTree({
   jobs,
-  exhibitors,
   onOpenJob,
 }: {
-  jobs: LocalJob[]
-  exhibitors: LocalExhibitor[]
+  jobs: Job[]
   onOpenJob: (jobId: string) => void
 }) {
   const [openJenis, setOpenJenis] = useState<Record<string, boolean>>({})
@@ -125,12 +123,7 @@ export function EventManifestTree({
             {isOpen && (
               <div className="border-t border-slate-100 bg-white">
                 {group.jobs.map((job) => (
-                  <JobRowSummary
-                    key={job.id}
-                    job={job}
-                    exhibitors={exhibitors}
-                    onOpenJob={onOpenJob}
-                  />
+                  <JobRowSummary key={job.id} job={job} onOpenJob={onOpenJob} />
                 ))}
               </div>
             )}

@@ -237,26 +237,5 @@ export type Event = {
   eventOrganizer?: EventOrganizer
 }
 
+/** Kontak satu orang (dipakai agent). Exhibitor punya domain sendiri di `domain/exhibitor/`. */
 export type ExhibitorContact = Pick<Contact, 'name' | 'role' | 'email' | 'phone'>
-
-type ExhibitorBase = {
-  id: string
-  eventId: string
-  name: string
-  contact: ExhibitorContact
-  agentId: string | null
-  createdAt: string
-  createdById: string
-  updatedAt: string
-}
-
-export type LocalExhibitor = ExhibitorBase & {
-  kind: 'LOCAL'
-  npwp: string | null
-}
-
-export type InternationalExhibitor = ExhibitorBase & {
-  kind: 'INTERNATIONAL'
-}
-
-export type Exhibitor = LocalExhibitor | InternationalExhibitor

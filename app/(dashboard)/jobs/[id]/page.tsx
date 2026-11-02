@@ -16,17 +16,17 @@ import {
   getJob,
   getOperationalDetails,
   listEventExhibitors,
-  listEventJobs,
-  type LocalExhibitor,
-  type LocalJob,
+  type Exhibitor,
+  type Job,
+  type JobCiplLine,
 } from '@/lib/data-client'
 import { internationalJobJenisLabels } from '@/domain/job/types'
-import { buildJobNomor } from '@/lib/job-number'
 import { buildManifestView } from '@/lib/manifest-view'
 import { StatusBadge } from '@/components/status-badge'
 import { JobManifestSection } from '@/components/job-manifest-section'
 import { JobManifestEditorModal } from '@/components/job-manifest-editor-modal'
-import { ExhibitorLogisticsModal } from '@/components/exhibitor-logistics-modal'
+import { CiplLineModal } from '@/components/cipl-line-modal'
+import { JobPartyInvoiceCard } from '@/components/job-party-invoice-card'
 import { PageSkeleton } from '@/components/loading-skeletons'
 import { compareInvoiceWithTransport, type DocumentComparison } from '@/lib/document-comparison'
 import { ContextTicketList } from '@/components/context-ticket-list'
@@ -46,7 +46,7 @@ function Info({ label: title, value }: { label: string; value: string | null | u
   )
 }
 
-const jenisLabel = (job: LocalJob) =>
+const jenisLabel = (job: Job) =>
   job.kind === 'LOCAL'
     ? 'Local'
     : job.internationalJenis
@@ -122,7 +122,7 @@ function DocumentComparisonSummary({ comparison }: { comparison: DocumentCompari
 }
 
 export default function JobDetail({ params }: { params: { id: string } }) {
-  const [job, setJob] = useState<LocalJob | null>(null)
+  const [job, setJob] = useState<Job | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   useEffect(() => {
@@ -144,11 +144,13 @@ export default function JobDetail({ params }: { params: { id: string } }) {
       active = false
     }
   }, [params.id])
-  const [exhibitors, setExhibitors] = useState<LocalExhibitor[]>([])
-  const [nomor, setNomor] = useState<string | null>(null)
+  const [exhibitors, setExhibitors] = useState<Exhibitor[]>([])
   const [manifestModalOpen, setManifestModalOpen] = useState(false)
-  const [logisticsTarget, setLogisticsTarget] = useState<LocalExhibitor | null>(null)
+  const [lineTarget, setLineTarget] = useState<JobCiplLine | null>(null)
   const jobEventId = job?.eventId ?? null
+  // Exhibitor event: pilihan pihak & penautan baris CIPL. Dimuat ulang saat versi job berubah
+  // karena menyimpan baris CIPL bisa mendaftarkan exhibitor baru.
+  const jobVersion = job?.version ?? 0
   useEffect(() => {
     if (!jobEventId) {
       setExhibitors([])
@@ -165,22 +167,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
     return () => {
       active = false
     }
-  }, [jobEventId])
-  useEffect(() => {
-    if (!jobEventId) {
-      setNomor(null)
-      return
-    }
-    let active = true
-    listEventJobs(jobEventId)
-      .then((eventJobs) => {
-        if (active) setNomor(buildJobNomor(eventJobs).get(params.id) ?? null)
-      })
-      .catch(() => {})
-    return () => {
-      active = false
-    }
-  }, [jobEventId, params.id])
+  }, [jobEventId, jobVersion])
   if (loading || !job) {
     if (loadError)
       return (
@@ -193,20 +180,16 @@ export default function JobDetail({ params }: { params: { id: string } }) {
       )
     return <PageSkeleton cards={2} rows={5} />
   }
-  const showManifest =
-    job.kind === 'INTERNATIONAL' ||
-    Boolean(job.inward) ||
-    Boolean(job.kepulangan) ||
-    Boolean(job.manifestExhibitors?.length)
   const details = getOperationalDetails(job)
+  const transport = job.transportDocument
   const completed = Object.values(details.customs).filter(
     (item) => item.applicable && item.status === 'COMPLETED',
   ).length
   const required = Object.values(details.customs).filter((item) => item.applicable).length
   const invoiceItems = details.invoiceItems ?? []
   const documentComparison =
-    details.invoice && details.inboundDocument
-      ? compareInvoiceWithTransport(details.invoice, details.inboundDocument)
+    details.invoice && transport
+      ? compareInvoiceWithTransport(details.invoice, transport)
       : null
   return (
     <div className="space-y-6">
@@ -220,7 +203,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           </Link>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <h1 className="text-3xl font-bold tracking-tight">
-              {nomor || job.jobNumber || 'No Job belum diisi'}
+              {job.jobNumber || job.vssNumber}
             </h1>
             <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700 ring-1 ring-inset ring-violet-200">
               {jenisLabel(job)}
@@ -228,8 +211,10 @@ export default function JobDetail({ params }: { params: { id: string } }) {
             <StatusBadge status={job.status} />
           </div>
           <p className="mt-2 text-sm text-slate-500">
-            ID internal {job.id} · {job.exhibitor?.legalName || job.shipper || job.clientName} ·{' '}
-            {job.kind === 'LOCAL' ? 'Tanpa agent (lokal)' : job.agent || 'Agent belum diisi'}
+            {job.vssNumber} · {job.party?.name || 'Pihak belum ditetapkan'}
+            {job.transportDocumentNumber
+              ? ` · ${job.transportDocumentType === 'AWB' ? 'AWB' : 'B/L'} ${job.transportDocumentNumber}`
+              : ''}
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -257,41 +242,22 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           </div>
         </div>
       </section>
-      {!showManifest && (
-        <section className="card p-5">
-          <h2 className="font-semibold">Exhibitor</h2>
-          {job.exhibitor ? (
-            <dl className="mt-4 grid gap-5 sm:grid-cols-3">
-              <Info label="Exhibitor" value={job.exhibitor.legalName} />
-              <Info label="Hall" value={job.exhibitor.logistics?.hall} />
-              <Info label="Booth" value={job.exhibitor.logistics?.booth} />
-            </dl>
-          ) : (
-            <p className="mt-3 text-sm text-slate-500">
-              Belum ada exhibitor yang ditautkan ke job ini.
-            </p>
-          )}
-        </section>
-      )}
-      {showManifest && (
-        <JobManifestSection
-          view={buildManifestView(job, exhibitors)}
-          onEditManifest={() => setManifestModalOpen(true)}
-          onEditPeserta={setLogisticsTarget}
-        />
-      )}
+      <JobPartyInvoiceCard job={job} exhibitors={exhibitors} onSaved={setJob} />
+      <JobManifestSection
+        view={buildManifestView(job)}
+        onEditManifest={() => setManifestModalOpen(true)}
+        onEditPeserta={(peserta) => setLineTarget(peserta.line)}
+      />
       {documentComparison && <DocumentComparisonSummary comparison={documentComparison} />}
       <>
         <div className="grid gap-6 xl:grid-cols-3">
           <div className="space-y-6 xl:col-span-2">
             <section className="card p-5">
-              <h2 className="font-semibold">Identitas Job</h2>
+              <h2 className="font-semibold">Pihak pada dokumen angkut</h2>
               <dl className="mt-4 grid gap-5 sm:grid-cols-2">
-                <Info label="Exhibitor" value={job.exhibitor?.legalName || job.clientName} />
-                <Info label="Peran dalam shipment" value="Shipper" />
-                <Info label="Agent" value={job.agent} />
-                <Info label="Consignee" value={job.consignee} />
-                <Info label="Notify party" value={job.notifyParty} />
+                <Info label="Shipper" value={transport?.shipper?.name} />
+                <Info label="Consignee" value={transport?.consignee?.name} />
+                <Info label="Notify party" value={transport?.notifyParty?.name} />
                 <Info label="PIC" value={job.assignedTo?.name} />
               </dl>
             </section>
@@ -310,13 +276,15 @@ export default function JobDetail({ params }: { params: { id: string } }) {
                   <div key={title} className="rounded-xl border border-slate-200 p-4">
                     <p className="font-semibold text-slate-800">{title}</p>
                     <p className="mt-2 text-sm text-slate-600">
-                      {leg.mode
-                        ? `${leg.mode} · ${leg.documentType || 'tanpa dokumen'}`
-                        : 'Belum direncanakan'}
+                      {leg.mode ?? 'Belum direncanakan'}
                     </p>
-                    <p className="mt-1 text-sm font-medium">
-                      {leg.documentNumber || 'Nomor dokumen belum diisi'}
-                    </p>
+                    {title === 'Masuk' && (
+                      <p className="mt-1 text-sm font-medium">
+                        {job.transportDocumentNumber
+                          ? `${job.transportDocumentType ?? 'Dokumen'} ${job.transportDocumentNumber}`
+                          : 'Nomor B/L/AWB belum diisi'}
+                      </p>
+                    )}
                     <p className="mt-1 text-sm text-slate-600">Vessel: {leg.carrier || '—'}</p>
                     <p className="mt-3 text-xs text-slate-500">
                       Jadwal: {date(leg.scheduleAt)} · Aktual: {date(leg.actualAt)}
@@ -326,10 +294,8 @@ export default function JobDetail({ params }: { params: { id: string } }) {
               </div>
             </section>
             <section className="card p-5">
-              <h2 className="font-semibold">Penagihan &amp; logistik</h2>
+              <h2 className="font-semibold">Logistik</h2>
               <dl className="mt-4 grid gap-5 sm:grid-cols-2">
-                <Info label="Bill to" value={job.billTo} />
-                <Info label="Invoice terkirim" value={job.invoiceSent ? 'Sudah' : 'Belum'} />
                 <Info label="Empty storage" value={job.emptyStorage} />
                 <Info label="Re-export" value={job.reExport} />
               </dl>
@@ -433,30 +399,22 @@ export default function JobDetail({ params }: { params: { id: string } }) {
       {manifestModalOpen && (
         <JobManifestEditorModal
           job={job}
-          eventId={job.eventId ?? null}
-          peserta={buildManifestView(job, exhibitors).peserta}
           onClose={() => setManifestModalOpen(false)}
           onSaved={(savedJob) => {
             setJob(savedJob)
             setManifestModalOpen(false)
           }}
-          onPesertaLogisticsSaved={(exhibitorId, logistics) => {
-            setExhibitors((current) =>
-              current.map((item) => (item.id === exhibitorId ? { ...item, logistics } : item)),
-            )
-          }}
         />
       )}
-      {logisticsTarget && job.eventId && (
-        <ExhibitorLogisticsModal
-          eventId={job.eventId}
-          exhibitor={logisticsTarget}
-          onClose={() => setLogisticsTarget(null)}
-          onSaved={(exhibitorId, logistics) => {
-            setExhibitors((current) =>
-              current.map((item) => (item.id === exhibitorId ? { ...item, logistics } : item)),
-            )
-            setLogisticsTarget(null)
+      {lineTarget && (
+        <CiplLineModal
+          job={job}
+          line={lineTarget}
+          eventExhibitors={exhibitors}
+          onClose={() => setLineTarget(null)}
+          onSaved={(savedJob) => {
+            setJob(savedJob)
+            setLineTarget(null)
           }}
         />
       )}

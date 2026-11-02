@@ -358,14 +358,24 @@ export async function checkReferences(input: EventInput): Promise<EventReference
 }
 
 /**
- * Apakah event punya data turunan (exhibitor/CIPL) yang menghalangi penghapusan keras (Req 14.3)?
- *
- * PLACEHOLDER yang DISENGAJA: entitas hilir (exhibitors/cipl) BELUM ada tabelnya di slice ini —
- * "entitas hilir akan menggantung di bawah events pada spec domain berikutnya". Mengkueri tabel
- * yang belum ada akan memutus build/test. Jadi untuk sekarang selalu false (tidak ada data turunan
- * yang mungkin ada). Saat slice exhibitor/CIPL mendarat, ganti ini dengan count nyata ke tabel-tabel
- * tersebut, tetap disaring `workspace_id` + `event_id`.
+ * Apakah event punya data turunan yang menghalangi penghapusan keras (Req 14.3)? Job dan exhibitor
+ * ber-FK `on delete restrict` ke event, jadi tanpa pengecekan ini penghapusan gagal dengan error
+ * FK mentah alih-alih 409 yang jelas. Disaring `workspace_id` + `event_id`.
  */
-export async function hasDerivedData(_eventId: string): Promise<boolean> {
-  return false
+export async function hasDerivedData(eventId: string): Promise<boolean> {
+  const { client, workspaceId } = await withWorkspace()
+  const counts = await Promise.all(
+    (['jobs', 'exhibitors'] as const).map(async (table) => {
+      const { count, error } = await client
+        .from(table)
+        .select('id', { count: 'exact', head: true })
+        .eq('workspace_id', workspaceId)
+        .eq('event_id', eventId)
+      if (error) {
+        throw new Error(`Gagal memeriksa data turunan event: ${error.message}`)
+      }
+      return count ?? 0
+    }),
+  )
+  return counts.some((count) => count > 0)
 }

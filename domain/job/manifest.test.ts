@@ -8,13 +8,13 @@ import {
   exhibitorLogisticsSchema,
   summarizeKoli,
   summarizeKoliCollections,
+  transportDocumentSchema,
   type InwardManifest,
 } from './manifest'
 import { bcDocumentKinds } from './types'
 
 // Contoh dari inward manifest ALLPACK — S.01: LCL, 1 exhibitor, 3 koli, Skep bernomor.
 const s01: InwardManifest = {
-  transportDocument: { kind: 'BL', number: 'SHFPSJKT26026454' },
   loadConfiguration: { kind: 'LCL' },
   milestones: [
     { kind: 'ETA', date: '2026-09-28', documentNumber: null },
@@ -48,7 +48,6 @@ const s12Exhibitor = {
 
 // A.01: AWB.
 const a01: InwardManifest = {
-  transportDocument: { kind: 'AWB', number: '235-44415932' },
   loadConfiguration: { kind: 'FCL', containers: [{ containerNumber: null, size: 'K40', sealNumber: null }] },
   milestones: [{ kind: 'ETA', date: '2026-09-23', documentNumber: null }],
   notes: [],
@@ -56,7 +55,6 @@ const a01: InwardManifest = {
 
 // S.09: FCL campuran 20' + 40' (dua kontainer beda ukuran dalam satu job).
 const s09: InwardManifest = {
-  transportDocument: { kind: 'BL', number: '276509446' },
   loadConfiguration: {
     kind: 'FCL',
     containers: [
@@ -89,8 +87,8 @@ assert.equal(
   inwardManifestSchema.safeParse({ ...s01, milestones: [{ kind: 'ETA', date: '28/09/2026', documentNumber: null }] }).success,
   false,
 )
-// Invalid: dokumen angkut tanpa nomor.
-assert.equal(inwardManifestSchema.safeParse({ ...s01, transportDocument: { kind: 'BL', number: ' ' } }).success, false)
+// Invalid: dokumen angkut tanpa nomor (milik job, bukan blok inward).
+assert.equal(transportDocumentSchema.safeParse({ kind: 'BL', number: ' ' }).success, false)
 
 // Kepulangan: return list container S.16 (1x20' + 1x40') dan return LCL "Big Logistic (Adam)".
 assert.doesNotThrow(() =>
