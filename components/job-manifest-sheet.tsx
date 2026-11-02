@@ -159,8 +159,17 @@ export function JobManifestSheet({
           ))}
           {!rows.length && (
             <tr>
-              <td className={`${cell} py-2 text-center text-slate-500`} colSpan={15}>
-                Belum ada exhibitor binaan pada agent ini.
+              <td className={cell}>
+                <button type="button" onClick={onOpenJob} className="hover:text-orange-700 hover:underline" title="Buka detail job">
+                  {view.jobNumber}
+                </button>
+              </td>
+              <td className={`${cell} py-2 text-slate-500`} colSpan={14}>
+                Belum ada baris CIPL.{' '}
+                <button type="button" onClick={onOpenJob} className="font-semibold text-orange-700 hover:underline">
+                  Buka detail job
+                </button>{' '}
+                untuk melengkapi CIPL, No Job, dan tagihan.
               </td>
             </tr>
           )}
