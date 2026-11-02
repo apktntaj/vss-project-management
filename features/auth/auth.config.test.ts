@@ -443,18 +443,14 @@ describe('Preservation Property Tests', () => {
       expect(can('CS', 'event:read')).toBe(true)
       expect(can('CS', 'event:create')).toBe(true)
       expect(can('CS', 'event:access:manage')).toBe(true)
-      expect(can('CS', 'job:invoice:read')).toBe(false)
       expect(can('CS', 'job:invoice:write')).toBe(false)
       expect(can('CS', 'job:update')).toBe(false)
     })
 
     test('FINANCE satu-satunya peran dengan kapabilitas tagihan', () => {
-      expect(can('FINANCE', 'job:invoice:read')).toBe(true)
       expect(can('FINANCE', 'job:invoice:write')).toBe(true)
-      expect(can('OPERATIONS', 'job:invoice:read')).toBe(false)
       expect(can('OPERATIONS', 'job:invoice:write')).toBe(false)
       expect(can('STAFF', 'job:invoice:write')).toBe(false)
-      expect(can('DOCUMENT_ASSISTANT', 'job:invoice:read')).toBe(false)
     })
 
     test('OPERATIONS tidak dapat membuat event maupun mengelola akses event', () => {
@@ -480,7 +476,6 @@ describe('Preservation Property Tests', () => {
       expect(can('STAFF', 'event:cancel')).toBe(true)
       expect(can('STAFF', 'event:delete')).toBe(true)
       expect(can('STAFF', 'reference:create')).toBe(true)
-      expect(can('STAFF', 'job:invoice:read')).toBe(false)
       expect(can('STAFF', 'event:access:manage')).toBe(false)
     })
 

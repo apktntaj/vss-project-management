@@ -19,7 +19,6 @@ import {
   translateConstraint,
   writeJob,
 } from '@/features/jobs/use-cases/errors'
-import { redactJobInvoice } from '@/features/jobs/use-cases/invoice-access'
 import { applyDocumentExtraction, normalizeOperationalDetails } from '@/domain/job/operational'
 import { suggestNextManifestSeq } from '@/domain/job/numbering'
 import { exhibitorOnlyJob } from '@/domain/job/validation'
@@ -86,7 +85,7 @@ export async function updateJobDetails(
   if (patch.operational !== undefined) {
     columns.operational = normalizeOperationalDetails(patch.operational)
   }
-  return redactJobInvoice(currentUser, await writeJob(jobId, patch.version, columns))
+  return writeJob(jobId, patch.version, columns)
 }
 
 /** Tagihan job ke pihaknya. Satu job = satu tagihan. Hanya FINANCE (dan admin). */
@@ -128,7 +127,7 @@ export async function applyJobExtraction(
   if (fields.commercialInvoiceNumber) {
     columns.commercial_invoice_number = fields.commercialInvoiceNumber
   }
-  return redactJobInvoice(currentUser, await writeJob(jobId, input.version, columns))
+  return writeJob(jobId, input.version, columns)
 }
 
 /**
@@ -150,7 +149,7 @@ export async function saveJobCipl(
   const job = await findJobById(jobId)
   if (!job) throw new ApiError(404, 'Job tidak ditemukan.')
   if (!saved) throw new ApiError(409, STALE_VERSION_MESSAGE)
-  return redactJobInvoice(currentUser, job)
+  return job
 }
 
 /** Blok inward manifest — hanya bermakna untuk job International. */
@@ -163,7 +162,7 @@ export async function saveJobInward(
   await authorize(currentUser, 'job:update')
   const job = await loadJobForWrite(jobId, version)
   if (job.kind === 'LOCAL') throw new ApiError(400, 'Job Local tidak memiliki dokumen kepabeanan.')
-  return redactJobInvoice(currentUser, await writeJob(jobId, version, { inward }))
+  return writeJob(jobId, version, { inward })
 }
 
 /** Fase kepulangan (return list); null mengosongkannya. */
@@ -174,7 +173,7 @@ export async function saveJobKepulangan(
   kepulangan: JobReturn | null,
 ): Promise<Job> {
   await authorize(currentUser, 'job:update')
-  return redactJobInvoice(currentUser, await writeJob(jobId, version, { kepulangan }))
+  return writeJob(jobId, version, { kepulangan })
 }
 
 /** Saran urutan No Job berikutnya untuk awalan job ini di event-nya; null bila awalan belum ada. */

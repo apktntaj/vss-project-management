@@ -23,7 +23,6 @@ export type Capability =
   | 'job:update'
   | 'job:delete'
   | 'exhibitor:write'
-  | 'job:invoice:read'
   | 'job:invoice:write'
   | 'event:access:manage'
 
@@ -38,8 +37,8 @@ export type Capability =
  * - STAFF — operator luas: event + job + referensi, tanpa tagihan. Bukan PIC (PIC hanya CS).
  * - OPERATIONS — pipeline job/shipment: job + exhibitor, baca event.
  * - DOCUMENT_ASSISTANT — dokumen job: baca, ubah job, tulis exhibitor.
- * - FINANCE — baca event/job dan SATU-SATUNYA yang boleh membaca/menulis tagihan job
- *   (`job:invoice:read|write`).
+ * - FINANCE — baca event/job dan SATU-SATUNYA yang boleh MENULIS tagihan job (`job:invoice:write`);
+ *   membaca tagihan terbuka untuk semua peran, jadi tidak digerbang capability.
  * - `event:update|cancel|delete` selain capability juga butuh guard per-objek (PIC / penerima akses
  *   / admin) yang DISUPLAI use-case, bukan dibakar ke dalam `can`.
  */
@@ -85,7 +84,6 @@ const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
   FINANCE: new Set<Capability>([
     'event:read',
     'job:read',
-    'job:invoice:read',
     'job:invoice:write',
   ]),
 }

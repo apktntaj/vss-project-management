@@ -2,7 +2,6 @@ import 'server-only'
 
 import { authorize } from '@/features/auth'
 import { findJobById, listJobSummaries, listJobs } from '@/features/jobs/repository'
-import { canReadInvoice, redactJobInvoice } from '@/features/jobs/use-cases/invoice-access'
 import { ApiError } from '@/lib/server/errors'
 import type { CurrentUser } from '@/domain/auth/types'
 import type { Job, JobSummary } from '@/domain/job/types'
@@ -16,14 +15,12 @@ export async function listJobsForUser(
   await authorize(currentUser, 'job:read')
   const { view, ...filter } = query
   if (view === 'summary') return listJobSummaries(filter)
-  const jobs = await listJobs(filter)
-  // Tagihan hanya untuk FINANCE/admin; ringkasan (`JobSummary`) tidak memuat tagihan.
-  return canReadInvoice(currentUser) ? jobs : jobs.map((job) => redactJobInvoice(currentUser, job))
+  return listJobs(filter)
 }
 
 export async function getJob(currentUser: CurrentUser, jobId: string): Promise<Job> {
   await authorize(currentUser, 'job:read')
   const job = await findJobById(jobId)
   if (!job) throw new ApiError(404, 'Job tidak ditemukan.')
-  return redactJobInvoice(currentUser, job)
+  return job
 }

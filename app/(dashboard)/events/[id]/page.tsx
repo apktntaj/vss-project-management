@@ -19,7 +19,6 @@ import { buildJobNomor } from '@/lib/job-number'
 import { PageSkeleton } from '@/components/loading-skeletons'
 import { ContextTicketList } from '@/components/context-ticket-list'
 import { EventAccessCard } from '@/components/event-access-card'
-import { useCanSeeBilling } from '@/lib/use-billing-access'
 import { JobCreateWizard } from '@/components/job-create-wizard'
 import {
   JobDocumentEditorDialog,
@@ -51,7 +50,6 @@ export default function EventDetailPage() {
   const [openJenis, setOpenJenis] = useState<Record<string, boolean>>({})
   const [deletingJob, setDeletingJob] = useState<Job | null>(null)
   const [deleting, setDeleting] = useState(false)
-  const canSeeBilling = useCanSeeBilling()
 
   const nomorByJobId = useMemo(() => buildJobNomor(jobs), [jobs])
 
@@ -253,8 +251,8 @@ export default function EventDetailPage() {
                           <col className="w-[145px]" />
                           <col className="w-[185px]" />
                           <col className="w-[110px]" />
-                          {canSeeBilling && <col className="w-[95px]" />}
-                          {canSeeBilling && <col className="w-[90px]" />}
+                          <col className="w-[95px]" />
+                          <col className="w-[90px]" />
                           <col className="w-[140px]" />
                           <col className="w-[200px]" />
                           <col className="w-[60px]" />
@@ -265,8 +263,8 @@ export default function EventDetailPage() {
                             <th className="px-3 py-3">Pihak</th>
                             <th className="px-3 py-3">Dokumen shipment</th>
                             <th className="px-3 py-3">ETA</th>
-                            {canSeeBilling && <th className="px-3 py-3">Tagihan</th>}
-                            {canSeeBilling && <th className="px-3 py-3">Status tagihan</th>}
+                            <th className="px-3 py-3">Tagihan</th>
+                            <th className="px-3 py-3">Status tagihan</th>
                             <th className="px-3 py-3">Remark</th>
                             <th className="px-3 py-3">Dokumen BC</th>
                             <th className="px-3 py-3">Aksi</th>

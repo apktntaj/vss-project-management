@@ -11,7 +11,6 @@ import { getOperationalDetails, type Job } from '@/lib/data-client'
 import { invoiceStatusLabels, transportModeLabels, type BcDocumentKind } from '@/domain/job/types'
 import { jobJenisKey, jobJenisLabel } from '@/lib/job-jenis'
 import type { JobListEvent } from '@/lib/job-list'
-import { useCanSeeBilling } from '@/lib/use-billing-access'
 import { StatusBadge } from '@/components/status-badge'
 import type { EditableJobDocument } from '@/components/job-document-editor-dialog'
 import { JobUploadDialog } from '@/components/job-upload-dialog'
@@ -36,7 +35,6 @@ type JobTableProps = {
 }
 
 export function JobTable({ jobs, eventById, ...handlers }: JobTableProps) {
-  const canSeeBilling = useCanSeeBilling()
   return (
     <div className="card max-h-[65vh] overflow-auto">
       <table className="w-full min-w-[1000px] table-fixed text-left text-sm">
@@ -47,7 +45,7 @@ export function JobTable({ jobs, eventById, ...handlers }: JobTableProps) {
           <col className="w-[190px]" />
           <col className="w-[170px]" />
           <col className="w-[100px]" />
-          {canSeeBilling && <col className="w-[110px]" />}
+          <col className="w-[110px]" />
           <col className="w-[110px]" />
           <col className="w-[48px]" />
         </colgroup>
@@ -59,7 +57,7 @@ export function JobTable({ jobs, eventById, ...handlers }: JobTableProps) {
             <th className={th}>Pihak</th>
             <th className={th}>B/L · AWB</th>
             <th className={th}>ETA</th>
-            {canSeeBilling && <th className={th}>Tagihan</th>}
+            <th className={th}>Tagihan</th>
             <th className={th}>Status</th>
             <th className={th}>
               <span className="sr-only">Aksi</span>
@@ -95,7 +93,6 @@ function JobTableRow({
   index: number
   event: JobListEvent | undefined
 }) {
-  const canSeeBilling = useCanSeeBilling()
   const operational = getOperationalDetails(job)
   const jenis = [
     jobJenisLabel(jobJenisKey(job)),
@@ -154,15 +151,13 @@ function JobTableRow({
       <td className="px-3 py-3 align-top text-slate-500">
         {operational.inbound.scheduleAt ? date(operational.inbound.scheduleAt) : <span className="text-slate-300">—</span>}
       </td>
-      {canSeeBilling && (
-        <td className="px-3 py-3 align-top">
-          <span
-            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${INVOICE_BADGE[job.invoice.status]}`}
-          >
-            {invoiceStatusLabels[job.invoice.status]}
-          </span>
-        </td>
-      )}
+      <td className="px-3 py-3 align-top">
+        <span
+          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${INVOICE_BADGE[job.invoice.status]}`}
+        >
+          {invoiceStatusLabels[job.invoice.status]}
+        </span>
+      </td>
       <td className="px-3 py-3 align-top">
         <StatusBadge status={job.status} />
       </td>
