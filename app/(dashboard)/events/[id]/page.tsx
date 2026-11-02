@@ -13,11 +13,8 @@ import {
   type LocalJob,
   type LocalJobDocument,
 } from '@/lib/data-client'
-import {
-  internationalJobJenisLabels,
-  type BcDocumentKind,
-  type InternationalJobJenis,
-} from '@/domain/job/types'
+import { type BcDocumentKind } from '@/domain/job/types'
+import { groupJobsByJenis, jobJenisLabel } from '@/lib/job-jenis'
 import { buildJobNomor } from '@/lib/job-number'
 import { PageSkeleton } from '@/components/loading-skeletons'
 import { ContextTicketList } from '@/components/context-ticket-list'
@@ -43,32 +40,6 @@ function formatDateRange(startsAt: string, endsAt: string) {
   return `${formatter.format(new Date(startsAt))} - ${formatter.format(new Date(endsAt))}`
 }
 
-type JobJenisGroup = InternationalJobJenis | 'LOCAL' | 'LEGACY'
-
-/** Urutan dasar grup jenis; dipakai sebagai tie-break saat jumlah job sama. */
-const jobJenisOrder: ReadonlyArray<JobJenisGroup> = [
-  'TPPB_BC_23',
-  'ATA_CARNET',
-  'TEMPORARY_IMPORT',
-  'PERMANENT_IMPORT',
-  'ROAD_SHIPMENT',
-  'LOCAL',
-  'LEGACY',
-]
-
-function jobJenisKey(job: LocalJob): JobJenisGroup {
-  if (job.kind === 'LOCAL') return 'LOCAL'
-  // Nilai jenis yang tak dikenal (mis. TEMPORARY pra-taksonomi 2026-10-29) tetap tampil sebagai job lama.
-  if (job.internationalJenis && job.internationalJenis in internationalJobJenisLabels)
-    return job.internationalJenis
-  return 'LEGACY'
-}
-
-function jobJenisLabel(key: JobJenisGroup) {
-  if (key === 'LOCAL') return 'Local'
-  if (key === 'LEGACY') return 'Job lama'
-  return internationalJobJenisLabels[key]
-}
 
 export default function EventDetailPage() {
   const params = useParams<{ id: string }>()
@@ -87,21 +58,7 @@ export default function EventDetailPage() {
 
   const nomorByJobId = useMemo(() => buildJobNomor(jobs), [jobs])
 
-  const jenisGroups = useMemo(() => {
-    const byKey = new Map<JobJenisGroup, LocalJob[]>()
-    for (const job of jobs) {
-      const key = jobJenisKey(job)
-      const bucket = byKey.get(key)
-      if (bucket) bucket.push(job)
-      else byKey.set(key, [job])
-    }
-    return jobJenisOrder
-      .flatMap((key) => {
-        const groupJobs = byKey.get(key)
-        return groupJobs ? [{ key, jobs: groupJobs }] : []
-      })
-      .sort((a, b) => b.jobs.length - a.jobs.length)
-  }, [jobs])
+  const jenisGroups = useMemo(() => groupJobsByJenis(jobs), [jobs])
 
   const loadData = useCallback(() => {
     setLoading(true)

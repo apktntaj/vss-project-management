@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { ChevronDown, ChevronRight, Pencil, Ship, TriangleAlert } from 'lucide-react'
+import { type ReactNode } from 'react'
+import { Pencil, Ship, TriangleAlert } from 'lucide-react'
 
 import {
   containerLabel,
@@ -10,11 +10,13 @@ import {
   operationalNoteKindLabels,
   summarizeKoli,
   summarizeKoliCollections,
+  type Koli,
+  type KoliSummary,
   type MilestoneKind,
 } from '@/domain/job/manifest'
 import { internationalJobJenisLabels } from '@/domain/job/types'
 import type { LocalExhibitor } from '@/lib/data-client'
-import type { ManifestBlockView } from '@/lib/manifest-view'
+import type { ManifestBlockView, ManifestPeserta } from '@/lib/manifest-view'
 
 const milestoneOrder: MilestoneKind[] = [
   'ETA',
@@ -31,6 +33,9 @@ const dateID = (value: string) =>
   new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value))
 const numberID = (value: number) =>
   new Intl.NumberFormat('id-ID', { maximumFractionDigits: 3 }).format(value)
+/** Nilai sel numerik manifest: tampilkan '—' bila belum dirinci agar grid tidak kosong tak bermakna. */
+const cell = (value: number | null | undefined) =>
+  value === null || value === undefined ? '—' : numberID(value)
 
 function chip(tone: 'slate' | 'orange' | 'emerald' | 'amber' | 'violet', extra = '') {
   const tones = {
@@ -49,103 +54,61 @@ function loadConfigurationLabel(view: ManifestBlockView) {
   return configuration.kind === 'LCL' ? 'LCL' : configuration.containers.map(containerLabel).join(' + ')
 }
 
-function PesertaRow({
+/** Baris ringkas satu consignment: AGENT / No. B/L / konfigurasi / total PKG · KGM · CBM — meniru baris abu-abu manifest ALLPACK. */
+function consignmentLine(view: ManifestBlockView): string {
+  const parts = [view.agentName]
+  if (view.inward) {
+    parts.push(
+      `${view.inward.transportDocument.kind === 'BL' ? 'B/L' : 'AWB'} ${view.inward.transportDocument.number}`,
+    )
+    const configuration = loadConfigurationLabel(view)
+    if (configuration) parts.push(configuration)
+  }
+  parts.push(
+    `${view.totals.totalCount} PKG · ${numberID(view.totals.weightKg)} KGM · ${numberID(view.totals.volumeCbm)} CBM`,
+  )
+  return parts.join('  /  ')
+}
+
+const COLUMN_COUNT = 15
+const thGroup = 'border border-slate-200 px-2 py-1.5 text-center align-middle'
+const td = 'border border-slate-200 px-2 py-1.5 align-top'
+const tdNum = 'border border-slate-200 px-2 py-1.5 text-right align-top tabular-nums'
+
+/** Sel "Exhibitor" — nama, badge sumber scan, catatan anomali peserta, dan afordans edit koli. */
+function ExhibitorCell({
   peserta,
+  rowSpan,
   onEdit,
 }: {
-  peserta: ManifestBlockView['peserta'][number]
+  peserta: ManifestPeserta
+  rowSpan: number
   onEdit: (exhibitor: LocalExhibitor) => void
 }) {
-  const [expanded, setExpanded] = useState(false)
-  const logistics = peserta.logistics
-  const summary = logistics ? summarizeKoli(logistics.koli) : null
-  const anomalyNotes = logistics?.notes.filter((note) => note.kind === 'ANOMALI_BARANG') ?? []
-
+  const anomalyNotes = peserta.logistics?.notes.filter((note) => note.kind === 'ANOMALI_BARANG') ?? []
   return (
-    <>
-      <tr className="border-b border-slate-100 odd:bg-slate-50/70 last:border-0">
-        <td className="px-3 py-3 align-top">
-          <p className="font-medium text-slate-800" title={peserta.name}>
-            {peserta.name}
-          </p>
-          {peserta.origin === 'CIPL_SCAN' && (
-            <span className="mt-1 inline-flex rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700 ring-1 ring-inset ring-orange-200">
-              dari scan CIPL
-            </span>
-          )}
-          {anomalyNotes.map((note, index) => (
-            <p key={index} className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-700">
-              <TriangleAlert size={12} aria-hidden="true" /> {note.text}
-            </p>
-          ))}
-        </td>
-        <td className="px-3 py-3 align-top text-slate-600">{logistics?.hall ?? '—'}</td>
-        <td className="px-3 py-3 align-top text-slate-600">{logistics?.booth ?? '—'}</td>
-        <td className="px-3 py-3 align-top">
-          {logistics ? (
-            logistics.koli.details.length ? (
-              <button
-                type="button"
-                onClick={() => setExpanded((current) => !current)}
-                aria-expanded={expanded}
-                className="flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-orange-700"
-              >
-                {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                {summary?.totalCount} koli
-              </button>
-            ) : (
-              <span className="text-sm text-slate-600">{summary?.totalCount} koli</span>
-            )
-          ) : (
-            <span className="text-xs text-slate-400">Belum diinput</span>
-          )}
-        </td>
-        <td className="px-3 py-3 align-top text-slate-600">
-          {summary ? `${numberID(summary.weightKg)} kg · ${numberID(summary.volumeCbm)} m³` : '—'}
-        </td>
-        <td className="px-3 py-3 align-top">
-          <div className="flex flex-wrap gap-1">
-            {logistics?.notes
-              .filter((note) => note.kind !== 'ANOMALI_BARANG')
-              .map((note, index) => (
-                <span key={index} className={chip(note.kind === 'PENAHANAN' ? 'amber' : 'slate')}>
-                  {operationalNoteKindLabels[note.kind]}: {note.text}
-                </span>
-              ))}
-          </div>
-        </td>
-        <td className="px-3 py-3 align-top text-right">
-          {peserta.origin === 'MASTER' ? (
-            <button
-              type="button"
-              onClick={() => onEdit(peserta.exhibitor)}
-              className="text-xs font-semibold text-orange-700 hover:text-orange-800"
-            >
-              Edit koli
-            </button>
-          ) : (
-            <span className="text-xs text-slate-400">Data scan</span>
-          )}
-        </td>
-      </tr>
-      {expanded &&
-        logistics?.koli.details.map((koli, index) => (
-          <tr key={index} className="border-b border-slate-100 bg-slate-50/80 text-xs last:border-0">
-            <td className="px-3 py-2 pl-10 font-medium text-slate-600">{koli.label ?? `Koli ${index + 1}`}</td>
-            <td colSpan={2} />
-            <td className="px-3 py-2 text-slate-500">
-              {koli.dimension
-                ? `${koli.dimension.lengthCm}×${koli.dimension.widthCm}×${koli.dimension.heightCm} cm`
-                : 'Dimensi belum dirinci'}
-            </td>
-            <td className="px-3 py-2 text-slate-500">
-              {koli.weightKg !== null ? `${numberID(koli.weightKg)} kg` : '—'} ·{' '}
-              {koli.volumeCbm !== null ? `${numberID(koli.volumeCbm)} m³` : '—'}
-            </td>
-            <td colSpan={2} />
-          </tr>
-        ))}
-    </>
+    <td className={`${td} min-w-[180px]`} rowSpan={rowSpan}>
+      <p className="font-medium text-slate-800">{peserta.name}</p>
+      {peserta.origin === 'CIPL_SCAN' && (
+        <span className="mt-1 inline-flex rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700 ring-1 ring-inset ring-orange-200">
+          dari scan CIPL
+        </span>
+      )}
+      {anomalyNotes.map((note, index) => (
+        <p key={index} className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-700">
+          <TriangleAlert size={12} aria-hidden="true" /> {note.text}
+        </p>
+      ))}
+      {peserta.origin === 'MASTER' && (
+        <button
+          type="button"
+          onClick={() => onEdit(peserta.exhibitor)}
+          className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-orange-700 hover:text-orange-800"
+        >
+          <Pencil size={12} aria-hidden="true" /> Edit koli
+        </button>
+      )}
+    </td>
   )
 }
 
@@ -159,9 +122,115 @@ export function JobManifestSection({
   onEditPeserta: (exhibitor: LocalExhibitor) => void
 }) {
   const inward = view.inward
-  const konfigurasi = loadConfigurationLabel(view)
   const milestones = inward?.milestones ?? []
   const kepulangan = view.kepulangan
+  const penahanan = inward?.notes.filter((note) => note.kind === 'PENAHANAN') ?? []
+  const remarkNotes = inward?.notes.filter((note) => note.kind !== 'PENAHANAN') ?? []
+
+  // rowSpan kolom tingkat-consignment (No & Remark): seluruh baris rincian + subtotal tiap peserta.
+  const totalBodyRows = view.peserta.reduce((sum, peserta) => {
+    const detailCount = Math.max(peserta.logistics?.koli.details.length ?? 0, 1)
+    return sum + detailCount + 1
+  }, 0)
+
+  const remarkCell = (
+    <td className="border border-slate-200 px-2 py-1.5 align-top text-xs text-slate-600" rowSpan={totalBodyRows}>
+      {milestoneOrder.map((kind) => {
+        const milestone = findMilestone(milestones, kind)
+        if (!milestone) return null
+        return (
+          <p key={kind} className="whitespace-nowrap">
+            <span className="font-medium text-slate-700">{milestoneKindLabels[kind]}</span> : {dateID(milestone.date)}
+            {milestone.documentNumber ? ` · ${milestone.documentNumber}` : ''}
+          </p>
+        )
+      })}
+      {remarkNotes.map((note, index) => (
+        <p key={index} className="mt-1">
+          <span className="font-medium text-slate-700">{operationalNoteKindLabels[note.kind]}:</span> {note.text}
+        </p>
+      ))}
+      {!milestones.length && !remarkNotes.length && <span className="text-slate-400">—</span>}
+    </td>
+  )
+
+  const bodyRows: ReactNode[] = []
+  let firstBlockRow = true
+  view.peserta.forEach((peserta) => {
+    const logistics = peserta.logistics
+    const summary: KoliSummary = logistics
+      ? summarizeKoli(logistics.koli)
+      : { totalCount: 0, detailedCount: 0, weightKg: 0, volumeCbm: 0 }
+    const details = (logistics?.koli.details ?? []) as ReadonlyArray<Koli>
+    const koliRows = details.length ? details : [null]
+    const pesertaRowSpan = koliRows.length + 1
+
+    koliRows.forEach((koli, koliIndex) => {
+      const firstPesertaRow = koliIndex === 0
+      bodyRows.push(
+        <tr key={`${peserta.key}-${koliIndex}`} className="odd:bg-white even:bg-slate-50/60">
+          {firstBlockRow && (
+            <td className={`${td} text-center font-semibold text-slate-900`} rowSpan={totalBodyRows}>
+              {view.jobNumber}
+            </td>
+          )}
+          {firstPesertaRow && (
+            <ExhibitorCell peserta={peserta} rowSpan={pesertaRowSpan} onEdit={onEditPeserta} />
+          )}
+          {firstPesertaRow && (
+            <td className={`${tdNum}`} rowSpan={pesertaRowSpan}>
+              {logistics ? `${summary.totalCount} PKG` : '—'}
+            </td>
+          )}
+          {firstPesertaRow && (
+            <td className={`${tdNum}`} rowSpan={pesertaRowSpan}>
+              {cell(logistics?.koli.bareCaseCount)}
+            </td>
+          )}
+          <td className={`${td} whitespace-nowrap font-medium text-slate-600`}>
+            {koli?.label ?? (logistics ? `Koli ${koliIndex + 1}` : 'Belum diinput')}
+          </td>
+          <td className={tdNum}>{cell(koli?.dimension?.lengthCm)}</td>
+          <td className={tdNum}>{cell(koli?.dimension?.widthCm)}</td>
+          <td className={tdNum}>{cell(koli?.dimension?.heightCm)}</td>
+          <td className={tdNum}>{cell(koli?.volumeCbm)}</td>
+          <td className={tdNum}>{cell(koli?.weightKg)}</td>
+          {firstPesertaRow && (
+            <td className={`${td} text-center text-slate-400`} rowSpan={pesertaRowSpan}>
+              —
+            </td>
+          )}
+          {firstPesertaRow && (
+            <td className={`${td} text-center text-slate-400`} rowSpan={pesertaRowSpan}>
+              —
+            </td>
+          )}
+          {firstBlockRow && remarkCell}
+          {firstPesertaRow && (
+            <td className={`${td} whitespace-nowrap text-slate-600`} rowSpan={pesertaRowSpan}>
+              {logistics?.hall ?? '—'}
+            </td>
+          )}
+          {firstPesertaRow && (
+            <td className={`${td} whitespace-nowrap text-slate-600`} rowSpan={pesertaRowSpan}>
+              {logistics?.booth ?? '—'}
+            </td>
+          )}
+        </tr>,
+      )
+      firstBlockRow = false
+    })
+
+    bodyRows.push(
+      <tr key={`${peserta.key}-subtotal`} className="bg-slate-100/70 font-semibold text-slate-700">
+        <td className={`${td} text-right`} colSpan={4}>
+          Subtotal
+        </td>
+        <td className={tdNum}>{numberID(summary.volumeCbm)}</td>
+        <td className={tdNum}>{numberID(summary.weightKg)}</td>
+      </tr>,
+    )
+  })
 
   return (
     <section className="card border-orange-200 p-5">
@@ -169,87 +238,68 @@ export function JobManifestSection({
         <div className="min-w-0">
           <p className="eyebrow">Blok manifest · {view.jobNumber}</p>
           <h2 className="mt-1 text-xl font-bold text-slate-900">{view.agentName}</h2>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {inward ? (
-              <span className={chip('orange')}>
-                {inward.transportDocument.kind === 'BL' ? 'B/L' : 'AWB'} · {inward.transportDocument.number}
-              </span>
-            ) : (
-              <span className="text-sm text-slate-500">Dokumen angkut & konfigurasi muatan belum diisi.</span>
-            )}
-            {konfigurasi && <span className={chip('slate')}>{konfigurasi}</span>}
-            <span className={chip('emerald')}>
-              {view.totals.totalCount} koli · {numberID(view.totals.weightKg)} kg · {numberID(view.totals.volumeCbm)} m³
+          {view.internationalJenis && (
+            <span className={`${chip('violet')} mt-2`}>
+              {internationalJobJenisLabels[view.internationalJenis] ?? 'Job lama'}
             </span>
-            {view.internationalJenis && (
-              <span className={chip('violet')}>
-                {internationalJobJenisLabels[view.internationalJenis] ?? 'Job lama'}
-              </span>
-            )}
-          </div>
+          )}
+          {!inward && (
+            <p className="mt-2 text-sm text-slate-500">Dokumen angkut & konfigurasi muatan belum diisi.</p>
+          )}
         </div>
         <button type="button" onClick={onEditManifest} className="btn-secondary shrink-0">
           <Pencil size={16} /> Edit manifest
         </button>
       </div>
 
-      {milestones.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {milestoneOrder.map((kind) => {
-            const milestone = findMilestone(milestones, kind)
-            if (!milestone) return null
-            return (
-              <span key={kind} className={chip(kind === 'DO_READY' ? 'amber' : 'emerald')}>
-                {milestoneKindLabels[kind]} · {dateID(milestone.date)}
-                {milestone.documentNumber ? ` · ${milestone.documentNumber}` : ''}
-              </span>
-            )
-          })}
-        </div>
-      )}
+      {penahanan.map((note, index) => (
+        <p
+          key={index}
+          className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+        >
+          <TriangleAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <span>
+            <strong className="font-semibold">{operationalNoteKindLabels[note.kind]}:</strong> {note.text}
+          </span>
+        </p>
+      ))}
 
-      {inward?.notes
-        .filter((note) => note.kind === 'PENAHANAN')
-        .map((note, index) => (
-          <p
-            key={index}
-            className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
-          >
-            <TriangleAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-            <span>
-              <strong className="font-semibold">{operationalNoteKindLabels[note.kind]}:</strong> {note.text}
-            </span>
-          </p>
-        ))}
-      {inward?.notes
-        .filter((note) => note.kind !== 'PENAHANAN')
-        .map((note, index) => (
-          <p key={index} className="mt-3 text-sm text-slate-600">
-            <strong className="font-semibold text-slate-700">{operationalNoteKindLabels[note.kind]}:</strong> {note.text}
-          </p>
-        ))}
-
-      <div className="mt-5 overflow-x-auto rounded-xl border border-black/10">
-        <table className="min-w-[760px] w-full text-left text-sm">
-          <caption className="sr-only">Exhibitor binaan pada blok manifest ini</caption>
-          <thead className="border-b bg-white text-xs font-semibold uppercase tracking-wider text-slate-500">
+      <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200">
+        <table className="w-full border-collapse text-left text-xs">
+          <caption className="sr-only">Rincian manifest exhibitor pada blok {view.jobNumber}</caption>
+          <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-3 py-2.5">Exhibitor</th>
-              <th className="px-3 py-2.5">Hall</th>
-              <th className="px-3 py-2.5">Booth</th>
-              <th className="px-3 py-2.5">Koli</th>
-              <th className="px-3 py-2.5">Berat / Volume</th>
-              <th className="px-3 py-2.5">Catatan</th>
-              <th className="px-3 py-2.5" aria-label="Aksi" />
+              <td className="border border-slate-200 bg-white px-2 py-2 text-sm font-semibold normal-case text-slate-700" colSpan={COLUMN_COUNT}>
+                {consignmentLine(view)}
+              </td>
+            </tr>
+            <tr>
+              <th className={thGroup} rowSpan={2}>No</th>
+              <th className={thGroup} rowSpan={2}>Exhibitor</th>
+              <th className={thGroup} rowSpan={2}>Total Package</th>
+              <th className={thGroup} rowSpan={2}>Bare Case</th>
+              <th className={thGroup} rowSpan={2}>Case</th>
+              <th className={thGroup} colSpan={3}>Dimensi (cm)</th>
+              <th className={thGroup} rowSpan={2}>CBM</th>
+              <th className={thGroup} rowSpan={2}>Berat (Kg)</th>
+              <th className={thGroup} rowSpan={2}>Empty Storage</th>
+              <th className={thGroup} rowSpan={2}>Re-export</th>
+              <th className={thGroup} rowSpan={2}>Remark</th>
+              <th className={thGroup} rowSpan={2}>Hall</th>
+              <th className={thGroup} rowSpan={2}>Booth No</th>
+            </tr>
+            <tr>
+              <th className={thGroup}>L</th>
+              <th className={thGroup}>W</th>
+              <th className={thGroup}>H</th>
             </tr>
           </thead>
-          <tbody>
-            {view.peserta.map((peserta) => (
-              <PesertaRow key={peserta.key} peserta={peserta} onEdit={onEditPeserta} />
-            ))}
-            {!view.peserta.length && (
+          <tbody className="text-slate-700">
+            {view.peserta.length ? (
+              bodyRows
+            ) : (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-sm text-slate-500">
+                <td className="border border-slate-200 px-3 py-6 text-center text-sm text-slate-500" colSpan={COLUMN_COUNT}>
                   Belum ada exhibitor binaan pada agent ini.
                 </td>
               </tr>

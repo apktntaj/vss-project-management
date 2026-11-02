@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronDown,
@@ -12,12 +13,13 @@ import {
 } from 'lucide-react'
 import {
   getOperationalDetails,
+  listEventsWithExhibitors,
   listJobsWithEvents,
   type LocalEvent,
+  type LocalExhibitor,
   type LocalJob,
   type LocalJobDocument,
 } from '@/lib/data-client'
-import type { BcDocumentKind } from '@/domain/job/types'
 import {
   JobDocumentEditorDialog,
   type EditableJobDocument,
@@ -34,13 +36,10 @@ import {
   type JobOperationalPhase,
 } from '@/lib/job-operational-phase'
 import { compareInvoiceWithTransport } from '@/lib/document-comparison'
+import { EventManifestTree } from '@/components/event-manifest-tree'
 import {
-  JobRow,
   applyUploadedDocument,
   date,
-  downloadCustomsWorkbook,
-  label,
-  type DocumentClassification,
   type JobDocumentExtraction,
 } from '@/components/job-row'
 
@@ -246,6 +245,8 @@ function JobPhaseChunk({
 export default function JobsPage() {
   const [jobs, setJobs] = useState<LocalJob[]>([])
   const [events, setEvents] = useState<LocalEvent[]>([])
+  const [exhibitorsByEvent, setExhibitorsByEvent] = useState<Record<string, LocalExhibitor[]>>({})
+  const router = useRouter()
   const [segment, setSegment] = useState<JobSegment>('EVENT')
   const [showNewJob, setShowNewJob] = useState(false)
   const [wizardOpen, setWizardOpen] = useState(false)
@@ -263,10 +264,11 @@ export default function JobsPage() {
   const [loadError, setLoadError] = useState('')
   const initialLoadStarted = useRef(false)
   const load = useCallback(() => {
-    listJobsWithEvents()
-      .then(({ jobs: loadedJobs, events: loadedEvents }) => {
+    Promise.all([listJobsWithEvents(), listEventsWithExhibitors()])
+      .then(([{ jobs: loadedJobs }, { events: loadedEvents, exhibitorsByEvent: loadedExhibitors }]) => {
         setJobs(loadedJobs)
         setEvents(loadedEvents)
+        setExhibitorsByEvent(loadedExhibitors)
         setOpen(Object.fromEntries(loadedEvents.map((event) => [event.id, true])))
         setLoadError('')
         setLoading(false)
@@ -283,12 +285,15 @@ export default function JobsPage() {
   }, [load])
   // Segarkan senyap setelah mutasi (mis. job baru dibuat) — tanpa skeleton halaman penuh.
   const refreshJobs = () => {
-    listJobsWithEvents().then(({ jobs: loadedJobs, events: loadedEvents }) => {
-      setJobs(loadedJobs)
-      setEvents(loadedEvents)
-    }).catch((caught) => {
-      showToast(caught instanceof Error ? caught.message : 'Data jobs tidak dapat dimuat.', 'error')
-    })
+    Promise.all([listJobsWithEvents(), listEventsWithExhibitors()])
+      .then(([{ jobs: loadedJobs }, { events: loadedEvents, exhibitorsByEvent: loadedExhibitors }]) => {
+        setJobs(loadedJobs)
+        setEvents(loadedEvents)
+        setExhibitorsByEvent(loadedExhibitors)
+      })
+      .catch((caught) => {
+        showToast(caught instanceof Error ? caught.message : 'Data jobs tidak dapat dimuat.', 'error')
+      })
   }
   useEffect(() => {
     if (!toast) return
@@ -299,14 +304,6 @@ export default function JobsPage() {
     setToast({ message, tone })
   const handleDocumentSaved = (updated: LocalJob) => {
     setJobs((current) => current.map((job) => (job.id === updated.id ? updated : job)))
-  }
-  async function generateCustomsWorkbook(job: LocalJob, documentType: BcDocumentKind) {
-    try {
-      await downloadCustomsWorkbook(job, documentType)
-      showToast(`${label(documentType)} berhasil diunduh.`)
-    } catch (caught) {
-      showToast(caught instanceof Error ? caught.message : 'File BC tidak dapat dibuat.', 'error')
-    }
   }
   const handleDocumentUploaded = (
     jobId: string,
@@ -485,7 +482,7 @@ export default function JobsPage() {
                   </span>
                   <span className="mt-0.5 block text-xs text-slate-500">
                     {event
-                      ? `${date(event.startsAt)} – ${date(event.endsAt)}`
+                      ? `${event.venue?.officialName || 'Venue belum diinput'} · ${date(event.startsAt)} – ${date(event.endsAt)}`
                       : 'Perlu ditautkan ke event'}
                   </span>
                 </span>
@@ -508,48 +505,11 @@ export default function JobsPage() {
               </button>
             </div>
             {isOpen && !showsCards && (
-              <div className="overflow-x-auto">
-                <table className="min-w-[1200px] w-full table-fixed text-left text-sm">
-                  <colgroup>
-                    <col className="w-[110px]" />
-                    <col className="w-[145px]" />
-                    <col className="w-[185px]" />
-                    <col className="w-[110px]" />
-                    <col className="w-[95px]" />
-                    <col className="w-[90px]" />
-                    <col className="w-[140px]" />
-                    <col className="w-[200px]" />
-                    <col className="w-[60px]" />
-                  </colgroup>
-                  <thead className="border-b bg-white text-slate-900 font-semibold uppercase tracking-wider">
-                    <tr>
-                      <th className="px-3 py-3">No Job</th>
-                      <th className="px-3 py-3">Exhibitor</th>
-                      <th className="px-3 py-3">Dokumen shipment</th>
-                      <th className="px-3 py-3">ETA</th>
-                      <th className="px-3 py-3">Bill to</th>
-                      <th className="px-3 py-3">Invoice terkirim</th>
-                      <th className="px-3 py-3">Remark</th>
-                      <th className="px-3 py-3">Dokumen BC</th>
-                      <th className="px-3 py-3">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {eventJobs.map((job) => (
-                      <JobRow
-                        key={job.id}
-                        job={job}
-                        onDocumentUploaded={handleDocumentUploaded}
-                        onToast={showToast}
-                        onGenerate={generateCustomsWorkbook}
-                        onEditDocument={(selectedJob, kind) =>
-                          setEditingDocument({ job: selectedJob, kind })
-                        }
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <EventManifestTree
+                jobs={eventJobs}
+                exhibitors={exhibitorsByEvent[eventId] ?? []}
+                onOpenJob={(jobId) => router.push(`/jobs/${jobId}`)}
+              />
             )}
             {isOpen && showsCards && (
               <div className="overflow-x-auto">
