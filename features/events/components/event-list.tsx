@@ -37,14 +37,14 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
 
   return (
     <div className="card max-h-[65vh] overflow-auto lg:max-h-none lg:min-h-0 lg:flex-1">
-      <table className="min-w-[1020px] w-full table-fixed text-left text-sm">
+      <table className="min-w-[1060px] w-full table-fixed text-left text-sm">
         <colgroup>
           <col className="w-[44px]" />
           <col />
-          <col className="w-[130px]" />
-          <col className="w-[185px]" />
-          <col className="w-[185px]" />
-          <col className="w-[130px]" />
+          <col className="w-[150px]" />
+          <col className="w-[215px]" />
+          <col className="w-[215px]" />
+          <col className="w-[180px]" />
           <col className="w-[56px]" />
           <col className="w-[48px]" />
         </colgroup>
@@ -65,9 +65,7 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
             <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2">
               Event Organizer
             </th>
-            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2">
-              PIC
-            </th>
+            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2">PIC</th>
             <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2 text-right">
               Jobs
             </th>
