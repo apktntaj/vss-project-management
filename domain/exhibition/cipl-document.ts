@@ -1,6 +1,10 @@
 import { z } from 'zod'
 
-import { koliCollectionSchema, summarizeKoliCollections, type ExhibitorLogistics } from '@/domain/job/manifest'
+import {
+  koliCollectionSchema,
+  summarizeKoliCollections,
+  type ExhibitorLogistics,
+} from '@/domain/job/manifest'
 
 const optionalText = z.string().trim().min(1).nullable().default(null)
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -34,6 +38,8 @@ export const barisBarangSchema = z.object({
   nilaiTotal: nonNegative,
   disposisi: z.enum(disposisiBarangs).default('TIDAK_DISEBUT'),
   refKoli: optionalText,
+  /** Id koli tempat barang ini dipak (nol/satu/banyak). Kosong = belum tertaut. */
+  refKoliIds: z.array(z.string()).default([]),
 })
 export type BarisBarang = z.infer<typeof barisBarangSchema>
 
@@ -74,10 +80,10 @@ export type VersiCipl = z.infer<typeof versiCiplSchema>
 /** Header blok manifest dari satu dokumen CIPL: semuanya turunan, tidak tersimpan. */
 export function totalDokumen(doc: CiplDocument) {
   const koli = summarizeKoliCollections(doc.entri.map((entri) => entri.koli))
-  const nilaiTotal = [...doc.entri.flatMap((entri) => entri.items), ...doc.itemsBelumTerpetakan].reduce(
-    (sum, item) => sum + (item.nilaiTotal ?? 0),
-    0,
-  )
+  const nilaiTotal = [
+    ...doc.entri.flatMap((entri) => entri.items),
+    ...doc.itemsBelumTerpetakan,
+  ].reduce((sum, item) => sum + (item.nilaiTotal ?? 0), 0)
   return { entri: doc.entri.length, koli: koli.totalCount, beratKg: koli.weightKg, nilaiTotal }
 }
 
@@ -104,7 +110,8 @@ export function buildCiplDocument(
   entries: Array<{ name: string; logistics: ExhibitorLogistics; items: BarisBarang[] }>,
   itemsBelumTerpetakan: BarisBarang[],
 ): CiplDocument | null {
-  const hasItems = entries.some((entri) => entri.items.length > 0) || itemsBelumTerpetakan.length > 0
+  const hasItems =
+    entries.some((entri) => entri.items.length > 0) || itemsBelumTerpetakan.length > 0
   if (!header && !hasItems) return null
   return ciplDocumentSchema.parse({
     nomor: header?.nomor ?? null,

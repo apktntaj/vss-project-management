@@ -40,6 +40,8 @@ Menu **Cek LARTAS** memeriksa maksimal 20 HS code 8 digit melalui route server-s
 
 ## Deploy (Docker + VPS)
 
+Demo/preview berjalan di Vercel (`.vercelignore` menjaga berkas lokal keluar dari bundle); produksi tetap Docker + Caddy di VPS sesuai bagian ini. PM2 tidak dipakai lagi.
+
 Aplikasi dibungkus sebagai image Next.js `standalone` (`output: 'standalone'` di `next.config.mjs`) dan dijalankan di belakang Caddy sebagai reverse proxy dengan TLS otomatis. Database tetap eksternal di Supabase — tidak ada Postgres di dalam compose.
 
 Berkas terkait:

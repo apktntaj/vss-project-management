@@ -1,4 +1,5 @@
 import { summarizeKoliCollections, type ExhibitorLogistics, type KoliSummary } from '@/domain/job/manifest'
+import { normalizeExhibitorName } from '@/domain/event/exhibitor-matching'
 import type { LocalExhibitor, LocalJob } from '@/lib/data-client'
 
 /** Peserta dari data master exhibitor — koli-nya diedit lewat modal logistik. */
@@ -10,11 +11,16 @@ export type MasterPeserta = {
   logistics: LocalExhibitor['logistics']
 }
 
-/** Peserta hasil scan CIPL saat job dibuat — hanya hidup di payload job. */
+/**
+ * Peserta hasil scan CIPL yang belum punya pasangan di master exhibitor event — baris lama
+ * (sebelum autofill menautkan) atau baris yang namanya cocok dengan lebih dari satu exhibitor.
+ */
 export type ScanPeserta = {
   origin: 'CIPL_SCAN'
   key: string
   name: string
+  /** Terisi bila autofill berhasil menautkan, meski exhibitor-nya di luar blok agent job ini. */
+  exhibitorId: string | null
   logistics: ExhibitorLogistics
 }
 
@@ -34,14 +40,15 @@ export type ManifestBlockView = {
   peserta: ManifestPeserta[]
 }
 
-const normalizeName = (value: string) => value.trim().toLowerCase()
-
 /**
  * Assembler murni blok manifest: peserta job dengan agent = exhibitor pada event yang
  * sama yang dibawa agent job; peserta job tanpa agent = exhibitor pengatur pengiriman
  * sendiri (job.exhibitorId), fase 1 relasi peserta eksplisit (data definitions 2026-10-24).
- * Baris hasil scan CIPL saat pembuatan job (job.manifestExhibitors) ikut ditampilkan,
- * kecuali namanya sama persis dengan peserta master agar tidak terhitung dua kali.
+ *
+ * Baris hasil scan CIPL (job.manifestExhibitors) DILEBUR ke peserta master, bukan ditumpuk:
+ * pertama lewat `exhibitorId` hasil autofill, lalu — untuk baris lama tanpa id — lewat nama
+ * ternormalisasi. Tanpa peleburan ini satu exhibitor yang ejaannya beda setipis "CO., LTD" vs
+ * "CO.,LTD" muncul dua kali dan total koli blok terhitung ganda.
  */
 export function buildManifestView(job: LocalJob, exhibitors: LocalExhibitor[]): ManifestBlockView {
   const master: MasterPeserta[] = (
@@ -59,15 +66,34 @@ export function buildManifestView(job: LocalJob, exhibitors: LocalExhibitor[]): 
     exhibitor,
     logistics: exhibitor.logistics ?? null,
   }))
-  const masterNames = new Set(master.map((item) => normalizeName(item.name)).filter(Boolean))
-  const scanned: ScanPeserta[] = (job.manifestExhibitors ?? [])
-    .map((row, index): ScanPeserta => ({
+  const masterById = new Map(master.map((item) => [item.exhibitor.id, item]))
+  const masterByName = new Map(
+    master.flatMap((item) => {
+      const key = normalizeExhibitorName(item.name)
+      return key ? [[key, item] as const] : []
+    }),
+  )
+  const scanned: ScanPeserta[] = []
+  for (const [index, row] of (job.manifestExhibitors ?? []).entries()) {
+    const name = row.name?.trim() ?? ''
+    if (!name) continue
+    const linked =
+      (row.exhibitorId ? masterById.get(row.exhibitorId) : undefined) ??
+      masterByName.get(normalizeExhibitorName(name))
+    if (linked) {
+      // Logistik master adalah hasil tulis autofill yang sama dan bisa sudah dikoreksi
+      // operator, jadi ia menang; snapshot job hanya mengisi saat master masih kosong.
+      linked.logistics = linked.logistics ?? row.logistics
+      continue
+    }
+    scanned.push({
       origin: 'CIPL_SCAN',
       key: `cipl-${index}`,
-      name: row.name,
+      name,
+      exhibitorId: row.exhibitorId ?? null,
       logistics: row.logistics,
-    }))
-    .filter((row) => normalizeName(row.name) && !masterNames.has(normalizeName(row.name)))
+    })
+  }
   const peserta = [...master, ...scanned].sort((left, right) => left.name.localeCompare(right.name))
   return {
     jobNumber: job.jobNumber,

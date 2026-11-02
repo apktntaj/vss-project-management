@@ -158,8 +158,8 @@ assert.equal(dariHeader?.penerima, null)
 // Item mengikuti entri barisnya; barang tak terpilakan masuk bucket.
 const dariScan = buildCiplDocument(
   null,
-  [{ name: 'WUHAN PHEZER', logistics: logistikKosong, items: [{ uraian: 'INKJET PRINTER', merekModel: null, kodeHs: null, jumlah: 13, satuan: 'SET', nilaiSatuan: null, nilaiTotal: null, disposisi: 'RE_EXPORT', refKoli: '7-11' }] }],
-  [{ uraian: 'CATALOGUE', merekModel: null, kodeHs: null, jumlah: 50, satuan: 'PCE', nilaiSatuan: null, nilaiTotal: null, disposisi: 'DISPOSED', refKoli: null }],
+  [{ name: 'WUHU PHEZER', logistics: logistikKosong, items: [{ uraian: 'INKJET PRINTER', merekModel: null, kodeHs: null, jumlah: 13, satuan: 'SET', nilaiSatuan: null, nilaiTotal: null, disposisi: 'RE_EXPORT', refKoli: '7-11', refKoliIds: [] }] }],
+  [{ uraian: 'CATALOGUE', merekModel: null, kodeHs: null, jumlah: 50, satuan: 'PCE', nilaiSatuan: null, nilaiTotal: null, disposisi: 'DISPOSED', refKoli: null, refKoliIds: [] }],
 )
 assert.equal(dariScan?.nomor, null)
 assert.equal(dariScan?.entri[0].items[0].refKoli, '7-11')

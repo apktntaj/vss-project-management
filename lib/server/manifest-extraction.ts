@@ -31,7 +31,8 @@ export type ManifestParseResult = {
 }
 
 const text = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : null)
-const amount = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null)
+const amount = (value: unknown) =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null
 const wholeNumber = (value: unknown) => {
   const parsed = amount(value)
   return parsed !== null && Number.isInteger(parsed) ? parsed : null
@@ -72,7 +73,9 @@ const blockPayloadSchema = z.object({
   exhibitors: z.array(z.unknown()).default([]),
 })
 
-function normalizeExhibitor(value: unknown): { name: string; logistics: ExhibitorLogistics } | null {
+function normalizeExhibitor(
+  value: unknown,
+): { name: string; logistics: ExhibitorLogistics } | null {
   if (!value || typeof value !== 'object') return null
   const input = value as Record<string, unknown>
   const name = text(input.name)
@@ -124,7 +127,10 @@ function normalizeBlock(value: unknown): ManifestBlockParse | null {
   if (!inward.success) return null
   const exhibitors = payload.data.exhibitors
     .map(normalizeExhibitor)
-    .filter((exhibitor): exhibitor is { name: string; logistics: ExhibitorLogistics } => exhibitor !== null)
+    .filter(
+      (exhibitor): exhibitor is { name: string; logistics: ExhibitorLogistics } =>
+        exhibitor !== null,
+    )
   return { agentName: payload.data.agentName, inward: inward.data, exhibitors }
 }
 
@@ -146,13 +152,20 @@ export async function parseManifestFile(file: File): Promise<ManifestParseResult
       const normalized = normalizeBlock(block)
       if (normalized) return [normalized]
       const agentName = text((block as Record<string, unknown> | null)?.agentName)
-      warnings.push(agentName ? `Blok ${agentName} dilewati karena datanya tidak lengkap.` : 'Satu blok dilewati karena tidak terbaca.')
+      warnings.push(
+        agentName
+          ? `Blok ${agentName} dilewati karena datanya tidak lengkap.`
+          : 'Satu blok dilewati karena tidak terbaca.',
+      )
       return []
     })
     return { blocks, warnings }
   } catch (error) {
     if (error instanceof DocumentExtractionError) throw error
-    throw new DocumentExtractionError('Manifest tidak dapat diparse. Coba lagi atau gunakan file lain.', 502)
+    throw new DocumentExtractionError(
+      'Manifest tidak dapat diparse. Coba lagi atau gunakan file lain.',
+      502,
+    )
   }
 }
 
@@ -226,17 +239,24 @@ For each goods entry extract: original description (uraian), model/brand text (m
 ## 7. Output
 
 Return compact minified JSON only (no spaces or newlines between tokens). OMIT every field whose value is null, empty, zero-unknown, or not present in the document — do not emit the key at all. Only these are required: each exhibitor's "name"; each item's "uraian" and "jumlah". Everything else is optional and MUST be omitted when absent. Field reference (shown with the null variants only to name the keys — in your output omit those keys instead of sending null):
-{"document":{"nomor":string,"tanggal":"YYYY-MM-DD","pengirim":string,"penerima":string,"namaPameran":string,"incoterm":string,"mataUang":string,"infoKontainer":string,"nilaiTotalDeklarasi":number},"exhibitors":[{"name":string,"jobNo":string,"hall":string,"booth":string,"bareCaseCount":number,"koliTotalCount":number,"kolis":[{"exhibitor":string,"label":string,"lengthCm":number,"widthCm":number,"heightCm":number,"volumeCbm":number,"weightKg":number}],"items":[{"exhibitor":string,"uraian":string,"merekModel":string,"kodeHs":string,"jumlah":number,"satuan":string,"nilaiSatuan":number,"nilaiTotal":number,"disposisi":"A"|"B"|"C","refKoli":string}]}],"itemsBelumTerpetakan":[same item shape],"issues":[string]}
+{"document":{"nomor":string,"tanggal":"YYYY-MM-DD","pengirim":string,"penerima":string,"namaPameran":string,"incoterm":string,"mataUang":string,"infoKontainer":string,"nilaiTotalDeklarasi":number},"exhibitors":[{"name":string,"jobNo":string,"hall":string,"booth":string,"bareCaseCount":number,"koliTotalCount":number,"kolis":[{"exhibitor":string,"label":string,"satuanKemasan":string,"lengthCm":number,"widthCm":number,"heightCm":number,"volumeCbm":number,"weightKg":number}],"items":[{"exhibitor":string,"uraian":string,"merekModel":string,"kodeHs":string,"jumlah":number,"satuan":string,"nilaiSatuan":number,"nilaiTotal":number,"disposisi":"A"|"B"|"C","refKoli":string}]}],"itemsBelumTerpetakan":[same item shape],"issues":[string]}
 
 Rules for the output shape:
 - The EXHIBITOR column is a merged cell spanning all package/item rows of that exhibitor. Those rows already sit nested inside their exhibitor's "kolis"/"items", so DO NOT repeat the exhibitor name on every row. Set a koli/item "exhibitor" field ONLY when that single row actually belongs to a DIFFERENT exhibitor than the entry it is nested under (rare split cases); omit it otherwise.
 - "document" is the CIPL / commercial invoice header: "INV & PL NO." → nomor, "DATE" → tanggal, the shipper block (top-left address, e.g. a logistics company) → pengirim, "CONSIGNEE" block → penerima, exhibition name line → namaPameran, incoterm (CIF/FOB...) → incoterm, currency → mataUang, "CONTAINER:" footer → infoKontainer, "TOTAL CIF AMOUNT" → nilaiTotalDeklarasi. All null when the document is an inward manifest without such a header.
 - In an inward manifest, one job row (S.01, S.02, ...) can list one or more exhibitor names; output one entry per named exhibitor with that row's package breakdown, hall and booth. jobNo is the row's job number (e.g. "S.01"), null when absent.
 - For a packing list or CIPL without per-case dimensions, still return the exhibitor (buyer/consignee) with koliTotalCount from its totals and kolis from whatever per-package lines exist.
+- "satuanKemasan" (inside each kolis entry) is THAT package's unit/type read from the package-type column or label (e.g. "CARTON", "WOODEN CASE", "PALLET", "KOLI"); omit the key when the package type is not stated.
 - Drop unreadable rows instead of guessing, and say so in "issues".`
 
 const disposisiFromMark = (mark: unknown): DisposisiBarang =>
-  mark === 'A' ? 'RE_EXPORT' : mark === 'B' ? 'DISPOSED' : mark === 'C' ? 'GIVE_AWAY' : 'TIDAK_DISEBUT'
+  mark === 'A'
+    ? 'RE_EXPORT'
+    : mark === 'B'
+      ? 'DISPOSED'
+      : mark === 'C'
+        ? 'GIVE_AWAY'
+        : 'TIDAK_DISEBUT'
 
 function normalizeCiplItem(value: unknown): BarisBarang | null {
   if (!value || typeof value !== 'object') return null
@@ -258,7 +278,9 @@ function normalizeCiplItem(value: unknown): BarisBarang | null {
   return parsed.success ? parsed.data : null
 }
 
-function normalizeCiplItems(value: unknown): Array<{ exhibitor: string | null; item: BarisBarang }> {
+function normalizeCiplItems(
+  value: unknown,
+): Array<{ exhibitor: string | null; item: BarisBarang }> {
   return (Array.isArray(value) ? value : []).flatMap((value) => {
     const exhibitor = text((value as Record<string, unknown> | null)?.exhibitor)
     const item = normalizeCiplItem(value)
@@ -309,7 +331,11 @@ function normalizeCiplKoliRow(value: unknown): RawKoliRow | null {
     exhibitor: text(item.exhibitor),
     koli: {
       label: text(item.label),
-      dimension: lengthCm !== null && widthCm !== null && heightCm !== null ? { lengthCm, widthCm, heightCm } : null,
+      satuanKemasan: text(item.satuanKemasan),
+      dimension:
+        lengthCm !== null && widthCm !== null && heightCm !== null
+          ? { lengthCm, widthCm, heightCm }
+          : null,
       volumeCbm: amount(item.volumeCbm),
       weightKg: amount(item.weightKg),
     },
@@ -405,26 +431,28 @@ function partitionCiplRows(entries: RawExhibitorEntry[]): CiplExhibitorParse[] {
   }
 
   const partitioned = groups.size > entries.length
-  return [...groups.values()].map((group) => {
-    // Saat partisi memecah entri (CIPL konsolidasi), total level entri adalah salinan total
-    // dokumen — ia TIDAK menyebut total per exhibitor, jadi label barislah yang berwenang.
-    const statedTotalCount = partitioned ? null : group.totalCountHint
-    const totalCount = reconcileKoliTotal(group.details, statedTotalCount)
-    const logistics = exhibitorLogisticsSchema.safeParse({
-      hall: group.hall,
-      booth: group.booth,
-      koli: { totalCount, bareCaseCount: group.bareCaseCount, details: group.details },
-      notes: [],
+  return [...groups.values()]
+    .map((group) => {
+      // Saat partisi memecah entri (CIPL konsolidasi), total level entri adalah salinan total
+      // dokumen — ia TIDAK menyebut total per exhibitor, jadi label barislah yang berwenang.
+      const statedTotalCount = partitioned ? null : group.totalCountHint
+      const totalCount = reconcileKoliTotal(group.details, statedTotalCount)
+      const logistics = exhibitorLogisticsSchema.safeParse({
+        hall: group.hall,
+        booth: group.booth,
+        koli: { totalCount, bareCaseCount: group.bareCaseCount, details: group.details },
+        notes: [],
+      })
+      if (!logistics.success) return null
+      return {
+        name: group.name,
+        jobNo: group.jobNo,
+        logistics: logistics.data,
+        statedTotalCount: statedTotalCount ?? null,
+        items: group.items,
+      }
     })
-    if (!logistics.success) return null
-    return {
-      name: group.name,
-      jobNo: group.jobNo,
-      logistics: logistics.data,
-      statedTotalCount: statedTotalCount ?? null,
-      items: group.items,
-    }
-  }).filter((entry): entry is CiplExhibitorParse => entry !== null)
+    .filter((entry): entry is CiplExhibitorParse => entry !== null)
 }
 
 /** Smart scan slide CIPL: inward manifest atau packing list/CIPL menjadi daftar exhibitor + koli + item. */
@@ -446,25 +474,36 @@ export async function parseCiplExhibitors(file: File): Promise<CiplScanResult> {
       itemsBelumTerpetakan?: unknown[]
       issues?: unknown[]
     }
-    const warnings: string[] = (Array.isArray(parsed.issues) ? parsed.issues : []).flatMap((issue) => {
-      const message = text(issue)
-      return message ? [`AI: ${message}`] : []
-    })
-    const rawEntries = (Array.isArray(parsed.exhibitors) ? parsed.exhibitors : []).flatMap((row) => {
-      const normalized = normalizeCiplExhibitor(row)
-      if (normalized) return [normalized]
-      warnings.push('Satu baris exhibitor dilewati karena tidak terbaca.')
-      return []
-    })
+    const warnings: string[] = (Array.isArray(parsed.issues) ? parsed.issues : []).flatMap(
+      (issue) => {
+        const message = text(issue)
+        return message ? [`AI: ${message}`] : []
+      },
+    )
+    const rawEntries = (Array.isArray(parsed.exhibitors) ? parsed.exhibitors : []).flatMap(
+      (row) => {
+        const normalized = normalizeCiplExhibitor(row)
+        if (normalized) return [normalized]
+        warnings.push('Satu baris exhibitor dilewati karena tidak terbaca.')
+        return []
+      },
+    )
     const exhibitors = partitionCiplRows(rawEntries)
     const header = normalizeCiplHeader(parsed.document)
-    const itemsBelumTerpetakan = normalizeCiplItems(parsed.itemsBelumTerpetakan).map((row) => row.item)
+    const itemsBelumTerpetakan = normalizeCiplItems(parsed.itemsBelumTerpetakan).map(
+      (row) => row.item,
+    )
     if (!header && itemsBelumTerpetakan.length) {
-      warnings.push('Ada baris barang tanpa kepala dokumen — barang tidak terpilah tidak dapat disimpan.')
+      warnings.push(
+        'Ada baris barang tanpa kepala dokumen — barang tidak terpilah tidak dapat disimpan.',
+      )
     }
     return { header, exhibitors, itemsBelumTerpetakan, warnings }
   } catch (error) {
     if (error instanceof DocumentExtractionError) throw error
-    throw new DocumentExtractionError('Dokumen tidak dapat dipindai. Coba lagi atau gunakan file lain.', 502)
+    throw new DocumentExtractionError(
+      'Dokumen tidak dapat dipindai. Coba lagi atau gunakan file lain.',
+      502,
+    )
   }
 }

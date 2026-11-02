@@ -130,15 +130,19 @@ terdaftar sebagai pihak kontrak angkut pada dokumen nyata.
 ```text
 BarisBarang terdiri dari uraian (Text), merekModel (Text atau kosong), kodeHs (Text atau
 kosong), jumlah (Number > 0), satuan (Text), nilaiSatuan (Number ≥ 0 atau kosong),
-nilaiTotal (Number ≥ 0 atau kosong), disposisi (DisposisiBarang), dan refKoli
-(RefKoli atau kosong).
+nilaiTotal (Number ≥ 0 atau kosong), disposisi (DisposisiBarang), refKoli
+(RefKoli atau kosong), dan refKoliIds (List<Text> id koli).
 ```
 
 **Interpretasi** — deklarasi barang, sisi Commercial Invoice dari CIPL: kolom DESCRIPTION
 OF GOODS (IN ENGLISH), MODEL (`BRAND:PHEZER; MODEL:PL1-A` — teks gabungan merek+model
 dipertahankan apa adanya), HS Code, QUANTITY beserta satuan (`SET`, `PCE`), dan CIF VALUE.
 Dimensi dan berat TIDAK menjadi bagian `BarisBarang` — keduanya milik `Koli` (unit fisik);
-lihat OQ-2 untuk kebutuhan salinan hasil ekstraksi invoice.
+lihat OQ-2 untuk kebutuhan salinan hasil ekstraksi invoice. Penautan barang↔koli berlapis
+dua: `refKoli` hanyalah **label mentah untuk provenance** (bukti apa yang tertulis di
+dokumen, mis. `"7-11"`), sedangkan tautan nyata ada di `refKoliIds` — daftar id koli
+(milik `Koli`, diisi produsen scan/wizard) tempat barang dipak; daftar kosong berarti
+belum tertaut, dan satu barang boleh menunjuk beberapa koli sesuai bukti dokumen.
 
 **Contoh** — `BarisBarang("FIBER LASER MARKING MACHINE", "BRAND:PHEZER; MODEL:PL1-A",
 "84561190", 1, "SET", 500.00, 500.00, RE_EXPORT, kosong)`; `BarisBarang("CATALOGUE", kosong,
@@ -167,7 +171,9 @@ Kepala dokumen punya kolom HALL NO./STAND NO. yang kosong pada S.12: hall/booth 
 per entri, bukan per dokumen. `koli` memakai `KumpulanKoli` dari
 [dokumen manifest](./job-manifest-data-definitions.md) — **dirujuk, tidak didefinisikan
 ulang**: pada CIPL berbentuk baris NO. 1–40 dengan L/W/H, volume, berat GROSS/NET; pada
-manifest klien berbentuk kolom CASE/Dim/CBM/Weight untuk muatan yang sama. CIPL tidak
+manifest klien berbentuk kolom CASE/Dim/CBM/Weight untuk muatan yang sama. Jenis kemasan
+(`satuanKemasan`, mis. `CARTON`/`WOODEN CASE`/`PALLET`) dicatat **per koli**, bukan per
+entri — case dalam satu exhibitor bisa berbeda kemasannya. CIPL tidak
 membawa kolom Bare Case; `bareCaseCount` tetap datang dari manifest.
 
 **Invariant** — `namaTertera` wajib non-kosong; `items` dan rincian koli boleh kosong

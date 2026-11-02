@@ -18,6 +18,7 @@ public/uploads/*
 /remotion-demo/
 
 # Alat kerja lokal — tidak untuk repo maupun deploy Vercel
+.agents/
 .kiro/
 .zcode/
 .vercel/

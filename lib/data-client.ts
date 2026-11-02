@@ -60,6 +60,7 @@ import {
   type JobReturn,
 } from '@/domain/job/manifest'
 import { ciplDocumentSchema } from '@/domain/exhibition/cipl-document'
+import type { CiplAutofillRow } from '@/domain/exhibition/cipl-autofill'
 
 export type {
   Ticket,
@@ -180,6 +181,17 @@ export type JobDocumentMimeType =
   | 'application/vnd.ms-excel.template.macroenabled.12'
   | 'application/vnd.ms-excel.sheet.binary.macroenabled.12'
 
+/**
+ * Baris exhibitor pada sebuah job. `exhibitorId` menautkannya ke exhibitor event — itulah yang
+ * membuat laporan inward manifest per event dapat dirakit dari satu sumber. Baris lama (sebelum
+ * autofill CIPL menautkan) hanya punya `name`, jadi id-nya nullable.
+ */
+export type JobManifestExhibitor = {
+  exhibitorId?: string | null
+  name: string
+  logistics: ExhibitorLogistics
+}
+
 export type LocalJob = {
   id: string
   jobNumber: string
@@ -221,7 +233,7 @@ export type LocalJob = {
   /** Fase kepulangan ala return list container/LCL. */
   kepulangan?: JobReturn | null
   /** Baris exhibitor + rincian koli hasil scan CIPL/manifest saat job dibuat. */
-  manifestExhibitors?: Array<{ name: string; logistics: ExhibitorLogistics }> | null
+  manifestExhibitors?: JobManifestExhibitor[] | null
   /** Snapshot CiplDocument hasil scan CIPL saat job dibuat (menyertakan baris barang). */
   manifestCiplDocument?: CiplDocument | null
   sourceDocumentName?: string | null
@@ -1473,11 +1485,92 @@ export async function saveJobInward(jobId: string, input: InwardManifest): Promi
 /** Simpan baris exhibitor + rincian koli hasil scan CIPL/manifest pada job. */
 export async function saveJobManifestExhibitors(
   jobId: string,
-  exhibitors: Array<{ name: string; logistics: ExhibitorLogistics }>,
+  exhibitors: JobManifestExhibitor[],
 ): Promise<LocalJob> {
   const previous = await getJob(jobId)
   if (!previous) throw new Error('Job tidak ditemukan.')
   return put('jobs', { ...previous, manifestExhibitors: exhibitors, updatedAt: now() })
+}
+
+/** Daftarkan exhibitor baru pada sebuah event; route menerima array dan menjawab urutan sama. */
+async function createEventExhibitors(
+  eventId: string,
+  inputs: Array<{ name: string; agentId: string | null }>,
+): Promise<LocalExhibitor[]> {
+  const rows = await eventsRequest<Array<Record<string, unknown>>>(
+    `/api/events/${encodeURIComponent(eventId)}/exhibitors`,
+    {
+      method: 'POST',
+      body: JSON.stringify(
+        inputs.map((input) => ({
+          kind: 'INTERNATIONAL',
+          name: input.name,
+          contact: { name: null, role: null, email: null, phone: null },
+          agentId: input.agentId,
+        })),
+      ),
+    },
+  )
+  return rows.map(exhibitorFromRow)
+}
+
+export type CiplAutofillOutcome = {
+  saved: JobManifestExhibitor[]
+  /** Exhibitor event yang baru dibuat karena belum terdaftar di event. */
+  created: LocalExhibitor[]
+  /** Baris yang tidak dapat ditautkan (nama cocok dengan lebih dari satu exhibitor event). */
+  unlinked: string[]
+}
+
+/**
+ * Tulis hasil scan CIPL ke dua tempat sekaligus, dalam satu urutan yang jelas:
+ *
+ *   1. entri yang belum terdaftar → dibuat sebagai exhibitor event (INTERNATIONAL, dibawa agent job),
+ *   2. hall/booth/koli tiap entri → disimpan pada exhibitor event itu (payload.logistics),
+ *   3. baris exhibitor + `exhibitorId` → disimpan pada job.
+ *
+ * Langkah 1 dan 2 menyentuh master data event, jadi keduanya hanya dijalankan untuk baris yang
+ * benar-benar punya target. Baris AMBIGU tetap tersimpan di job sebagai nama supaya datanya tidak
+ * hilang, dan dilaporkan lewat `unlinked` agar operator dapat menautkannya manual.
+ */
+export async function applyCiplAutofill(input: {
+  jobId: string
+  eventId: string
+  agentId?: string | null
+  rows: CiplAutofillRow[]
+}): Promise<CiplAutofillOutcome> {
+  const pending = input.rows.filter((row) => row.resolution === 'BARU' && !row.exhibitorId)
+  const created = pending.length
+    ? await createEventExhibitors(
+        input.eventId,
+        pending.map((row) => ({ name: row.name, agentId: input.agentId ?? null })),
+      )
+    : []
+
+  const idByRow = new Map<CiplAutofillRow, string>()
+  pending.forEach((row, index) => {
+    const exhibitor = created[index]
+    if (exhibitor) idByRow.set(row, exhibitor.id)
+  })
+
+  const saved: JobManifestExhibitor[] = input.rows.map((row) => ({
+    exhibitorId: row.exhibitorId ?? idByRow.get(row) ?? null,
+    name: row.name,
+    logistics: row.logistics,
+  }))
+
+  await Promise.all(
+    saved
+      .filter((row): row is JobManifestExhibitor & { exhibitorId: string } => Boolean(row.exhibitorId))
+      .map((row) => saveExhibitorLogistics(input.eventId, row.exhibitorId, row.logistics)),
+  )
+  await saveJobManifestExhibitors(input.jobId, saved)
+
+  return {
+    saved,
+    created,
+    unlinked: saved.filter((row) => !row.exhibitorId).map((row) => row.name),
+  }
 }
 
 /** Simpan snapshot CiplDocument hasil scan CIPL pada job. */

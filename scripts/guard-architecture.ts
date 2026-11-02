@@ -38,7 +38,7 @@ const SKIP_DIRS = new Set(['node_modules', '.next', '.git', 'dist', 'build', '.t
 // `features/**/use-cases/*`, `features/**/repository.ts`, `lib/server/*` (termasuk subfolder).
 const SERVER_ONLY_PATH_PATTERNS: RegExp[] = [
   /^features\/[^/]+\/use-cases\//,
-  /^features\/[^/]+\/repository\.(ts|tsx)$/,
+  /^features\/[^/]+\/repository(\.(ts|tsx)|\/)/,
   /^lib\/server\//,
 ]
 

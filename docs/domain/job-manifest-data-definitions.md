@@ -113,18 +113,25 @@ itu turunan koli.
 
 ```text
 DimensiKoli terdiri dari panjangCm, lebarCm, tinggiCm (Number ≥ 0).
-Koli terdiri dari label (Text atau kosong), dimensi (DimensiKoli atau kosong),
-volumeCbm (Number ≥ 0 atau kosong), dan beratKg (Number ≥ 0 atau kosong).
+Koli terdiri dari id (Text atau kosong), label (Text atau kosong), dimensi (DimensiKoli
+atau kosong), volumeCbm (Number ≥ 0 atau kosong), beratKg (Number ≥ 0 atau kosong), dan
+satuanKemasan (Text atau kosong).
 ```
 
 **Interpretasi** — satu koli/kepak-an barang (kolom `CASE`, `Dimension L/W/H`, `CBM`,
 `Weight Kgs`). Label meniru sebutan manifest (`PKG 1`, `PK 2`). Ketiga nilai pengukuran
 boleh kosong: blok S.12 mencatat `0.00` untuk semua dimensi, dan blok S.07 (36 PKG) tidak
 merinci sama sekali. `0` dan kosong dibedakan: `0` berarti tercatat nol, kosong berarti
-belum dirinci.
+belum dirinci. `satuanKemasan` adalah jenis kemasan **koli itu sendiri** (`CARTON`,
+`WOODEN CASE`, `PALLET`, `KOLI`) — jenis kemasan bisa berbeda antar case dalam satu
+exhibitor, sehingga ia per koli, bukan per kumpulan; kosong bila dokumen tak mencantumkan.
+`id` adalah identitas internal stabil yang diisi produsen data (hasil scan/wizard), bukan
+sesuatu yang tertulis di dokumen — ia menjadi sasaran `refKoliIds` pada `BarisBarang`
+(lihat doc CIPL); data lama yang belum punya id tetap sah.
 
-**Contoh** — `Koli("PKG 1", DimensiKoli(205,130,195), 5.20, 1100)` (S.08 PKG 1);
-`Koli(null, null, null, null)` hanya sebagai anggota rincian yang datanya menyusul.
+**Contoh** — `Koli("PKG 1", DimensiKoli(205,130,195), 5.20, 1100, "WOODEN CASE")` (S.08
+PKG 1); `Koli(null, null, null, null, kosong)` hanya sebagai anggota rincian yang datanya
+menyusul.
 
 ### `KumpulanKoli`
 

@@ -25,19 +25,8 @@
 
 ## Repository summary
 
-Detailed, verified conventions live in `.kiro/steering/`. Read those first — they supersede any
-older description in this file, in `README.md`, or in `docs/`:
-
-- `product.md` — what the system does, entity hierarchy, which routes are live
-- `tech.md` — stack, env vars, commands, test caveats
-- `structure.md` — real directory map and where new code belongs
-- `data-access.md` — the mandatory data flow (this is the one that matters most)
-- `conventions.md` — language, validation, toast, page/loading patterns
-- `pitfalls.md` — known landmines and anti-patterns not to propagate
-- `database.md`, `ceisa.md` — loaded when touching `supabase/**` or `**/ceisa/**`
-
-Business requirements reconstructed from the running code, plus open gaps `G-1`..`G-10`, are in
-`.kiro/requirements.md`.
+This file is the source of truth for conventions. `docs/` holds historical design documents that may
+describe an older architecture — when they conflict with this file, this file wins.
 
 Quick orientation:
 
@@ -54,14 +43,12 @@ Quick orientation:
   touches Supabase, via `lib/supabase/*` (all `server-only`). Never import a storage adapter from
   `app/**/page.tsx` or `components/**`. Attachments are referenced by ID; domain entities never hold
   `Blob`/`File`.
-- **Mutations use route handlers, not Server Actions.** The only server actions in the repo are
-  sign-in and sign-out. There is no `revalidatePath`/`router.refresh()`; components refetch and
-  `setState` after a mutation.
-- **Auth:** `auth.ts` configures the credentials provider; the session carries `user.isAdmin`. There
-  is no `middleware.ts`, so every new route handler must guard itself. `lib/demo-users.ts` is a
-  non-production fallback used only when Supabase is unconfigured.
-- **Domain:** `domain/` holds storage-agnostic entity types and validation. `domain/v2/` is an
-  unused exploratory meta-model — do not build on it, and do not delete it (`domain:test` references it).
+- **Auth:** `auth.ts` configures the credentials provider; the session carries `user.isAdmin`.
+  `middleware.ts` is the global AuthN gate (401 for `/api/*`, redirect to `/login` for pages), so
+  unauthenticated traffic never reaches handlers; handlers still perform their own authorization.
+  `lib/demo-users.ts` is a non-production fallback used only when Supabase is unconfigured.
+- **Domain:** `domain/` holds storage-agnostic entity types and validation, one directory per
+  aggregate (`event/`, `exhibition/`, `job/`, `ticket/`, ...).
 - **Form feedback:** every mutation result MUST produce a toast for success and failure, rendered only
   at the bottom-right of the viewport. Keep field-level validation errors near their inputs; do not
   replace them with, or duplicate them as, toasts.

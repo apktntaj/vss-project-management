@@ -1,12 +1,15 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { nanoid } from 'nanoid'
 import { Plus, Search, Trash2, Upload, X } from 'lucide-react'
 
 import {
+  applyCiplAutofill,
   createInternationalJobInit,
   createLocalJobInit,
   listAgents,
+  listEventExhibitors,
   saveAgent,
   saveJobCiplDocument,
   saveJobDocument,
@@ -15,15 +18,33 @@ import {
   type Agent,
   type InternationalJobJenis,
   type LocalEvent,
+  type LocalExhibitor,
   type LocalJob,
 } from '@/lib/data-client'
-import { buildCiplDocument, type BarisBarang, type CiplDocumentHeader } from '@/domain/exhibition/cipl-document'
-import { exhibitorLogisticsSchema, type ExhibitorLogistics } from '@/domain/job/manifest'
+import {
+  barisBarangSchema,
+  buildCiplDocument,
+  disposisiBarangs,
+  disposisiBarangLabels,
+  type BarisBarang,
+  type CiplDocumentHeader,
+  type DisposisiBarang,
+} from '@/domain/exhibition/cipl-document'
+import {
+  autofillResolutionLabels,
+  reconcileKoliTotal,
+  resolveCiplAutofill,
+  summarizeAutofill,
+  type CiplScanEntry,
+} from '@/domain/exhibition/cipl-autofill'
+import { matchExhibitorByName } from '@/domain/event/exhibitor-matching'
+import { exhibitorLogisticsSchema, type Koli } from '@/domain/job/manifest'
 import { internationalJobJenisLabels } from '@/domain/job/types'
 import type { JobTransportExtraction } from '@/domain/exhibition/source-documents'
 import type { CiplScanResult } from '@/lib/server/manifest-extraction'
 import { TransportEditor } from '@/components/job-document-editor-dialog'
 import { isAcceptedJobDocument, jobDocumentAccept } from '@/components/job-document-file'
+import { Skeleton } from '@/components/ui/skeleton'
 
 function toast(message: string, tone: 'success' | 'error') {
   window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
@@ -65,13 +86,22 @@ function jobTypeLabel(value: JobTypeSelection) {
 
 const slideLabels = ['Job', 'CIPL', 'B/L atau AWB']
 
-type KoliDraft = {
+type CiplLineDraft = {
   label: string
   length: string
   width: string
   height: string
   cbm: string
   weight: string
+  satuanKemasan: string
+  uraian: string
+  merekModel: string
+  kodeHs: string
+  jumlah: string
+  satuan: string
+  nilaiSatuan: string
+  nilaiTotal: string
+  disposisi: DisposisiBarang
 }
 type CiplRowDraft = {
   key: string
@@ -81,18 +111,102 @@ type CiplRowDraft = {
   bareCase: string
   hall: string
   booth: string
-  kolis: KoliDraft[]
-  items: BarisBarang[]
+  lines: CiplLineDraft[]
 }
 
-const emptyKoli = (): KoliDraft => ({
+/** Badge status penautan satu baris terhadap exhibitor event — diturunkan dari nama, bukan disimpan. */
+function rowLinkStatus(name: string, pool: ReadonlyArray<LocalExhibitor>) {
+  const trimmed = name.trim()
+  if (!trimmed) return null
+  const match = matchExhibitorByName(trimmed, pool)
+  if (match.kind === 'MATCHED') return { kind: 'TERTAUT' as const, hint: match.exhibitor.name }
+  if (match.kind === 'AMBIGUOUS')
+    return { kind: 'AMBIGU' as const, hint: `${match.candidates.length} exhibitor bernama sama` }
+  return { kind: 'BARU' as const, hint: 'akan didaftarkan ke event' }
+}
+
+const linkStatusClass: Record<'TERTAUT' | 'BARU' | 'AMBIGU', string> = {
+  TERTAUT: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  BARU: 'bg-amber-50 text-amber-700 ring-amber-200',
+  AMBIGU: 'bg-rose-50 text-rose-700 ring-rose-200',
+}
+
+const emptyLine = (): CiplLineDraft => ({
   label: '',
   length: '',
   width: '',
   height: '',
   cbm: '',
   weight: '',
+  satuanKemasan: '',
+  uraian: '',
+  merekModel: '',
+  kodeHs: '',
+  jumlah: '',
+  satuan: '',
+  nilaiSatuan: '',
+  nilaiTotal: '',
+  disposisi: 'TIDAK_DISEBUT',
 })
+
+const emptyRow = (key: string): CiplRowDraft => ({
+  key,
+  jobNo: '',
+  name: '',
+  totalPackage: '',
+  bareCase: '',
+  hall: '',
+  booth: '',
+  lines: [emptyLine()],
+})
+
+/** Satu baris gabungan (kemasan + barang) → BarisBarang; refKoli diwariskan dari kolom case (fill-down). */
+function lineToBarang(line: CiplLineDraft, refKoli: string | null): BarisBarang | null {
+  const parsed = barisBarangSchema.safeParse({
+    uraian: line.uraian.trim(),
+    merekModel: line.merekModel.trim() || null,
+    kodeHs: line.kodeHs.trim() || null,
+    jumlah: numberOrNull(line.jumlah),
+    satuan: line.satuan.trim() || 'UNIT',
+    nilaiSatuan: numberOrNull(line.nilaiSatuan),
+    nilaiTotal: numberOrNull(line.nilaiTotal),
+    disposisi: line.disposisi,
+    refKoli,
+  })
+  return parsed.success ? parsed.data : null
+}
+
+/** Minimal satu field terisi — gerbang tombol "Tambah exhibitor". */
+function isRowFilled(row: CiplRowDraft): boolean {
+  if (
+    row.name.trim() ||
+    row.totalPackage.trim() ||
+    row.bareCase.trim() ||
+    row.hall.trim() ||
+    row.booth.trim()
+  ) {
+    return true
+  }
+  return row.lines.some((line) =>
+    Boolean(
+      line.label.trim() ||
+      line.length.trim() ||
+      line.width.trim() ||
+      line.height.trim() ||
+      line.cbm.trim() ||
+      line.weight.trim() ||
+      line.satuanKemasan.trim() ||
+      line.uraian.trim() ||
+      line.merekModel.trim() ||
+      line.kodeHs.trim() ||
+      line.jumlah.trim() ||
+      line.satuan.trim() ||
+      line.nilaiSatuan.trim() ||
+      line.nilaiTotal.trim() ||
+      line.disposisi !== 'TIDAK_DISEBUT',
+    ),
+  )
+}
 
 const emptyTransport = (): JobTransportExtraction => ({
   documentNumber: null,
@@ -169,10 +283,12 @@ export function JobCreateWizard({
   const [newAgentEmail, setNewAgentEmail] = useState('')
   const [newAgentPhone, setNewAgentPhone] = useState('')
   const [error, setError] = useState('')
-  const [ciplRows, setCiplRows] = useState<CiplRowDraft[]>([])
+  const [ciplRows, setCiplRows] = useState<CiplRowDraft[]>(() => [emptyRow('cipl-row-0')])
   const [ciplFile, setCiplFile] = useState<File | null>(null)
   const [scanningCipl, setScanningCipl] = useState(false)
   const [ciplHeader, setCiplHeader] = useState<CiplDocumentHeader | null>(null)
+  /** Exhibitor event terpilih — kolam pencocokan autofill CIPL. */
+  const [eventExhibitors, setEventExhibitors] = useState<LocalExhibitor[]>([])
   const [ciplBelumTerpetakan, setCiplBelumTerpetakan] = useState<BarisBarang[]>([])
   const [docKind, setDocKind] = useState<'BL' | 'AWB'>('BL')
   const [transport, setTransport] = useState<JobTransportExtraction | null>(null)
@@ -193,6 +309,26 @@ export function JobCreateWizard({
       active = false
     }
   }, [])
+
+  // Exhibitor event dimuat begitu event dipilih: tanpa kolam ini setiap entri CIPL akan
+  // tampak "baru" dan autofill mendaftarkan ulang exhibitor yang sudah ada.
+  useEffect(() => {
+    if (!selectedEventId) {
+      setEventExhibitors([])
+      return
+    }
+    let active = true
+    listEventExhibitors(selectedEventId)
+      .then((loaded) => {
+        if (active) setEventExhibitors(loaded)
+      })
+      .catch(() => {
+        if (active) setEventExhibitors([])
+      })
+    return () => {
+      active = false
+    }
+  }, [selectedEventId])
 
   const selectedEvent = useMemo(
     () => events.find((event) => event.id === selectedEventId) ?? presetEvent ?? null,
@@ -306,9 +442,7 @@ export function JobCreateWizard({
       body.set('file', file)
       const response = await fetch('/api/scan-cipl', { method: 'POST', body })
       const data = (await response.json().catch(() => null)) as
-        | (Partial<CiplScanResult> & { warnings?: string[] })
-        | { error?: string }
-        | null
+        (Partial<CiplScanResult> & { warnings?: string[] }) | { error?: string } | null
       if (!response.ok || !data || !('exhibitors' in data) || !Array.isArray(data.exhibitors)) {
         throw new Error(
           data && 'error' in data && typeof data.error === 'string'
@@ -316,27 +450,49 @@ export function JobCreateWizard({
             : 'Dokumen tidak dapat dipindai.',
         )
       }
-      const rows: CiplRowDraft[] = data.exhibitors.map((exhibitor) => ({
-        key: nextRowKey(),
-        jobNo: exhibitor.jobNo ?? '',
-        name: exhibitor.name,
-        totalPackage: String(exhibitor.logistics.koli.totalCount),
-        bareCase:
-          exhibitor.logistics.koli.bareCaseCount == null
-            ? ''
-            : String(exhibitor.logistics.koli.bareCaseCount),
-        hall: exhibitor.logistics.hall ?? '',
-        booth: exhibitor.logistics.booth ?? '',
-        items: exhibitor.items ?? [],
-        kolis: exhibitor.logistics.koli.details.map((koli) => ({
+      const rows: CiplRowDraft[] = data.exhibitors.map((exhibitor) => {
+        const lines: CiplLineDraft[] = exhibitor.logistics.koli.details.map((koli) => ({
+          ...emptyLine(),
           label: koli.label ?? '',
           length: koli.dimension?.lengthCm == null ? '' : String(koli.dimension.lengthCm),
           width: koli.dimension?.widthCm == null ? '' : String(koli.dimension.widthCm),
           height: koli.dimension?.heightCm == null ? '' : String(koli.dimension.heightCm),
           cbm: koli.volumeCbm == null ? '' : String(koli.volumeCbm),
           weight: koli.weightKg == null ? '' : String(koli.weightKg),
-        })),
-      }))
+          satuanKemasan: koli.satuanKemasan ?? '',
+        }))
+        for (const item of exhibitor.items ?? []) {
+          const refLabel = item.refKoli?.trim() || ''
+          const target = refLabel
+            ? (lines.find((entry) => entry.label.trim() === refLabel && !entry.uraian.trim()) ??
+              null)
+            : null
+          const line = target ?? { ...emptyLine(), label: item.refKoli ?? '' }
+          line.uraian = item.uraian
+          line.merekModel = item.merekModel ?? ''
+          line.kodeHs = item.kodeHs ?? ''
+          line.jumlah = String(item.jumlah)
+          line.satuan = item.satuan
+          line.nilaiSatuan = item.nilaiSatuan == null ? '' : String(item.nilaiSatuan)
+          line.nilaiTotal = item.nilaiTotal == null ? '' : String(item.nilaiTotal)
+          line.disposisi = item.disposisi
+          if (!target) lines.push(line)
+        }
+        if (lines.length === 0) lines.push(emptyLine())
+        return {
+          key: nextRowKey(),
+          jobNo: exhibitor.jobNo ?? '',
+          name: exhibitor.name,
+          totalPackage: String(exhibitor.logistics.koli.totalCount),
+          bareCase:
+            exhibitor.logistics.koli.bareCaseCount == null
+              ? ''
+              : String(exhibitor.logistics.koli.bareCaseCount),
+          hall: exhibitor.logistics.hall ?? '',
+          booth: exhibitor.logistics.booth ?? '',
+          lines,
+        }
+      })
       setCiplRows(rows)
       setCiplHeader(data.header ?? null)
       setCiplBelumTerpetakan(data.itemsBelumTerpetakan ?? [])
@@ -400,40 +556,72 @@ export function JobCreateWizard({
     }
   }
 
-  function buildManifestRows(): Array<{ name: string; logistics: ExhibitorLogistics; items: BarisBarang[] }> {
-    const rows: Array<{ name: string; logistics: ExhibitorLogistics; items: BarisBarang[] }> = []
+  /**
+   * Draft tabel → entri scan domain. "Total pkg" yang terlihat operator diteruskan sebagai
+   * total yang DISEBUT dokumen, sehingga angka yang ia ketik sendiri menang; bila dikosongkan,
+   * label koli ("7-11", "in package No. 22") yang menentukan jumlah paket.
+   */
+  function buildScanEntries(): CiplScanEntry[] {
+    const entries: CiplScanEntry[] = []
     for (const row of ciplRows) {
       const name = row.name.trim()
       if (!name) continue
-      const details = row.kolis.map((koli) => {
-        const lengthCm = numberOrNull(koli.length)
-        const widthCm = numberOrNull(koli.width)
-        const heightCm = numberOrNull(koli.height)
-        return {
-          label: koli.label.trim() || null,
-          dimension:
-            lengthCm !== null && widthCm !== null && heightCm !== null
-              ? { lengthCm, widthCm, heightCm }
-              : null,
-          volumeCbm: numberOrNull(koli.cbm),
-          weightKg: numberOrNull(koli.weight),
+      const details: Koli[] = []
+      const labelToId = new Map<string, string>()
+      const items: BarisBarang[] = []
+      let currentLabel: string | null = null
+      let currentKoliId: string | null = null
+      for (const line of row.lines) {
+        const label = line.label.trim() || null
+        if (label !== null) currentLabel = label
+        const lengthCm = numberOrNull(line.length)
+        const widthCm = numberOrNull(line.width)
+        const heightCm = numberOrNull(line.height)
+        const dimension =
+          lengthCm !== null && widthCm !== null && heightCm !== null
+            ? { lengthCm, widthCm, heightCm }
+            : null
+        const volumeCbm = numberOrNull(line.cbm)
+        const weightKg = numberOrNull(line.weight)
+        const hasPackage =
+          label !== null || dimension !== null || volumeCbm !== null || weightKg !== null
+        if (label !== null && labelToId.has(label)) {
+          // case berulang: pakai id koli yang sudah ada (dims hanya di baris pertama)
+          currentKoliId = labelToId.get(label)!
+        } else if (hasPackage) {
+          const id = nanoid()
+          details.push({
+            id,
+            label,
+            dimension,
+            volumeCbm,
+            weightKg,
+            satuanKemasan: line.satuanKemasan.trim() || null,
+          })
+          if (label !== null) labelToId.set(label, id)
+          currentKoliId = id
         }
-      })
-      const totalCount = Math.max(Math.round(numberOrNull(row.totalPackage) ?? 0), details.length)
+        const barang = lineToBarang(line, currentLabel)
+        if (barang) items.push({ ...barang, refKoliIds: currentKoliId ? [currentKoliId] : [] })
+      }
+      const stated = numberOrNull(row.totalPackage)
+      const statedTotalCount = stated === null ? null : Math.round(stated)
       const parsed = exhibitorLogisticsSchema.safeParse({
         hall: row.hall.trim() || null,
         booth: row.booth.trim() || null,
         koli: {
-          totalCount,
+          totalCount: reconcileKoliTotal(details, statedTotalCount),
           bareCaseCount:
             numberOrNull(row.bareCase) == null ? null : Math.round(numberOrNull(row.bareCase)!),
           details,
         },
         notes: [],
       })
-      if (parsed.success) rows.push({ name, logistics: parsed.data, items: row.items })
+      if (parsed.success) {
+        entries.push({ name, statedTotalCount, logistics: parsed.data, items })
+      }
     }
-    return rows
+    return entries
   }
 
   async function finish() {
@@ -450,14 +638,32 @@ export function JobCreateWizard({
       return
     }
     let failures = 0
-    const manifestRows = buildManifestRows()
-    const skippedNames = ciplRows.length - manifestRows.length
+    const scanEntries = buildScanEntries()
+    const skippedNames = ciplRows.length - scanEntries.length
+    // Satu entri CIPL = satu exhibitor event: yang sudah terdaftar ditautkan lewat nama
+    // ternormalisasi, yang belum didaftarkan di sini, lalu hall/booth/koli-nya ikut tersimpan.
+    const plan = resolveCiplAutofill(scanEntries, eventExhibitors)
+    const manifestRows = plan.rows
+    let autofill: Awaited<ReturnType<typeof applyCiplAutofill>> | null = null
     if (manifestRows.length) {
       try {
-        await saveJobManifestExhibitors(
-          job.id,
-          manifestRows.map(({ name, logistics }) => ({ name, logistics })),
-        )
+        autofill = job.eventId
+          ? await applyCiplAutofill({
+              jobId: job.id,
+              eventId: job.eventId,
+              agentId: job.agentId ?? null,
+              rows: manifestRows,
+            })
+          : // Tanpa event tidak ada master exhibitor yang bisa dituju; baris tetap disimpan di
+            // job apa adanya supaya hasil scan tidak hilang.
+            await saveJobManifestExhibitors(
+              job.id,
+              manifestRows.map((row) => ({
+                exhibitorId: null,
+                name: row.name,
+                logistics: row.logistics,
+              })),
+            ).then(() => null)
       } catch {
         failures += 1
         toast('Baris CIPL tidak dapat disimpan — bisa dilengkapi di detail job.', 'error')
@@ -502,7 +708,16 @@ export function JobCreateWizard({
       }
     }
     const parts = [`Job (${jobTypeLabel(selection)}) dibuat`]
-    if (manifestRows.length) parts.push(`${manifestRows.length} exhibitor CIPL`)
+    if (manifestRows.length) {
+      const ringkasan = summarizeAutofill(manifestRows)
+      const rincian = [
+        ringkasan.tertaut ? `${ringkasan.tertaut} tertaut` : null,
+        autofill?.created.length ? `${autofill.created.length} exhibitor baru` : null,
+      ].filter(Boolean)
+      parts.push(
+        `${manifestRows.length} exhibitor CIPL${rincian.length ? ` (${rincian.join(', ')})` : ''}`,
+      )
+    }
     const itemCount =
       manifestRows.reduce((sum, row) => sum + row.items.length, 0) + ciplBelumTerpetakan.length
     if (itemCount) parts.push(`${itemCount} baris barang`)
@@ -513,35 +728,30 @@ export function JobCreateWizard({
     )
     if (skippedNames > 0)
       toast(`${skippedNames} baris CIPL dilewati karena belum ada nama exhibitor.`, 'error')
+    for (const warning of plan.warnings) toast(warning, 'error')
+    if (autofill?.unlinked.length)
+      toast(
+        `${autofill.unlinked.length} baris belum tertaut ke exhibitor event — tautkan dari detail job.`,
+        'error',
+      )
     onCreated(job)
   }
 
-  const busy = scanningCipl || scanningTransport || finishing
-
-  const koliSums = (row: CiplRowDraft) =>
-    row.kolis.reduce(
-      (sum, koli) => ({
-        cbm: sum.cbm + (numberOrNull(koli.cbm) ?? 0),
-        kg: sum.kg + (numberOrNull(koli.weight) ?? 0),
-      }),
-      { cbm: 0, kg: 0 },
-    )
+  const scanning = scanningCipl || scanningTransport
+  const busy = scanning || finishing
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4 sm:p-8"
       role="presentation"
-      onMouseDown={(mouseEvent) => {
-        if (mouseEvent.target === mouseEvent.currentTarget) onCancel()
-      }}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="job-create-title"
-        className="card flex h-[min(720px,calc(100vh-2rem))] min-h-0 w-full max-w-3xl flex-col overflow-hidden"
+        className="card relative flex h-[min(720px,calc(100vh-2rem))] min-h-0 w-full max-w-3xl flex-col overflow-hidden"
       >
-        <div className="flex shrink-0 items-center justify-between gap-4 border-b px-6 py-5 sm:px-8">
+        <div className="relative z-20 flex shrink-0 items-center justify-between gap-4 border-b bg-white px-6 py-5 sm:px-8">
           <div className="min-w-0">
             <h2 id="job-create-title" className="text-2xl font-bold">
               Job Baru
@@ -579,6 +789,22 @@ export function JobCreateWizard({
             <X size={20} />
           </button>
         </div>
+
+        {scanning ? (
+          <div
+            className="absolute inset-0 z-10 flex flex-col justify-center gap-4 overflow-hidden bg-white p-6 sm:p-8"
+            aria-busy="true"
+            aria-live="polite"
+          >
+            <p className="text-sm font-medium text-orange-700">Memeriksa dokumen dengan AI...</p>
+            <Skeleton className="h-6 w-56" />
+            <div className="space-y-3">
+              {Array.from({ length: 6 }, (_, index) => (
+                <Skeleton key={index} className="h-12 w-full rounded-lg" />
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {slide === 0 ? (
           <form onSubmit={submitSlideJob} className="flex min-h-0 flex-1 flex-col">
@@ -850,29 +1076,36 @@ export function JobCreateWizard({
                     }}
                   />
                 </label>
-                {scanningCipl ? (
-                  <p className="mt-2 text-sm font-medium text-orange-700" aria-live="polite">
-                    Memeriksa dokumen dengan AI...
-                  </p>
-                ) : (
-                  <p className="mt-2 text-xs text-slate-500">.</p>
-                )}
+                <p className="mt-2 text-xs text-slate-500">.</p>
               </div>
 
-              {ciplRows.length === 0 ? (
-                <p className=""></p>
-              ) : (
-                <ul className="space-y-4">
-                  {ciplRows.map((row, rowIndex) => {
-                    const sums = koliSums(row)
-                    return (
-                      <li key={row.key} className="rounded-xl border border-black/10 p-4">
-                        <div className="grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_90px_90px_90px_110px_auto]">
-                          <label className="label">
+              <ul className="space-y-4">
+                {ciplRows.map((row, rowIndex) => {
+                  const sums = row.lines.reduce(
+                    (total, line) => ({
+                      cbm: total.cbm + (numberOrNull(line.cbm) ?? 0),
+                      kg: total.kg + (numberOrNull(line.weight) ?? 0),
+                    }),
+                    { cbm: 0, kg: 0 },
+                  )
+                  const link = selectedEventId ? rowLinkStatus(row.name, eventExhibitors) : null
+                  return (
+                    <li key={row.key} className="rounded-xl border border-black/10 p-4">
+                      <div className="space-y-3">
+                        <div className="flex items-end gap-2">
+                          <label className="label flex-1">
                             Exhibitor
                             {row.jobNo ? (
                               <span className="ml-1 text-xs font-normal text-slate-400">
                                 {row.jobNo}
+                              </span>
+                            ) : null}
+                            {link ? (
+                              <span
+                                className={`ml-2 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${linkStatusClass[link.kind]}`}
+                                title={link.hint}
+                              >
+                                {autofillResolutionLabels[link.kind]}
                               </span>
                             ) : null}
                             <input
@@ -882,78 +1115,6 @@ export function JobCreateWizard({
                                   current.map((item, i) =>
                                     i === rowIndex
                                       ? { ...item, name: inputEvent.target.value }
-                                      : item,
-                                  ),
-                                )
-                              }
-                              className="input mt-1"
-                              disabled={finishing}
-                            />
-                          </label>
-                          <label className="label">
-                            Total pkg
-                            <input
-                              type="number"
-                              min="0"
-                              value={row.totalPackage}
-                              onChange={(inputEvent) =>
-                                setCiplRows((current) =>
-                                  current.map((item, i) =>
-                                    i === rowIndex
-                                      ? { ...item, totalPackage: inputEvent.target.value }
-                                      : item,
-                                  ),
-                                )
-                              }
-                              className="input mt-1"
-                              disabled={finishing}
-                            />
-                          </label>
-                          <label className="label">
-                            Bare case
-                            <input
-                              type="number"
-                              min="0"
-                              value={row.bareCase}
-                              onChange={(inputEvent) =>
-                                setCiplRows((current) =>
-                                  current.map((item, i) =>
-                                    i === rowIndex
-                                      ? { ...item, bareCase: inputEvent.target.value }
-                                      : item,
-                                  ),
-                                )
-                              }
-                              className="input mt-1"
-                              disabled={finishing}
-                            />
-                          </label>
-                          <label className="label">
-                            Hall
-                            <input
-                              value={row.hall}
-                              onChange={(inputEvent) =>
-                                setCiplRows((current) =>
-                                  current.map((item, i) =>
-                                    i === rowIndex
-                                      ? { ...item, hall: inputEvent.target.value }
-                                      : item,
-                                  ),
-                                )
-                              }
-                              className="input mt-1"
-                              disabled={finishing}
-                            />
-                          </label>
-                          <label className="label">
-                            Booth no
-                            <input
-                              value={row.booth}
-                              onChange={(inputEvent) =>
-                                setCiplRows((current) =>
-                                  current.map((item, i) =>
-                                    i === rowIndex
-                                      ? { ...item, booth: inputEvent.target.value }
                                       : item,
                                   ),
                                 )
@@ -974,70 +1135,156 @@ export function JobCreateWizard({
                             <Trash2 size={16} aria-hidden="true" />
                           </button>
                         </div>
+                        <div className="flex flex-wrap items-end gap-3">
+                          <label className="label w-24">
+                            Total pkg
+                            <input
+                              type="number"
+                              min="0"
+                              value={row.totalPackage}
+                              onChange={(inputEvent) =>
+                                setCiplRows((current) =>
+                                  current.map((item, i) =>
+                                    i === rowIndex
+                                      ? { ...item, totalPackage: inputEvent.target.value }
+                                      : item,
+                                  ),
+                                )
+                              }
+                              className="input mt-1"
+                              disabled={finishing}
+                            />
+                          </label>
+                          <label className="label w-28">
+                            Booth no
+                            <input
+                              value={row.booth}
+                              onChange={(inputEvent) =>
+                                setCiplRows((current) =>
+                                  current.map((item, i) =>
+                                    i === rowIndex
+                                      ? { ...item, booth: inputEvent.target.value }
+                                      : item,
+                                  ),
+                                )
+                              }
+                              className="input mt-1"
+                              disabled={finishing}
+                            />
+                          </label>
+                          <label className="label w-28">
+                            Hall
+                            <input
+                              value={row.hall}
+                              onChange={(inputEvent) =>
+                                setCiplRows((current) =>
+                                  current.map((item, i) =>
+                                    i === rowIndex
+                                      ? { ...item, hall: inputEvent.target.value }
+                                      : item,
+                                  ),
+                                )
+                              }
+                              className="input mt-1"
+                              disabled={finishing}
+                            />
+                          </label>
+                          <label className="label w-24">
+                            Bare case
+                            <input
+                              type="number"
+                              min="0"
+                              value={row.bareCase}
+                              onChange={(inputEvent) =>
+                                setCiplRows((current) =>
+                                  current.map((item, i) =>
+                                    i === rowIndex
+                                      ? { ...item, bareCase: inputEvent.target.value }
+                                      : item,
+                                  ),
+                                )
+                              }
+                              className="input mt-1"
+                              disabled={finishing}
+                            />
+                          </label>
+                        </div>
+                      </div>
 
-                        <div className="mt-4">
-                          <div className="grid gap-2 px-1 text-xs font-medium text-slate-500 [grid-template-columns:minmax(0,1fr)_repeat(5,84px)_32px]">
-                            <span>Case</span>
-                            <span>L (cm)</span>
-                            <span>W (cm)</span>
-                            <span>H (cm)</span>
-                            <span>CBM</span>
-                            <span>Kg</span>
-                            <span className="sr-only">Aksi</span>
-                          </div>
-                          <div className="mt-1.5 space-y-2">
-                            {row.kolis.map((koli, koliIndex) => (
-                              <div
-                                key={koliIndex}
-                                className="grid items-center gap-2 [grid-template-columns:minmax(0,1fr)_repeat(5,84px)_32px]"
-                              >
-                                <input
-                                  value={koli.label}
-                                  onChange={(inputEvent) =>
-                                    setCiplRows((current) =>
-                                      current.map((item, i) =>
-                                        i === rowIndex
-                                          ? {
-                                              ...item,
-                                              kolis: item.kolis.map((entry, j) =>
-                                                j === koliIndex
-                                                  ? { ...entry, label: inputEvent.target.value }
-                                                  : entry,
-                                              ),
-                                            }
-                                          : item,
-                                      ),
-                                    )
-                                  }
-                                  placeholder="cth. PKG 1"
-                                  className="input py-1.5 text-sm"
-                                  aria-label={`Case ${koliIndex + 1}`}
-                                  disabled={finishing}
-                                />
+                      <div className="mt-4">
+                        <div className="space-y-3">
+                          {row.lines.map((line, lineIndex) => (
+                            <div
+                              key={lineIndex}
+                              className="rounded-lg border border-black/5 bg-slate-50/60 p-3"
+                            >
+                              <div className="flex flex-wrap items-end gap-2">
                                 {(
                                   [
-                                    ['length', `Panjang case ${koliIndex + 1}`],
-                                    ['width', `Lebar case ${koliIndex + 1}`],
-                                    ['height', `Tinggi case ${koliIndex + 1}`],
-                                    ['cbm', `CBM case ${koliIndex + 1}`],
-                                    ['weight', `Berat case ${koliIndex + 1}`],
+                                    ['label', 'Case', 'text', 'cth. PKG 1', 'w-28 grow'],
+                                    ['length', 'L (cm)', 'number', '', 'w-20'],
+                                    ['width', 'W (cm)', 'number', '', 'w-20'],
+                                    ['height', 'H (cm)', 'number', '', 'w-20'],
+                                    ['cbm', 'CBM', 'number', '', 'w-20'],
+                                    ['weight', 'Kg', 'number', '', 'w-20'],
+                                    ['satuanKemasan', 'Satuan', 'text', 'cth. CARTON', 'w-24'],
+                                    ['uraian', 'Uraian', 'text', 'Nama barang', 'w-40 grow'],
+                                    ['merekModel', 'Merek/model', 'text', '', 'w-28'],
+                                    ['kodeHs', 'HS code', 'text', '', 'w-24'],
+                                    ['jumlah', 'Jumlah', 'number', '', 'w-20'],
+                                    ['satuan', 'Satuan', 'text', '', 'w-20'],
+                                    ['nilaiSatuan', 'Nilai satuan', 'number', '', 'w-24'],
+                                    ['nilaiTotal', 'Nilai total', 'number', '', 'w-24'],
                                   ] as const
-                                ).map(([field, aria]) => (
-                                  <input
-                                    key={field}
-                                    type="number"
-                                    min="0"
-                                    step="any"
-                                    value={koli[field]}
+                                ).map(([field, fieldLabel, type, placeholder, width]) => (
+                                  <label key={field} className={`label text-xs ${width}`}>
+                                    {fieldLabel}
+                                    <input
+                                      type={type}
+                                      {...(type === 'number' ? { min: '0', step: 'any' } : {})}
+                                      value={line[field]}
+                                      onChange={(inputEvent) =>
+                                        setCiplRows((current) =>
+                                          current.map((item, i) =>
+                                            i === rowIndex
+                                              ? {
+                                                  ...item,
+                                                  lines: item.lines.map((entry, j) =>
+                                                    j === lineIndex
+                                                      ? {
+                                                          ...entry,
+                                                          [field]: inputEvent.target.value,
+                                                        }
+                                                      : entry,
+                                                  ),
+                                                }
+                                              : item,
+                                          ),
+                                        )
+                                      }
+                                      placeholder={placeholder || undefined}
+                                      className="input mt-1 py-1.5 text-sm"
+                                      disabled={finishing}
+                                    />
+                                  </label>
+                                ))}
+                                <label className="label w-36 text-xs">
+                                  Disposisi
+                                  <select
+                                    value={line.disposisi}
                                     onChange={(inputEvent) =>
                                       setCiplRows((current) =>
                                         current.map((item, i) =>
                                           i === rowIndex
                                             ? {
                                                 ...item,
-                                                kolis: item.kolis.map((entry, j) =>
-                                                  j === koliIndex
-                                                    ? { ...entry, [field]: inputEvent.target.value }
+                                                lines: item.lines.map((entry, j) =>
+                                                  j === lineIndex
+                                                    ? {
+                                                        ...entry,
+                                                        disposisi: inputEvent.target
+                                                          .value as DisposisiBarang,
+                                                      }
                                                     : entry,
                                                 ),
                                               }
@@ -1045,84 +1292,74 @@ export function JobCreateWizard({
                                         ),
                                       )
                                     }
-                                    className="input py-1.5 text-sm"
-                                    aria-label={aria}
+                                    className="input mt-1 py-1.5 text-sm"
                                     disabled={finishing}
-                                  />
-                                ))}
+                                  >
+                                    {disposisiBarangs.map((disposisi) => (
+                                      <option key={disposisi} value={disposisi}>
+                                        {disposisiBarangLabels[disposisi]}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
                                 <button
                                   type="button"
-                                  aria-label={`Hapus case ${koliIndex + 1}`}
+                                  aria-label={`Hapus baris ${lineIndex + 1}`}
                                   onClick={() =>
                                     setCiplRows((current) =>
                                       current.map((item, i) =>
                                         i === rowIndex
                                           ? {
                                               ...item,
-                                              kolis: item.kolis.filter((_, j) => j !== koliIndex),
+                                              lines: item.lines.filter((_, j) => j !== lineIndex),
                                             }
                                           : item,
                                       ),
                                     )
                                   }
-                                  className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-700"
+                                  className="mb-1 rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-700"
                                   disabled={finishing}
                                 >
                                   <Trash2 size={14} aria-hidden="true" />
                                 </button>
                               </div>
-                            ))}
-                          </div>
-                          <div className="mt-2 flex items-center justify-between gap-3">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setCiplRows((current) =>
-                                  current.map((item, i) =>
-                                    i === rowIndex
-                                      ? { ...item, kolis: [...item.kolis, emptyKoli()] }
-                                      : item,
-                                  ),
-                                )
-                              }
-                              className="inline-flex items-center gap-1 text-xs font-semibold text-orange-700 hover:text-orange-800"
-                              disabled={finishing}
-                            >
-                              <Plus size={13} aria-hidden="true" />
-                              Tambah case
-                            </button>
-                            <p className="text-xs text-slate-500">
-                              Σ {sums.cbm.toLocaleString('id-ID')} CBM ·{' '}
-                              {sums.kg.toLocaleString('id-ID')} kg
-                            </p>
-                          </div>
+                            </div>
+                          ))}
                         </div>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
+                        <div className="mt-2 flex items-center justify-between gap-3">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCiplRows((current) =>
+                                current.map((item, i) =>
+                                  i === rowIndex
+                                    ? { ...item, lines: [...item.lines, emptyLine()] }
+                                    : item,
+                                ),
+                              )
+                            }
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-orange-700 hover:text-orange-800"
+                            disabled={finishing}
+                          >
+                            <Plus size={13} aria-hidden="true" />
+                            Tambah baris
+                          </button>
+                          <p className="text-xs text-slate-500">
+                            Σ {sums.cbm.toLocaleString('id-ID')} CBM ·{' '}
+                            {sums.kg.toLocaleString('id-ID')} kg
+                          </p>
+                        </div>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
 
               <button
                 type="button"
-                onClick={() =>
-                  setCiplRows((current) => [
-                    ...current,
-                    {
-                      key: nextRowKey(),
-                      jobNo: '',
-                      name: '',
-                      totalPackage: '',
-                      bareCase: '',
-                      hall: '',
-                      booth: '',
-                      items: [],
-                      kolis: [emptyKoli()],
-                    },
-                  ])
-                }
+                onClick={() => setCiplRows((current) => [...current, emptyRow(nextRowKey())])}
                 className="btn-secondary"
-                disabled={finishing}
+                disabled={finishing || (ciplRows.length > 0 && !ciplRows.some(isRowFilled))}
               >
                 <Plus size={16} aria-hidden="true" />
                 Tambah exhibitor
@@ -1179,11 +1416,6 @@ export function JobCreateWizard({
                       }}
                     />
                   </label>
-                  {scanningTransport ? (
-                    <p className="mt-2 text-sm font-medium text-orange-700" aria-live="polite">
-                      Memeriksa dokumen dengan AI...
-                    </p>
-                  ) : null}
                 </fieldset>
               </div>
 

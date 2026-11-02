@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { countPackageRefs, parsePackageRef } from '@/domain/shared/package-refs'
+
 /**
  * Model data job ala inward manifest (lihat docs/domain/job-manifest-data-definitions.md).
  * Semua definisi bebas teknologi; parser/UI memakai Zod schema yang sama.
@@ -69,12 +71,30 @@ export const koliDimensionSchema = z.object({
 export type KoliDimension = z.infer<typeof koliDimensionSchema>
 
 export const koliSchema = z.object({
+  /** Id stabil koli; diisi produsen (scan/wizard), dipakai BarisBarang.refKoliIds. Absen pada data lama. */
+  id: z.string().min(1).optional(),
   label: optionalText,
   dimension: koliDimensionSchema.nullable(),
   volumeCbm: nonNegative,
   weightKg: nonNegative,
+  /** Satuan/jenis kemasan koli ini (CARTON, WOODEN CASE, PALLET, KOLI); null/absen bila tak tercantum. */
+  satuanKemasan: optionalText.optional(),
 })
 export type Koli = z.infer<typeof koliSchema>
+
+/**
+ * Baris rincian yang label-nya menyatakan barang dititipkan di koli lain ("in package No. 22")
+ * BUKAN koli tersendiri: isinya ikut koli milik baris lain. Beratnya tetap kargo nyata dan tetap
+ * dijumlahkan, tetapi ia tidak boleh menambah jumlah paket — lihat domain/shared/package-refs.
+ */
+export function isKoliTitipan(koli: Pick<Koli, 'label'>): boolean {
+  return parsePackageRef(koli.label).kind === 'CONTAINED'
+}
+
+/** Koli yang berdiri sendiri sebagai satu paket (tanpa baris titipan). */
+export function koliTersendiri(details: ReadonlyArray<Koli>): Koli[] {
+  return details.filter((koli) => !isKoliTitipan(koli))
+}
 
 export const koliCollectionSchema = z
   .object({
@@ -83,7 +103,7 @@ export const koliCollectionSchema = z
     bareCaseCount: z.number().int().min(0).nullable().default(null),
     details: z.array(koliSchema),
   })
-  .refine((collection) => collection.details.length <= collection.totalCount, {
+  .refine((collection) => koliTersendiri(collection.details).length <= collection.totalCount, {
     message: 'Rincian koli tidak boleh melebihi jumlah total koli.',
   })
 export type KoliCollection = z.infer<typeof koliCollectionSchema>
@@ -112,7 +132,10 @@ export type InwardTransportDocument = z.infer<typeof transportDocumentSchema>
 
 export const loadConfigurationSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('LCL') }),
-  z.object({ kind: z.literal('FCL'), containers: z.array(containerSchema).min(1, 'FCL minimal satu kontainer.') }),
+  z.object({
+    kind: z.literal('FCL'),
+    containers: z.array(containerSchema).min(1, 'FCL minimal satu kontainer.'),
+  }),
 ])
 export type LoadConfiguration = z.infer<typeof loadConfigurationSchema>
 
@@ -127,7 +150,10 @@ export const inwardManifestSchema = z.object({
 export type InwardManifest = z.infer<typeof inwardManifestSchema>
 
 export const returnModeSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('FCL'), containers: z.array(containerSchema).min(1, 'Kepulangan kontainer minimal satu unit.') }),
+  z.object({
+    kind: z.literal('FCL'),
+    containers: z.array(containerSchema).min(1, 'Kepulangan kontainer minimal satu unit.'),
+  }),
   z.object({ kind: z.literal('LCL'), koliCount: z.number().int().min(0) }),
 ])
 export type ReturnMode = z.infer<typeof returnModeSchema>
@@ -161,7 +187,18 @@ export type KoliSummary = {
   volumeCbm: number
 }
 
-export function summarizeKoli(collection: Pick<KoliCollection, 'totalCount' | 'details'>): KoliSummary {
+/**
+ * Jumlah paket yang benar-benar terbaca dari label baris: rentang "7-11" bernilai 5, baris
+ * titipan bernilai 0, nomor yang terulang di halaman lanjutan dihitung sekali. Dipakai sebagai
+ * totalCount saat dokumen tidak menyebut total per exhibitor (CIPL konsolidasi).
+ */
+export function countKoliFromLabels(details: ReadonlyArray<Koli>): number {
+  return countPackageRefs(details.map((koli) => koli.label))
+}
+
+export function summarizeKoli(
+  collection: Pick<KoliCollection, 'totalCount' | 'details'>,
+): KoliSummary {
   return {
     totalCount: collection.totalCount,
     detailedCount: collection.details.length,
@@ -187,10 +224,15 @@ export function summarizeKoliCollections(
     )
 }
 
-export function findMilestone(milestones: ReadonlyArray<Milestone>, kind: MilestoneKind): Milestone | null {
+export function findMilestone(
+  milestones: ReadonlyArray<Milestone>,
+  kind: MilestoneKind,
+): Milestone | null {
   return milestones.find((milestone) => milestone.kind === kind) ?? null
 }
 
 export function containerLabel(container: ShippingContainer): string {
-  return [containerSizeLabels[container.size], container.containerNumber].filter(Boolean).join(' · ')
+  return [containerSizeLabels[container.size], container.containerNumber]
+    .filter(Boolean)
+    .join(' · ')
 }
