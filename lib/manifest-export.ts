@@ -1,12 +1,18 @@
-// Model export inward manifest satu event, meniru dokumen klien (contoh "INWARD MANIFEST ALLPACK"):
+// Model export inward manifest satu event. Menangkap MAKSUD dokumen klien (contoh "INWARD MANIFEST
+// ALLPACK": satu blok per kiriman — pengirim, dokumen, isi per exhibitor s.d. koli, status, posisi
+// di venue) dengan perbaikan kolom yang disetujui pengguna 2026-11-02:
+//   - kolom "No" dibuang; Job No (S.01, LOC.01, …) kolom pertama,
+//   - data milik JOB (Job No, Empty Storage, Re-export, Remark) = satu sel digabung per blok,
+//     data milik EXHIBITOR (nama, Total Package, Bare Case, Hall, Booth) = satu sel per exhibitor,
+//     sehingga milestone tidak lagi tampak seolah milik koli tertentu,
+//   - Total Package berupa angka (dapat dijumlah); subtotal & total juga menjumlah paket,
+//   - baris kepala job hanya identitas kiriman `PIHAK / B/L / muatan`; angka total di subtotal,
+//   - label koli di kolom CASE, Bare Case hanya jumlah.
 //
-//   Sheet "Inward Manifest"
-//     judul (nama pameran) · "Exhibits Details For Inward Movement" · venue (tanggal)
-//     kepala kolom merah 2 baris (Dimension membawahi L/W/H)
-//     bagian per jenis: TPPB tanpa judul, lalu baris merah ROAD SHIPMENT / PERMANENT IMPORT / …
-//     per job: baris kepala berwarna `PIHAK / B/L / LCL|1X40' / N PKG / X KGM / Y CBM`,
-//              baris per koli (Job No di baris pertama, CBM = rumus L*W*H), Remark berjajar,
-//              baris subtotal =SUM(CBM) & =SUM(Weight)
+//   Sheet "Inward Manifest": judul (nama pameran) · "Exhibits Details For Inward Movement" · venue
+//     (tanggal) · kepala kolom merah 2 baris · bagian per jenis (TPPB tanpa judul, lalu baris merah
+//     ROAD SHIPMENT / PERMANENT IMPORT / …) · per job: kepala berwarna, baris per koli (CBM = rumus
+//     L*W*H), subtotal =SUM.
 //   Sheet "Return List Container" & "Return List LCL" — dari data kepulangan job.
 //
 // Fungsi murni: menghasilkan model baris + gaya semantik, tanpa pustaka spreadsheet, agar dapat
@@ -50,10 +56,17 @@ export type ManifestRow = {
   highlight?: number[]
 }
 
+/** Penggabungan sel lintas baris (0-based, inklusif). */
+export type ManifestRangeMerge = { fromRow: number; toRow: number; fromColumn: number; toColumn: number }
+
 export type ManifestSheetModel = {
   name: string
   columnWidths: number[]
   rows: ManifestRow[]
+  /** Sel digabung vertikal (data milik job / exhibitor yang membentang beberapa baris koli). */
+  rangeMerges?: ManifestRangeMerge[]
+  /** Format angka Excel per kolom (0-based). */
+  columnFormats?: Record<number, string>
 }
 
 export type ManifestWorkbookModel = { sheets: ManifestSheetModel[] }
@@ -84,11 +97,6 @@ export function formatVenueLine(event: ManifestEventInfo): string {
 
 const ddmmyyyy = (value: string) => value.split('-').reverse().join('/')
 
-const kgm = (value: number) =>
-  new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)
-const cbm = (value: number) =>
-  new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 }).format(value)
-
 const CONTAINER_LABEL: Record<ContainerSize, string> = { K20: "20'", K40: "40'", K40HQ: "40'HQ" }
 
 /** "LCL", "1X40'HQ", "1X20' + 1X40'". */
@@ -106,15 +114,14 @@ function loadLabel(view: ManifestBlockView): string | null {
     .join(' + ')
 }
 
-/** Baris kepala job: PIHAK / DOKUMEN / MUATAN / N PKG / X KGM / Y CBM. */
+/** Baris kepala job = identitas kiriman: PIHAK / DOKUMEN / MUATAN. Angka total ada di subtotal. */
 export function blockHeaderText(view: ManifestBlockView): string {
   const parts = [view.partyName.toUpperCase()]
-  if (view.transportDocument) parts.push(view.transportDocument.number)
+  if (view.transportDocument) {
+    parts.push(`${view.transportDocument.type === 'BL' ? 'B/L' : 'AWB'} ${view.transportDocument.number}`)
+  }
   const load = loadLabel(view)
   if (load) parts.push(load)
-  parts.push(`${view.totals.totalCount} PKG`)
-  parts.push(`${kgm(view.totals.weightKg)} KGM`)
-  parts.push(`${cbm(view.totals.volumeCbm)} CBM`)
   return parts.join(' / ')
 }
 
@@ -165,10 +172,9 @@ export function remarkLines(view: ManifestBlockView): Array<{ text: string; high
 // ---------------------------------------------------------------------------------------------
 
 export const INWARD_COLUMNS = [
-  'No',
   'Job No',
   'Exhibitor Name',
-  'Total \nPackage',
+  'Total Package',
   'Bare Case',
   'CASE',
   'L',
@@ -176,33 +182,35 @@ export const INWARD_COLUMNS = [
   'H',
   'CBM',
   'Weight Kgs',
-  'EMPTY STORAGE',
-  'RE-EXPORT',
+  'Empty Storage',
+  'Re-export',
   'Remark',
   'Hall',
   'Booth No',
 ] as const
 const COL = {
-  no: 0,
-  jobNo: 1,
-  exhibitor: 2,
-  totalPackage: 3,
-  bareCase: 4,
-  caseLabel: 5,
-  length: 6,
-  width: 7,
-  height: 8,
-  cbm: 9,
-  weight: 10,
-  emptyStorage: 11,
-  reExport: 12,
-  remark: 13,
-  hall: 14,
-  booth: 15,
+  jobNo: 0,
+  exhibitor: 1,
+  totalPackage: 2,
+  bareCase: 3,
+  caseLabel: 4,
+  length: 5,
+  width: 6,
+  height: 7,
+  cbm: 8,
+  weight: 9,
+  emptyStorage: 10,
+  reExport: 11,
+  remark: 12,
+  hall: 13,
+  booth: 14,
 } as const
 const LAST = INWARD_COLUMNS.length - 1
-const COLUMN_LETTERS = 'ABCDEFGHIJKLMNOP'
-const letter = (column: number) => COLUMN_LETTERS[column]
+const letter = (column: number) => String.fromCharCode(65 + column)
+
+/** Kolom milik job (satu sel per blok) dan milik exhibitor (satu sel per exhibitor). */
+const JOB_COLUMNS = [COL.jobNo, COL.emptyStorage, COL.reExport, COL.remark]
+const EXHIBITOR_COLUMNS = [COL.exhibitor, COL.totalPackage, COL.bareCase, COL.hall, COL.booth]
 
 type SectionKey = InternationalJobJenis | 'LOCAL'
 
@@ -228,22 +236,27 @@ function inwardSheet(
   exhibitorPic: ReadonlyMap<string, string>,
 ): ManifestSheetModel {
   const rows: ManifestRow[] = []
+  const rangeMerges: ManifestRangeMerge[] = []
   const merged = (kind: ManifestRowKind, text: string, tone?: BlockTone): ManifestRow => {
     const cells = emptyCells()
     cells[0] = text
     return { kind, cells, merges: fullWidth, tone }
+  }
+  const mergeDown = (fromRow: number, toRow: number, columns: ReadonlyArray<number>) => {
+    if (toRow <= fromRow) return
+    for (const column of columns) rangeMerges.push({ fromRow, toRow, fromColumn: column, toColumn: column })
   }
 
   rows.push(merged('TITLE', event.name.toUpperCase()))
   rows.push(merged('SUBTITLE', 'Exhibits Details For Inward Movement'))
   rows.push(merged('VENUE', formatVenueLine(event)))
 
-  // Kepala kolom dua baris (baris nyata ke-4 & ke-5): kolom tunggal digabung vertikal oleh
-  // perender; "Dimension" digabung horizontal di atas L/W/H.
+  // Kepala kolom dua baris: kolom tunggal digabung vertikal oleh perender; "Dimension (cm)"
+  // digabung horizontal di atas L/W/H.
   const headerTop = INWARD_COLUMNS.map((column, index) =>
     index >= COL.length && index <= COL.height ? null : column,
   ) as ManifestCellValue[]
-  headerTop[COL.length] = 'Dimension'
+  headerTop[COL.length] = 'Dimension (cm)'
   rows.push({ kind: 'COLUMN_HEADER', cells: headerTop, merges: [[COL.length, COL.height]] })
   const headerBottom = emptyCells()
   headerBottom[COL.length] = 'L'
@@ -251,10 +264,7 @@ function inwardSheet(
   headerBottom[COL.height] = 'H'
   rows.push({ kind: 'COLUMN_HEADER', cells: headerBottom })
 
-  const sheetRow = () => rows.length + 1 // nomor baris Excel (1-based) untuk baris berikutnya
-  let localNumber = 0
-  let grandPackages = 0
-  const subtotalRows: number[] = []
+  const subtotalRows: number[] = [] // nomor baris Excel (1-based)
 
   for (const section of SECTIONS) {
     const sectionJobs = sortJobsForTable(
@@ -266,26 +276,19 @@ function inwardSheet(
 
     for (const job of sectionJobs) {
       const view = buildManifestView(job)
-      grandPackages += view.totals.totalCount
-      const isLocal = section.key === 'LOCAL'
-      rows.push(
-        merged(
-          'BLOCK_HEADER',
-          isLocal ? view.partyName.toUpperCase() : blockHeaderText(view),
-          section.tone,
-        ),
-      )
+      rows.push(merged('BLOCK_HEADER', blockHeaderText(view), section.tone))
 
-      const firstDataRow = sheetRow()
-      const blockRows: ManifestRow[] = []
+      const blockStart = rows.length // indeks 0-based baris data pertama
       for (const peserta of view.peserta) {
         const koli = peserta.logistics.koli
         const details = koli.details.length ? koli.details : [null]
+        const exhibitorStart = rows.length
         details.forEach((detail, index) => {
           const cells = emptyCells()
           if (index === 0) {
-            cells[COL.exhibitor] = peserta.name
-            cells[COL.totalPackage] = `${summarizeKoli(koli).totalCount} PKG`
+            const pic = peserta.line.exhibitorId ? exhibitorPic.get(peserta.line.exhibitorId) : undefined
+            cells[COL.exhibitor] = pic && section.key === 'LOCAL' ? `${peserta.name}\nPIC : ${pic}` : peserta.name
+            cells[COL.totalPackage] = summarizeKoli(koli).totalCount
             cells[COL.bareCase] = koli.bareCaseCount
             cells[COL.hall] = peserta.logistics.hall
             cells[COL.booth] = peserta.logistics.booth
@@ -295,43 +298,41 @@ function inwardSheet(
           cells[COL.length] = dimension?.lengthCm ?? null
           cells[COL.width] = dimension?.widthCm ?? null
           cells[COL.height] = dimension?.heightCm ?? null
-          const excelRow = firstDataRow + blockRows.length
+          const excelRow = rows.length + 1
           cells[COL.cbm] = dimension
             ? { formula: `(${letter(COL.length)}${excelRow}*${letter(COL.width)}${excelRow}*${letter(COL.height)}${excelRow}/1000000)` }
             : (detail?.volumeCbm ?? null)
           cells[COL.weight] = detail?.weightKg ?? null
-          blockRows.push({ kind: 'DATA', cells })
+          rows.push({ kind: 'DATA', cells })
         })
+        mergeDown(exhibitorStart, rows.length - 1, EXHIBITOR_COLUMNS)
       }
-      if (!blockRows.length) blockRows.push({ kind: 'DATA', cells: emptyCells() })
+      if (rows.length === blockStart) {
+        const cells = emptyCells()
+        cells[COL.exhibitor] = 'Belum ada baris CIPL'
+        rows.push({ kind: 'DATA', cells })
+      }
 
-      const first = blockRows[0].cells
-      first[COL.jobNo] = formatJobNumber(job.manifestPrefix, job.manifestSeq, null)
-      first[COL.emptyStorage] = job.emptyStorage
-      first[COL.reExport] = job.reExport
-      if (isLocal) {
-        localNumber += 1
-        first[COL.no] = localNumber
-        const pic = job.party?.kind === 'EXHIBITOR' ? exhibitorPic.get(job.party.id) : undefined
-        if (pic) {
-          if (blockRows.length < 2) blockRows.push({ kind: 'DATA', cells: emptyCells() })
-          blockRows[1].cells[COL.exhibitor] = `PIC : ${pic}`
-        }
-      }
+      // Data milik job: satu sel per blok, digabung sepanjang baris kolinya.
+      const first = rows[blockStart]
+      first.cells[COL.jobNo] =
+        formatJobNumber(job.manifestPrefix, job.manifestSeq, null) ?? job.vssNumber
+      first.cells[COL.emptyStorage] = job.emptyStorage
+      first.cells[COL.reExport] = job.reExport
       const remarks = remarkLines(view)
-      while (blockRows.length < remarks.length) blockRows.push({ kind: 'DATA', cells: emptyCells() })
-      remarks.forEach((remark, index) => {
-        blockRows[index].cells[COL.remark] = remark.text
-        if (remark.highlight) blockRows[index].highlight = [COL.remark]
-      })
-      rows.push(...blockRows)
+      first.cells[COL.remark] = remarks.length ? remarks.map((remark) => remark.text).join('\n') : null
+      if (remarks.some((remark) => remark.highlight)) first.highlight = [COL.remark]
+      mergeDown(blockStart, rows.length - 1, JOB_COLUMNS)
 
-      const lastDataRow = firstDataRow + blockRows.length - 1
+      const firstRow = blockStart + 1
+      const lastRow = rows.length
       const subtotal = emptyCells()
-      subtotal[COL.cbm] = { formula: `SUM(${letter(COL.cbm)}${firstDataRow}:${letter(COL.cbm)}${lastDataRow})` }
-      subtotal[COL.weight] = { formula: `SUM(${letter(COL.weight)}${firstDataRow}:${letter(COL.weight)}${lastDataRow})` }
-      subtotalRows.push(sheetRow())
+      subtotal[COL.exhibitor] = 'Subtotal'
+      for (const column of [COL.totalPackage, COL.cbm, COL.weight]) {
+        subtotal[column] = { formula: `SUM(${letter(column)}${firstRow}:${letter(column)}${lastRow})` }
+      }
       rows.push({ kind: 'SUBTOTAL', cells: subtotal })
+      subtotalRows.push(rows.length)
     }
   }
 
@@ -339,18 +340,19 @@ function inwardSheet(
 
   const total = emptyCells()
   total[COL.exhibitor] = 'TOTAL'
-  total[COL.totalPackage] = `${grandPackages} PKG`
-  if (subtotalRows.length) {
-    total[COL.cbm] = { formula: subtotalRows.map((row) => `${letter(COL.cbm)}${row}`).join('+') }
-    total[COL.weight] = { formula: subtotalRows.map((row) => `${letter(COL.weight)}${row}`).join('+') }
+  for (const column of [COL.totalPackage, COL.cbm, COL.weight]) {
+    total[column] = subtotalRows.length
+      ? { formula: subtotalRows.map((row) => `${letter(column)}${row}`).join('+') }
+      : 0
   }
   rows.push({ kind: 'TOTAL', cells: total })
 
   return {
     name: 'Inward Manifest',
-    // Lebar kolom dari dokumen klien.
-    columnWidths: [6.8, 12, 60, 12.5, 13, 13.6, 9.7, 10.2, 9.2, 13.6, 12.5, 13.8, 12.4, 46.5, 12, 16.8],
+    columnWidths: [16, 52, 10, 9, 12, 8, 8, 8, 10, 12, 16, 16, 42, 8, 12],
     rows,
+    rangeMerges,
+    columnFormats: { [COL.cbm]: '0.000', [COL.weight]: '#,##0.00', [COL.totalPackage]: '0' },
   }
 }
 

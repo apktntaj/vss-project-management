@@ -75,10 +75,10 @@ const s1 = job({
     }),
   ],
 })
-// Kepala job: PIHAK / DOKUMEN / MUATAN / PKG / KGM / CBM.
+// Kepala job = identitas kiriman saja: PIHAK / DOKUMEN / MUATAN (angka total ada di subtotal).
 assert.equal(
   blockHeaderText(buildManifestView(s1)),
-  'SHENZHEN BOBON LOGISTICS CO.,LTD / SHFPSJKT26026454 / LCL / 3 PKG / 1,093.00 KGM / 3.947 CBM',
+  'SHENZHEN BOBON LOGISTICS CO.,LTD / B/L SHFPSJKT26026454 / LCL',
 )
 const fcl = job({
   manifestSeq: 2,
@@ -94,7 +94,7 @@ const fcl = job({
     notes: [],
   },
 })
-assert.match(blockHeaderText(buildManifestView(fcl)), / \/ 1X20' \+ 1X40' \/ /)
+assert.match(blockHeaderText(buildManifestView(fcl)), / \/ 1X20' \+ 1X40'$/)
 
 const road = job({ internationalJenis: 'ROAD_SHIPMENT', manifestPrefix: 'RS', transportMode: 'ROAD', party: { kind: 'AGENT', id: 'e', name: 'EASYGO' }, inward: null, transportDocumentNumber: null })
 const local = job({
@@ -126,20 +126,24 @@ assert.deepEqual(workbook.sheets.map((sheet) => sheet.name), ['Inward Manifest',
 
 const sheet = workbook.sheets[0]
 const rows = sheet.rows
+const col = (name: (typeof INWARD_COLUMNS)[number]) => INWARD_COLUMNS.indexOf(name)
 assert.equal(rows[0].cells[0], 'ALLPACK INDONESIA')
 assert.equal(rows[1].cells[0], 'Exhibits Details For Inward Movement')
 assert.equal(rows[2].cells[0], 'JIEXPO, KEMAYORAN (20 - 23 OCT. 2026)')
-assert.equal(rows[3].cells[INWARD_COLUMNS.indexOf('L')], 'Dimension')
-assert.equal(rows[4].cells[INWARD_COLUMNS.indexOf('L')], 'L')
+// Kolom "No" dibuang: Job No kolom pertama.
+assert.equal(INWARD_COLUMNS[0], 'Job No')
+assert.equal(rows[3].cells[col('L')], 'Dimension (cm)')
+assert.equal(rows[4].cells[col('L')], 'L')
 
 // Urutan bagian: TPPB (tanpa judul) → ROAD SHIPMENT → LOCAL; S.01 sebelum S.02.
-const kinds = rows.map((row) => `${row.kind}:${row.kind === 'SECTION' || row.kind === 'BLOCK_HEADER' ? String(row.cells[0]).slice(0, 18) : ''}`)
-const order = kinds.filter((kind) => kind.startsWith('SECTION') || kind.startsWith('BLOCK_HEADER'))
+const order = rows
+  .filter((row) => row.kind === 'SECTION' || row.kind === 'BLOCK_HEADER')
+  .map((row) => `${row.kind}:${String(row.cells[0]).slice(0, 18)}`)
 assert.deepEqual(order, [
   'BLOCK_HEADER:SHENZHEN BOBON LOG',
   'BLOCK_HEADER:SHENZHEN BOBON LOG',
   'SECTION:ROAD SHIPMENT',
-  'BLOCK_HEADER:EASYGO / 0 PKG / 0',
+  'BLOCK_HEADER:EASYGO',
   'SECTION:LOCAL',
   'BLOCK_HEADER:PT. REPASSA',
 ])
@@ -147,28 +151,45 @@ const tppbHeader = rows.findIndex((row) => row.kind === 'BLOCK_HEADER')
 assert.equal(rows[tppbHeader].tone, 'YELLOW')
 assert.equal(rows.find((row) => String(row.cells[0]).startsWith('EASYGO'))?.tone, 'LIGHT_GREEN')
 
-// Blok S.01: Job No di baris data pertama (tanpa akhiran invoice), CBM rumus L*W*H, Remark berurutan.
-const first = rows[tppbHeader + 1].cells
-assert.equal(first[INWARD_COLUMNS.indexOf('Job No')], 'S.01')
-assert.equal(first[INWARD_COLUMNS.indexOf('Exhibitor Name')], 'WUHU CHURUI')
-assert.equal(first[INWARD_COLUMNS.indexOf('Total \nPackage')], '3 PKG')
-assert.equal(first[INWARD_COLUMNS.indexOf('Booth No')], 'C302')
-const excelRow = tppbHeader + 2 // baris Excel 1-based dari baris data pertama
-assert.deepEqual(first[INWARD_COLUMNS.indexOf('CBM')], { formula: `(G${excelRow}*H${excelRow}*I${excelRow}/1000000)` })
-const remarks = rows.slice(tppbHeader + 1, tppbHeader + 5).map((row) => row.cells[INWARD_COLUMNS.indexOf('Remark')])
-assert.deepEqual(remarks, ['Eta : 28/09/2026', 'Skep : S-622/WBC.08/2026', 'SPPB : 02/09/2026', 'BC.27 TO NICE KRISTA INTERFOOD'])
-assert.deepEqual(rows[tppbHeader + 4].highlight, [INWARD_COLUMNS.indexOf('Remark')])
-// Subtotal setelah 4 baris (3 koli + 1 baris remark tambahan).
-const subtotal = rows[tppbHeader + 5]
-assert.equal(subtotal.kind, 'SUBTOTAL')
-assert.deepEqual(subtotal.cells[INWARD_COLUMNS.indexOf('CBM')], { formula: `SUM(J${excelRow}:J${excelRow + 3})` })
+// Blok S.01: tiga baris koli saja (remark tidak lagi menambah baris kosong).
+const start = tppbHeader + 1
+const first = rows[start].cells
+assert.equal(first[col('Job No')], 'S.01')
+assert.equal(first[col('Exhibitor Name')], 'WUHU CHURUI')
+assert.equal(first[col('Total Package')], 3)
+assert.equal(first[col('CASE')], 'PK 1')
+assert.equal(first[col('Bare Case')], null)
+assert.equal(first[col('Booth No')], 'C302')
+const excelRow = start + 1
+assert.deepEqual(first[col('CBM')], { formula: `(F${excelRow}*G${excelRow}*H${excelRow}/1000000)` })
+// Remark milik job: satu sel berisi semua baris, disorot karena ada catatan BC 2.7.
+assert.equal(first[col('Remark')], 'Eta : 28/09/2026\nSkep : S-622/WBC.08/2026\nSPPB : 02/09/2026\nBC.27 TO NICE KRISTA INTERFOOD')
+assert.deepEqual(rows[start].highlight, [col('Remark')])
+assert.equal(rows[start + 3].kind, 'SUBTOTAL')
+assert.deepEqual(rows[start + 3].cells[col('Total Package')], { formula: `SUM(C${excelRow}:C${excelRow + 2})` })
+assert.deepEqual(rows[start + 3].cells[col('CBM')], { formula: `SUM(I${excelRow}:I${excelRow + 2})` })
+// Sel milik job & exhibitor digabung sepanjang tiga baris koli.
+const merges = sheet.rangeMerges ?? []
+for (const name of ['Job No', 'Remark', 'Empty Storage', 'Re-export', 'Exhibitor Name', 'Total Package', 'Hall', 'Booth No'] as const) {
+  assert.ok(
+    merges.some((m) => m.fromRow === start && m.toRow === start + 2 && m.fromColumn === col(name)),
+    `kolom ${name} digabung sepanjang blok`,
+  )
+}
+assert.ok(!merges.some((m) => m.fromColumn === col('CASE')), 'kolom koli tidak digabung')
 
-// LOCAL: nomor urut di kolom No, nama perusahaan sebagai kepala blok, baris PIC.
+// Road shipment tanpa No Job: nomor VSS sebagai pengenal; baris "Belum ada baris CIPL".
+const roadStart = rows.findIndex((row) => String(row.cells[0]).startsWith('EASYGO')) + 1
+assert.equal(rows[roadStart].cells[col('Job No')], road.vssNumber)
+assert.equal(rows[roadStart].cells[col('Exhibitor Name')], 'Belum ada baris CIPL')
+
+// LOCAL: kepala blok nama pihak; PIC ikut di sel nama exhibitor.
 const localHeader = rows.findIndex((row) => row.cells[0] === 'PT. REPASSA')
 assert.equal(rows[localHeader].tone, 'NONE')
-assert.equal(rows[localHeader + 1].cells[0], 1)
-assert.equal(rows[localHeader + 2].cells[INWARD_COLUMNS.indexOf('Exhibitor Name')], 'PIC : Bpk. Charles')
-assert.equal(rows[rows.length - 1].kind, 'TOTAL')
+assert.equal(rows[localHeader + 1].cells[col('Exhibitor Name')], 'PT. REPASSA\nPIC : Bpk. Charles')
+const total = rows[rows.length - 1]
+assert.equal(total.kind, 'TOTAL')
+assert.equal(total.cells[col('Exhibitor Name')], 'TOTAL')
 
 // Return list: LCL dari kepulangan job Local; container kosong (tidak ada kepulangan FCL).
 const lcl = workbook.sheets[2]

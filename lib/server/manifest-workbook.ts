@@ -75,16 +75,28 @@ function renderSheet(workbook: ExcelJS.Workbook, model: ManifestSheetModel, larg
       cell.value = value === null ? null : typeof value === 'object' ? { formula: value.formula } : value
       cell.font = style.font
       cell.alignment = {
-        vertical: 'middle',
+        // Sel data yang digabung vertikal (Remark, nama exhibitor) dibaca dari atas.
+        vertical: row.kind === 'DATA' ? 'top' : 'middle',
         wrapText: true,
         horizontal: row.kind === 'COLUMN_HEADER' ? 'center' : undefined,
       }
       if (style.fill) cell.fill = solid(style.fill)
-      if (row.highlight?.includes(column)) cell.fill = solid(FILL.HIGHLIGHT)
+      // Sorotan (catatan BC 2.7 / penahanan): huruf merah tebal agar teks tetap terbaca.
+      if (row.highlight?.includes(column)) {
+        cell.font = { ...style.font, bold: true, color: { argb: FILL.HIGHLIGHT } }
+      }
       if (style.border) cell.border = thin
     }
     for (const [from, to] of row.merges ?? []) sheet.mergeCells(index + 1, from + 1, index + 1, to + 1)
   })
+
+  for (const range of model.rangeMerges ?? []) {
+    sheet.mergeCells(range.fromRow + 1, range.fromColumn + 1, range.toRow + 1, range.toColumn + 1)
+  }
+  fitRowHeights(sheet, model, large)
+  for (const [column, format] of Object.entries(model.columnFormats ?? {})) {
+    sheet.getColumn(Number(column) + 1).numFmt = format
+  }
 
   // Kepala kolom dua baris: kolom tunggal digabung vertikal (A4:A5, …); "Dimension" sudah
   // digabung horizontal di atas L/W/H.
@@ -103,18 +115,50 @@ function renderSheet(workbook: ExcelJS.Workbook, model: ManifestSheetModel, larg
   return sheet
 }
 
+/** Perkiraan jumlah baris tampilan sebuah teks dalam sel selebar `width` (satuan lebar kolom Excel). */
+function visualLines(text: string, width: number, fontSize: number): number {
+  const charsPerLine = Math.max(1, Math.floor((width * 11) / fontSize))
+  return text.split('\n').reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / charsPerLine)), 0)
+}
+
+/**
+ * Pastikan teks multi-baris (Remark, nama exhibitor + PIC) tidak terpotong: tinggi baris (atau
+ * jumlah tinggi baris sel gabungan) dinaikkan bila kurang. Kekurangan ditambahkan ke baris
+ * terakhir rentang agar baris koli di atasnya tetap rapat.
+ */
+function fitRowHeights(sheet: ExcelJS.Worksheet, model: ManifestSheetModel, large: boolean) {
+  const fontSize = large ? 16 : 11
+  const lineHeight = fontSize * 1.35
+  const ranges = new Map<string, { fromRow: number; toRow: number }>()
+  for (const range of model.rangeMerges ?? []) {
+    ranges.set(`${range.fromRow}:${range.fromColumn}`, range)
+  }
+  model.rows.forEach((row, rowIndex) => {
+    if (row.kind !== 'DATA') return
+    row.cells.forEach((value, column) => {
+      if (typeof value !== 'string') return
+      const lines = visualLines(value, model.columnWidths[column] ?? 10, fontSize)
+      if (lines <= 1) return // teks satu baris muat di tinggi baris standar
+      const range = ranges.get(`${rowIndex}:${column}`) ?? { fromRow: rowIndex, toRow: rowIndex }
+      const needed = lines * lineHeight + 4
+      let current = 0
+      for (let index = range.fromRow; index <= range.toRow; index += 1) {
+        current += sheet.getRow(index + 1).height ?? 15
+      }
+      if (needed > current) {
+        const last = sheet.getRow(range.toRow + 1)
+        last.height = (last.height ?? 15) + (needed - current)
+      }
+    })
+  })
+}
+
 /** Bangun file .xlsx dari model workbook. Sheet pertama (inward manifest) memakai huruf besar. */
 export async function renderManifestWorkbook(model: ManifestWorkbookModel): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook()
   workbook.creator = 'VSS'
   workbook.created = new Date()
-  model.sheets.forEach((sheet, index) => {
-    const rendered = renderSheet(workbook, sheet, index === 0)
-    if (index === 0) {
-      rendered.getColumn(10).numFmt = '0.000'
-      rendered.getColumn(11).numFmt = '#,##0.00'
-    }
-  })
+  model.sheets.forEach((sheet, index) => renderSheet(workbook, sheet, index === 0))
   const buffer = await workbook.xlsx.writeBuffer()
   return Buffer.from(buffer)
 }
