@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { nanoid } from 'nanoid'
-import { Plus, Search, Trash2, Upload, X } from 'lucide-react'
+import { Plus, Search, Trash2, X } from 'lucide-react'
 
 import {
   applyCiplAutofill,
@@ -11,8 +11,6 @@ import {
   listAgents,
   listEventExhibitors,
   saveAgent,
-  saveJobCiplDocument,
-  saveJobDocument,
   saveJobManifestExhibitors,
   saveJobTransportExtraction,
   type Agent,
@@ -23,11 +21,9 @@ import {
 } from '@/lib/data-client'
 import {
   barisBarangSchema,
-  buildCiplDocument,
   disposisiBarangs,
   disposisiBarangLabels,
   type BarisBarang,
-  type CiplDocumentHeader,
   type DisposisiBarang,
 } from '@/domain/exhibition/cipl-document'
 import {
@@ -41,10 +37,7 @@ import { matchExhibitorByName } from '@/domain/event/exhibitor-matching'
 import { exhibitorLogisticsSchema, type Koli } from '@/domain/job/manifest'
 import { internationalJobJenisLabels } from '@/domain/job/types'
 import type { JobTransportExtraction } from '@/domain/exhibition/source-documents'
-import type { CiplScanResult } from '@/lib/server/manifest-extraction'
 import { TransportEditor } from '@/components/job-document-editor-dialog'
-import { isAcceptedJobDocument, jobDocumentAccept } from '@/components/job-document-file'
-import { Skeleton } from '@/components/ui/skeleton'
 
 function toast(message: string, tone: 'success' | 'error') {
   window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
@@ -239,16 +232,10 @@ const numberOrNull = (value: string): number | null => {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function scanFileAcceptable(file: File): boolean {
-  if (isAcceptedJobDocument(file)) return true
-  toast('File harus berupa PDF atau Excel.', 'error')
-  return false
-}
-
 /**
  * Wizard pembuatan job tiga bagian: (1) job — event via pencarian, jenis, No Job,
- * agent, bill to; (2) informasi CIPL — daftar exhibitor + rincian koli dengan smart
- * scan LLM; (3) data B/L atau AWB dengan smart scan. Bagian dapat diisi dalam urutan
+ * agent, bill to; (2) informasi CIPL — daftar exhibitor + rincian koli, diisi manual;
+ * (3) data B/L atau AWB, diisi manual. Bagian dapat diisi dalam urutan
  * bebas lewat langkah di header; "Selesai" tersedia di semua bagian dan menyimpan
  * seluruh isian yang sudah terisi (syarat wajib hanya event pada bagian job), sehingga
  * membatalkan kapan pun tidak meninggalkan data.
@@ -284,16 +271,10 @@ export function JobCreateWizard({
   const [newAgentPhone, setNewAgentPhone] = useState('')
   const [error, setError] = useState('')
   const [ciplRows, setCiplRows] = useState<CiplRowDraft[]>(() => [emptyRow('cipl-row-0')])
-  const [ciplFile, setCiplFile] = useState<File | null>(null)
-  const [scanningCipl, setScanningCipl] = useState(false)
-  const [ciplHeader, setCiplHeader] = useState<CiplDocumentHeader | null>(null)
   /** Exhibitor event terpilih — kolam pencocokan autofill CIPL. */
   const [eventExhibitors, setEventExhibitors] = useState<LocalExhibitor[]>([])
-  const [ciplBelumTerpetakan, setCiplBelumTerpetakan] = useState<BarisBarang[]>([])
   const [docKind, setDocKind] = useState<'BL' | 'AWB'>('BL')
   const [transport, setTransport] = useState<JobTransportExtraction | null>(null)
-  const [transportFile, setTransportFile] = useState<File | null>(null)
-  const [scanningTransport, setScanningTransport] = useState(false)
   const [finishing, setFinishing] = useState(false)
   const rowKeyRef = useRef(0)
   const nextRowKey = () => `cipl-row-${++rowKeyRef.current}`
@@ -434,128 +415,6 @@ export function JobCreateWizard({
     setSlide(1)
   }
 
-  async function scanCipl(file: File) {
-    if (!scanFileAcceptable(file)) return
-    setScanningCipl(true)
-    try {
-      const body = new FormData()
-      body.set('file', file)
-      const response = await fetch('/api/scan-cipl', { method: 'POST', body })
-      const data = (await response.json().catch(() => null)) as
-        (Partial<CiplScanResult> & { warnings?: string[] }) | { error?: string } | null
-      if (!response.ok || !data || !('exhibitors' in data) || !Array.isArray(data.exhibitors)) {
-        throw new Error(
-          data && 'error' in data && typeof data.error === 'string'
-            ? data.error
-            : 'Dokumen tidak dapat dipindai.',
-        )
-      }
-      const rows: CiplRowDraft[] = data.exhibitors.map((exhibitor) => {
-        const lines: CiplLineDraft[] = exhibitor.logistics.koli.details.map((koli) => ({
-          ...emptyLine(),
-          label: koli.label ?? '',
-          length: koli.dimension?.lengthCm == null ? '' : String(koli.dimension.lengthCm),
-          width: koli.dimension?.widthCm == null ? '' : String(koli.dimension.widthCm),
-          height: koli.dimension?.heightCm == null ? '' : String(koli.dimension.heightCm),
-          cbm: koli.volumeCbm == null ? '' : String(koli.volumeCbm),
-          weight: koli.weightKg == null ? '' : String(koli.weightKg),
-          satuanKemasan: koli.satuanKemasan ?? '',
-        }))
-        for (const item of exhibitor.items ?? []) {
-          const refLabel = item.refKoli?.trim() || ''
-          const target = refLabel
-            ? (lines.find((entry) => entry.label.trim() === refLabel && !entry.uraian.trim()) ??
-              null)
-            : null
-          const line = target ?? { ...emptyLine(), label: item.refKoli ?? '' }
-          line.uraian = item.uraian
-          line.merekModel = item.merekModel ?? ''
-          line.kodeHs = item.kodeHs ?? ''
-          line.jumlah = String(item.jumlah)
-          line.satuan = item.satuan
-          line.nilaiSatuan = item.nilaiSatuan == null ? '' : String(item.nilaiSatuan)
-          line.nilaiTotal = item.nilaiTotal == null ? '' : String(item.nilaiTotal)
-          line.disposisi = item.disposisi
-          if (!target) lines.push(line)
-        }
-        if (lines.length === 0) lines.push(emptyLine())
-        return {
-          key: nextRowKey(),
-          jobNo: exhibitor.jobNo ?? '',
-          name: exhibitor.name,
-          totalPackage: String(exhibitor.logistics.koli.totalCount),
-          bareCase:
-            exhibitor.logistics.koli.bareCaseCount == null
-              ? ''
-              : String(exhibitor.logistics.koli.bareCaseCount),
-          hall: exhibitor.logistics.hall ?? '',
-          booth: exhibitor.logistics.booth ?? '',
-          lines,
-        }
-      })
-      setCiplRows(rows)
-      setCiplHeader(data.header ?? null)
-      setCiplBelumTerpetakan(data.itemsBelumTerpetakan ?? [])
-      setCiplFile(file)
-      if (rows.length) {
-        toast(
-          `${rows.length} exhibitor terbaca dari dokumen — periksa lalu lanjutkan.${data.warnings?.length ? ` (${data.warnings.length} baris dilewati)` : ''}`,
-          'success',
-        )
-      } else {
-        toast('Tidak ada baris exhibitor yang terbaca dari dokumen.', 'error')
-      }
-    } catch (caught) {
-      toast(caught instanceof Error ? caught.message : 'Dokumen tidak dapat dipindai.', 'error')
-    } finally {
-      setScanningCipl(false)
-    }
-  }
-
-  async function scanTransport(file: File) {
-    if (!scanFileAcceptable(file)) return
-    setScanningTransport(true)
-    try {
-      const body = new FormData()
-      body.set('file', file)
-      const response = await fetch('/api/classify-job-document', { method: 'POST', body })
-      const data = (await response.json().catch(() => null)) as {
-        classification?: { documentType?: string }
-        transport?: JobTransportExtraction | null
-        detail?: { documentType?: string } | null
-        error?: string
-      } | null
-      if (!response.ok || !data) {
-        throw new Error(data?.error || 'Dokumen tidak dapat dipindai.')
-      }
-      if (!data.transport) {
-        const detected =
-          data.detail?.documentType ?? data.classification?.documentType ?? 'tidak dikenali'
-        throw new Error(
-          `Dokumen terdeteksi sebagai ${detected.replace(/_/g, ' ').toLowerCase()} — bukan B/L atau AWB.`,
-        )
-      }
-      setTransport(data.transport)
-      setTransportFile(file)
-      if (
-        data.detail?.documentType === 'AIR_WAYBILL' ||
-        data.classification?.documentType === 'AIR_WAYBILL'
-      ) {
-        setDocKind('AWB')
-      } else if (
-        data.detail?.documentType === 'BILL_OF_LADING' ||
-        data.classification?.documentType === 'BILL_OF_LADING'
-      ) {
-        setDocKind('BL')
-      }
-      toast('Data B/L atau AWB terisi dari dokumen — periksa lalu selesaikan.', 'success')
-    } catch (caught) {
-      toast(caught instanceof Error ? caught.message : 'Dokumen tidak dapat dipindai.', 'error')
-    } finally {
-      setScanningTransport(false)
-    }
-  }
-
   /**
    * Draft tabel → entri scan domain. "Total pkg" yang terlihat operator diteruskan sebagai
    * total yang DISEBUT dokumen, sehingga angka yang ia ketik sendiri menang; bila dikosongkan,
@@ -669,37 +528,7 @@ export function JobCreateWizard({
         toast('Baris CIPL tidak dapat disimpan — bisa dilengkapi di detail job.', 'error')
       }
     }
-    const ciplDocument = buildCiplDocument(ciplHeader, manifestRows, ciplBelumTerpetakan)
-    if (ciplDocument) {
-      try {
-        await saveJobCiplDocument(job.id, ciplDocument)
-      } catch {
-        failures += 1
-        toast('Baris barang CIPL tidak dapat disimpan — bisa dilengkapi di detail job.', 'error')
-      }
-    }
-    if (ciplFile) {
-      try {
-        await saveJobDocument(job.id, ciplFile, 'CIPL')
-      } catch {
-        failures += 1
-        toast('Dokumen CIPL tidak dapat diunggah.', 'error')
-      }
-    }
-    if (transportFile && transport) {
-      try {
-        await saveJobDocument(
-          job.id,
-          transportFile,
-          docKind === 'AWB' ? 'AIR_WAYBILL' : 'BILL_OF_LADING',
-          null,
-          transport,
-        )
-      } catch {
-        failures += 1
-        toast('Dokumen B/L atau AWB tidak dapat diunggah.', 'error')
-      }
-    } else if (transport) {
+    if (transport) {
       try {
         await saveJobTransportExtraction(job.id, transport)
       } catch {
@@ -718,10 +547,9 @@ export function JobCreateWizard({
         `${manifestRows.length} exhibitor CIPL${rincian.length ? ` (${rincian.join(', ')})` : ''}`,
       )
     }
-    const itemCount =
-      manifestRows.reduce((sum, row) => sum + row.items.length, 0) + ciplBelumTerpetakan.length
+    const itemCount = manifestRows.reduce((sum, row) => sum + row.items.length, 0)
     if (itemCount) parts.push(`${itemCount} baris barang`)
-    if (transportFile) parts.push(docKind === 'AWB' ? 'AWB' : 'B/L')
+    if (transport) parts.push(docKind === 'AWB' ? 'AWB' : 'B/L')
     toast(
       `${parts.join(' · ')}.${failures ? ' Sebagian data gagal — periksa detail job.' : ''}`,
       failures ? 'error' : 'success',
@@ -737,8 +565,7 @@ export function JobCreateWizard({
     onCreated(job)
   }
 
-  const scanning = scanningCipl || scanningTransport
-  const busy = scanning || finishing
+  const busy = finishing
 
   return (
     <div
@@ -789,22 +616,6 @@ export function JobCreateWizard({
             <X size={20} />
           </button>
         </div>
-
-        {scanning ? (
-          <div
-            className="absolute inset-0 z-10 flex flex-col justify-center gap-4 overflow-hidden bg-white p-6 sm:p-8"
-            aria-busy="true"
-            aria-live="polite"
-          >
-            <p className="text-sm font-medium text-orange-700">Memeriksa dokumen dengan AI...</p>
-            <Skeleton className="h-6 w-56" />
-            <div className="space-y-3">
-              {Array.from({ length: 6 }, (_, index) => (
-                <Skeleton key={index} className="h-12 w-full rounded-lg" />
-              ))}
-            </div>
-          </div>
-        ) : null}
 
         {slide === 0 ? (
           <form onSubmit={submitSlideJob} className="flex min-h-0 flex-1 flex-col">
@@ -1056,29 +867,6 @@ export function JobCreateWizard({
         {slide === 1 ? (
           <>
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6 sm:p-8">
-              <div>
-                <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-black/20 bg-white px-4 py-3 text-sm text-slate-500 hover:border-orange-300 hover:bg-orange-50">
-                  <span className="min-w-0 truncate">
-                    {ciplFile
-                      ? `Terpindai: ${ciplFile.name}`
-                      : 'Klik untuk isi otomatis dari dokumen CIPL'}
-                  </span>
-                  <Upload size={16} className="shrink-0 text-slate-400" aria-hidden="true" />
-                  <input
-                    type="file"
-                    accept={jobDocumentAccept}
-                    className="sr-only"
-                    disabled={scanningCipl || finishing}
-                    onChange={(inputEvent) => {
-                      const file = inputEvent.target.files?.[0]
-                      if (file) void scanCipl(file)
-                      inputEvent.target.value = ''
-                    }}
-                  />
-                </label>
-                <p className="mt-2 text-xs text-slate-500">.</p>
-              </div>
-
               <ul className="space-y-4">
                 {ciplRows.map((row, rowIndex) => {
                   const sums = row.lines.reduce(
@@ -1382,7 +1170,7 @@ export function JobCreateWizard({
         {slide === 2 ? (
           <>
             <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden p-6 sm:p-8">
-              <div className="grid shrink-0 gap-4 sm:grid-cols-[220px_1fr]">
+              <div className="grid shrink-0 gap-4 sm:grid-cols-[220px]">
                 <label className="label">
                   Jenis dokumen
                   <select
@@ -1395,36 +1183,11 @@ export function JobCreateWizard({
                     <option value="AWB">AWB (udara)</option>
                   </select>
                 </label>
-                <fieldset className="rounded-xl border border-dashed border-orange-300 bg-orange-50/50 p-4">
-                  <legend className="px-1 text-sm font-semibold text-slate-800">Smart Scan</legend>
-                  <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-black/20 bg-white px-4 py-2.5 text-sm text-slate-500 hover:border-orange-300 hover:bg-orange-50">
-                    <span className="min-w-0 truncate">
-                      {transportFile
-                        ? `Terpindai: ${transportFile.name}`
-                        : 'Unggah B/L atau AWB untuk dipindai'}
-                    </span>
-                    <Upload size={16} className="shrink-0 text-slate-400" aria-hidden="true" />
-                    <input
-                      type="file"
-                      accept={jobDocumentAccept}
-                      className="sr-only"
-                      disabled={scanningTransport || finishing}
-                      onChange={(inputEvent) => {
-                        const file = inputEvent.target.files?.[0]
-                        if (file) void scanTransport(file)
-                        inputEvent.target.value = ''
-                      }}
-                    />
-                  </label>
-                </fieldset>
               </div>
 
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-black/10">
                 <TransportEditor value={transport ?? emptyTransport()} onChange={setTransport} />
               </div>
-              <p className="shrink-0 text-xs text-slate-500">
-                Dokumen yang dipindai tersimpan sebagai lampiran job saat Anda menekan Selesai.
-              </p>
             </div>
 
             <div className="shrink-0 border-t px-6 py-4 sm:px-8">
