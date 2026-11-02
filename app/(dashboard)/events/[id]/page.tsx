@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, Building2, CalendarDays, ChevronDown, ChevronRight, MapPin, Plus } from 'lucide-react'
+import { AlertTriangle, Building2, CalendarDays, ChevronDown, ChevronRight, FileSpreadsheet, MapPin, Plus } from 'lucide-react'
 import { useParams } from 'next/navigation'
 import {
   deleteJob,
+  downloadEventManifest,
   listEventJobs,
   listEventsWithExhibitors,
   type LocalEvent,
@@ -90,6 +91,24 @@ export default function EventDetailPage() {
       showToast(`${label(documentType)} berhasil diunduh.`)
     } catch (caught) {
       showToast(caught instanceof Error ? caught.message : 'File BC tidak dapat dibuat.', 'error')
+    }
+  }
+  const [exporting, setExporting] = useState(false)
+  async function exportManifest() {
+    setExporting(true)
+    try {
+      const { blob, filename } = await downloadEventManifest(params.id)
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = filename
+      anchor.click()
+      URL.revokeObjectURL(url)
+      showToast('Manifest berhasil diekspor.')
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : 'Manifest tidak dapat diekspor.', 'error')
+    } finally {
+      setExporting(false)
     }
   }
   async function handleDeleteJob() {
@@ -177,6 +196,15 @@ export default function EventDetailPage() {
           <div>
             <h2 className="text-lg font-semibold">{jobs.length} Jobs</h2>
           </div>
+          <button
+            type="button"
+            onClick={exportManifest}
+            disabled={exporting}
+            className="btn-secondary ml-auto shrink-0"
+            title="Unduh inward manifest event ini (Excel, format dokumen klien)"
+          >
+            <FileSpreadsheet size={16} /> {exporting ? 'Mengekspor…' : 'Export manifest (Excel)'}
+          </button>
           {event.status !== 'CANCELLED' && (
             <button
               type="button"

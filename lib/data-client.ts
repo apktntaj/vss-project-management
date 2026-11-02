@@ -244,6 +244,24 @@ async function saveFile(file: StoredFile) {
   if (!response.ok) throw new Error(body?.error ?? 'Lampiran tidak dapat diunggah.')
 }
 
+/**
+ * Unduh inward manifest satu event (Excel, format dokumen klien). Mengembalikan isi file + nama
+ * file dari server; pemanggil yang memicu unduhan di browser.
+ */
+export async function downloadEventManifest(eventId: string): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(`/api/events/${encodeURIComponent(eventId)}/manifest-export`, {
+    cache: 'no-store',
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null
+    throw new Error(body?.error ?? 'Manifest tidak dapat diekspor.')
+  }
+  const disposition = response.headers.get('Content-Disposition') ?? ''
+  const encoded = /filename\*=UTF-8''([^;]+)/.exec(disposition)?.[1]
+  const filename = encoded ? decodeURIComponent(encoded) : 'INWARD-MANIFEST.xlsx'
+  return { blob: await response.blob(), filename }
+}
+
 /** Returns attachment bytes without leaking the active storage implementation to UI code. */
 export async function getAttachmentContent(attachmentId: string): Promise<Blob | null> {
   const response = await fetch(`/api/attachments?id=${encodeURIComponent(attachmentId)}`, {
@@ -965,7 +983,7 @@ export type JobCreateInput = {
   kind: JobKind
   internationalJenis: InternationalJobJenis | null
   transportMode: TransportMode | null
-  /** Pihak yang ditagih: agent ATAU exhibitor. Local & Road Shipment selalu exhibitor. */
+  /** Pihak yang ditagih: agent ATAU exhibitor. Job Local selalu exhibitor. */
   agentId: string | null
   exhibitorId: string | null
 }

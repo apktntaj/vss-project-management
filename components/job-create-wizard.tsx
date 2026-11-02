@@ -353,8 +353,8 @@ export function JobCreateWizard({
     setSelection(next)
     if (next === 'ROAD_SHIPMENT') setTransportMode('ROAD')
     else if (transportMode === 'ROAD') setTransportMode('SEA')
-    // Local dan road shipment selalu dipegang exhibitor — tanpa agent.
-    const tanpaAgentDefault = next === 'LOCAL' || next === 'ROAD_SHIPMENT'
+    // Job Local selalu dipegang exhibitor — tanpa agent.
+    const tanpaAgentDefault = next === 'LOCAL'
     setTanpaAgent(tanpaAgentDefault)
     if (tanpaAgentDefault) {
       setSelectedAgentId(null)
@@ -400,8 +400,8 @@ export function JobCreateWizard({
     return { agentId: null, agentName: '' }
   }
 
-  /** Local & Road Shipment selalu dipegang exhibitor (aturan server/DB). */
-  const exhibitorOnlySelection = selection === 'LOCAL' || selection === 'ROAD_SHIPMENT'
+  /** Job Local selalu dipegang exhibitor (aturan server/DB). */
+  const exhibitorOnlySelection = selection === 'LOCAL'
 
   async function createJob(): Promise<Job> {
     if (!selectedEvent) throw new Error('Pilih event untuk job ini terlebih dahulu.')
@@ -918,7 +918,7 @@ export function JobCreateWizard({
                       onChange={(checkEvent) => changeTanpaAgent(checkEvent.target.checked)}
                       className="h-4 w-4 accent-orange-600"
                     />
-                    Tanpa agent{exhibitorOnlySelection ? ' (Local & Road Shipment selalu dipegang exhibitor)' : ''}
+                    Tanpa agent{exhibitorOnlySelection ? ' (job Local selalu dipegang exhibitor)' : ''}
                   </label>
                   {!creatingNew ? (
                     <button

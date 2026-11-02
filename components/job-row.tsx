@@ -16,7 +16,8 @@ import {
 } from 'lucide-react'
 
 import { getOperationalDetails, type Job } from '@/lib/data-client'
-import { invoiceStatusLabels } from '@/domain/job/types'
+import { invoiceStatusLabels, transportModeLabels } from '@/domain/job/types'
+import { jobJenisLabel, jobJenisKey } from '@/lib/job-jenis'
 import type {
   JobInvoiceExtraction,
   JobTransportExtraction,
@@ -118,6 +119,7 @@ function CustomsProgress({
 export function JobRow({
   job,
   nomor,
+  event,
   actions,
   onJobUpdated,
   onToast,
@@ -127,6 +129,8 @@ export function JobRow({
   job: Job
   /** No Job yang diisi manual; kosong bila belum ditetapkan. */
   nomor?: string
+  /** Bila diisi, tampil kolom Event · Jenis · Jalur (tabel lintas event di /jobs). */
+  event?: { id: string; name: string } | null
   /** Bila diisi, kolom terakhir menampilkan menu titik tiga (Edit/Hapus) alih-alih PIC. */
   actions?: {
     onEdit: (job: Job) => void
@@ -187,6 +191,25 @@ export function JobRow({
           <StatusBadge status={job.status} />
         </div>
       </td>
+      {event !== undefined && (
+        <td className="px-3 py-3 align-top">
+          {event ? (
+            <Link
+              href={`/events/${event.id}`}
+              className="line-clamp-2 font-medium text-slate-800 hover:text-orange-700"
+              title={event.name}
+            >
+              {event.name}
+            </Link>
+          ) : (
+            <span className="text-slate-400">—</span>
+          )}
+          <p className="mt-1 text-xs text-slate-500">
+            {jobJenisLabel(jobJenisKey(job))}
+            {job.transportMode ? ` · ${transportModeLabels[job.transportMode]}` : ''}
+          </p>
+        </td>
+      )}
       <td className="w-[145px] max-w-[145px] px-3 py-3 align-top">
         <p className="truncate font-medium text-slate-800" title={partyName}>
           {partyName}

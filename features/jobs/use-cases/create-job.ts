@@ -2,7 +2,7 @@ import 'server-only'
 
 // Buat aggregate Job (satu kiriman). Invariant lintas-aggregate dijaga di sini + constraint DB:
 // event harus ada; pihak (agent ATAU exhibitor) harus ada — agent otomatis terdaftar sebagai
-// peserta event, exhibitor harus dari event yang sama. Local & Road Shipment selalu exhibitor.
+// peserta event, exhibitor harus dari event yang sama. Job Local selalu exhibitor.
 
 import { authorize } from '@/features/auth'
 import { findEventById } from '@/features/events/repository'

@@ -19,9 +19,9 @@ assert.equal(ok(jobCreateSchema, { eventId, kind: 'INTERNATIONAL' }), false)
 assert.equal(ok(jobCreateSchema, { eventId, kind: 'LOCAL', internationalJenis: 'ATA_CARNET' }), false)
 // Pihak: agent ATAU exhibitor.
 assert.equal(ok(jobCreateSchema, { eventId, kind: 'INTERNATIONAL', internationalJenis: 'TPPB_BC_23', agentId: 'agent-1', exhibitorId }), false)
-// Local & Road Shipment selalu exhibitor.
+// Local selalu exhibitor; Road Shipment boleh agent (contoh manifest klien: "AGENT : EASYGO").
 assert.equal(ok(jobCreateSchema, { eventId, kind: 'LOCAL', agentId: 'agent-1' }), false)
-assert.equal(ok(jobCreateSchema, { eventId, kind: 'INTERNATIONAL', internationalJenis: 'ROAD_SHIPMENT', agentId: 'agent-1' }), false)
+assert.equal(ok(jobCreateSchema, { eventId, kind: 'INTERNATIONAL', internationalJenis: 'ROAD_SHIPMENT', agentId: 'agent-1' }), true)
 assert.equal(ok(jobCreateSchema, { eventId, kind: 'INTERNATIONAL', internationalJenis: 'ROAD_SHIPMENT', transportMode: 'SEA' }), false)
 assert.equal(ok(jobCreateSchema, { eventId, kind: 'LOCAL', exhibitorId }), true)
 // Agent boleh punya banyak job — tidak ada aturan unik di skema.

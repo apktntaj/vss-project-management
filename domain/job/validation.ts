@@ -198,9 +198,9 @@ type PartyShape = {
   exhibitorId?: string | null
 }
 
-/** Jalur LOCAL dan ROAD_SHIPMENT selalu dipegang exhibitor. */
-export function exhibitorOnlyJob(input: Pick<PartyShape, 'kind' | 'internationalJenis'>): boolean {
-  return input.kind === 'LOCAL' || input.internationalJenis === 'ROAD_SHIPMENT'
+/** Job Local selalu dipegang exhibitor (Road Shipment boleh agent — koreksi 2026-11-02). */
+export function exhibitorOnlyJob(input: Pick<PartyShape, 'kind'>): boolean {
+  return input.kind === 'LOCAL'
 }
 
 function checkJobRules(input: PartyShape, context: z.RefinementCtx) {
@@ -229,7 +229,7 @@ function checkJobRules(input: PartyShape, context: z.RefinementCtx) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['agentId'],
-      message: 'Job Local dan Road Shipment selalu dipegang exhibitor, bukan agent.',
+      message: 'Job Local selalu dipegang exhibitor, bukan agent.',
     })
   }
   if (

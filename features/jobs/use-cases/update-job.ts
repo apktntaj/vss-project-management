@@ -48,7 +48,7 @@ export async function updateJobDetails(
     if (patch.party !== undefined) {
       const { agentId, exhibitorId } = patch.party
       if (agentId && exhibitorOnlyJob(job)) {
-        throw new ApiError(400, 'Job Local dan Road Shipment selalu dipegang exhibitor, bukan agent.')
+        throw new ApiError(400, 'Job Local selalu dipegang exhibitor, bukan agent.')
       }
       if (agentId && (await findAgentName(agentId)) === null) {
         throw new ApiError(400, 'Agent tidak ditemukan.')

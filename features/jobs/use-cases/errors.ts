@@ -18,7 +18,7 @@ const CONSTRAINT_MESSAGES: Record<string, [number, string]> = {
   jobs_exhibitor_fk: [400, 'Exhibitor tidak terdaftar di event job ini.'],
   jobs_jenis_matches_kind: [400, 'Jenis job tidak sesuai dengan jalur Local/International.'],
   jobs_single_party: [400, 'Pihak job hanya satu: agent atau exhibitor.'],
-  jobs_exhibitor_only_party: [400, 'Job Local dan Road Shipment selalu dipegang exhibitor, bukan agent.'],
+  jobs_exhibitor_only_party: [400, 'Job Local selalu dipegang exhibitor, bukan agent.'],
   jobs_road_mode: [400, 'Road Shipment hanya lewat jalur darat.'],
   jobs_manifest_number_key: [409, 'No Job dengan urutan itu sudah dipakai di event ini.'],
   jobs_manifest_seq_needs_prefix: [400, 'Isi jalur (laut/udara/darat) dulu sebelum menetapkan No Job.'],

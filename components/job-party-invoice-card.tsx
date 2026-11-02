@@ -21,9 +21,9 @@ function toast(message: string, tone: 'success' | 'error') {
   window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
 }
 
-/** Local & Road Shipment selalu dipegang exhibitor (cermin aturan server/DB). */
+/** Job Local selalu dipegang exhibitor (cermin aturan server/DB). */
 function exhibitorOnly(job: Job) {
-  return job.kind === 'LOCAL' || job.internationalJenis === 'ROAD_SHIPMENT'
+  return job.kind === 'LOCAL'
 }
 
 const toDateInput = (value: string | null) => (value ? value.slice(0, 10) : '')
@@ -110,7 +110,7 @@ function PartyEditor({
         </select>
         {onlyExhibitor && (
           <span className="mt-1 block text-xs font-normal text-slate-500">
-            Job Local dan Road Shipment selalu dipegang exhibitor.
+            Job Local selalu dipegang exhibitor.
           </span>
         )}
       </label>
