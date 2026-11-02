@@ -2,6 +2,7 @@
 
 /** Public Supabase-backed data access boundary for all browser UI code. */
 
+import type { Role } from '@/domain/auth/types'
 import type {
   Contact,
   Event as EventRecord,
@@ -95,7 +96,7 @@ export type LocalUser = {
   id: string
   name: string
   email: string
-  jobRole: 'STAFF' | 'SUPERVISOR' | 'CUSTOMER_SERVICE' | 'DOCUMENT_ASSISTANT'
+  jobRole: Role
   accessLevel: 'ADMIN' | 'MEMBER'
   isActive: boolean
   createdAt: string
@@ -709,6 +710,35 @@ export async function addAgentToEvent(eventId: string, agentId: string): Promise
   })
 }
 
+export type EventGrantee = { userId: string; fullName: string; grantedAt: string }
+export type EventAccessView = {
+  grantees: EventGrantee[]
+  candidates: { id: string; fullName: string }[]
+}
+
+const eventAccessPath = (eventId: string) => `/api/events/${encodeURIComponent(eventId)}/access`
+
+/** Penerima akses event + calon penerima. Hanya PIC/admin; selain itu 403. */
+export function listEventAccess(eventId: string): Promise<EventAccessView> {
+  return eventsRequest<EventAccessView>(eventAccessPath(eventId))
+}
+
+/** Beri `userId` akses kelola event (PIC/admin). */
+export async function grantEventAccess(eventId: string, userId: string): Promise<void> {
+  await eventsRequest<void>(eventAccessPath(eventId), {
+    method: 'POST',
+    body: JSON.stringify({ userId }),
+  })
+}
+
+/** Cabut akses kelola event dari `userId` (PIC/admin). */
+export async function revokeEventAccess(eventId: string, userId: string): Promise<void> {
+  await eventsRequest<void>(eventAccessPath(eventId), {
+    method: 'DELETE',
+    body: JSON.stringify({ userId }),
+  })
+}
+
 /** Exhibitor satu event (pihak bisnis: nama, jenis, NPWP, kontak, hall, booth). */
 export function listEventExhibitors(eventId: string): Promise<Exhibitor[]> {
   return eventsRequest<Exhibitor[]>(`/api/events/${encodeURIComponent(eventId)}/exhibitors`)
@@ -752,7 +782,7 @@ export type SettingsUser = {
   id: string
   nama: string
   email: string
-  jobRole?: string
+  role: Role
   isAdmin: boolean
   isActive?: boolean
 }

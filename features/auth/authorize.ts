@@ -4,7 +4,7 @@ import 'server-only'
 // slice-slice use-case (Req 7, 19). Ia menegakkan dua hal yang terpisah: (1) pemetaan peran →
 // Capability sebagai sumber-kebenaran tunggal lewat `can`, dan (2) urutan evaluasi yang ketat di
 // `authorize` — peran DULU, baru guard per-objek. Pemisahan ini penting: guard per-objek milik
-// use-case (mis. pemilik PIC vs supervisor) tidak boleh ikut memutuskan apakah peran berhak sama
+// use-case (mis. PIC / penerima akses / admin) tidak boleh ikut memutuskan apakah peran berhak sama
 // sekali, dan tidak boleh dievaluasi kalau peran sudah gagal (mencegah kebocoran kerja/efek).
 // `import 'server-only'` di atas menjaga modul ini tak pernah masuk bundle browser (Req 3.2, 20.2).
 
@@ -23,7 +23,7 @@ export type { Capability } from '@/features/auth/capabilities'
  * Turunkan CurrentUser dari sesi terverifikasi (NextAuth v5 JWT). Bila tidak ada sesi, atau
  * `user`/`role`/`workspaceId` tidak ada (bentuk sesi diaugmentasi opsional selama cutover),
  * perlakukan sebagai belum terautentikasi dan lempar `ApiError(401)` sesuai Error_Contract
- * (Req 7.1, 19.1). Pada sukses kembalikan HANYA `{ id, role, workspaceId }`.
+ * Pada sukses kembalikan HANYA `{ id, role, workspaceId, isAdmin }`.
  */
 export async function requireCurrentUser(): Promise<CurrentUser> {
   const session = await auth()
@@ -36,13 +36,13 @@ export async function requireCurrentUser(): Promise<CurrentUser> {
     throw new ApiError(401, 'Autentikasi diperlukan.')
   }
 
-  return { id: user.id, role: user.role, workspaceId: user.workspaceId }
+  return { id: user.id, role: user.role, workspaceId: user.workspaceId, isAdmin: Boolean(user.isAdmin) }
 }
 
 /**
  * Tegakkan otorisasi untuk satu tindakan. Urutan evaluasi WAJIB:
- * 1. Cek peran lewat `can(currentUser.role, capability)`. Bila gagal → `ApiError(403)` dan
- *    `objectGuard` TIDAK dipanggil (Req 7.2, 7.4, 7.6).
+ * 1. Admin (`isAdmin`) melewati gerbang peran. Selain itu cek `can(currentUser.role, capability)`;
+ *    bila gagal → `ApiError(403)` dan `objectGuard` TIDAK dipanggil (Req 7.2, 7.4, 7.6).
  * 2. Hanya bila peran lolos DAN `objectGuard` disuplai: `await objectGuard()`. Bila false →
  *    `ApiError(403)` dengan pesan kepemilikan per-objek (Req 7.5).
  *
@@ -54,7 +54,7 @@ export async function authorize(
   objectGuard?: () => Promise<boolean>,
 ): Promise<void> {
   // Peran DULU — gerbang kasar sebelum menyentuh objek apa pun.
-  if (!can(currentUser.role, capability)) {
+  if (!currentUser.isAdmin && !can(currentUser.role, capability)) {
     throw new ApiError(403, 'Anda tidak memiliki izin untuk melakukan tindakan ini.')
   }
 
@@ -62,7 +62,7 @@ export async function authorize(
   if (objectGuard) {
     const allowed = await objectGuard()
     if (!allowed) {
-      throw new ApiError(403, 'Hanya PIC event atau supervisor yang dapat melakukan tindakan ini.')
+      throw new ApiError(403, 'Hanya PIC event, penerima akses, atau admin yang dapat melakukan tindakan ini.')
     }
   }
 }

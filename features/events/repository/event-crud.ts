@@ -179,7 +179,7 @@ export async function updateEvent(id: string, input: EventInput): Promise<EventR
  * menyentuh field data lain, jadi satu setter sempit lebih aman daripada `updateEvent` penuh.
  * Mengembalikan baris terbaru, atau null bila event tidak ada (race: terhapus di antara load dan
  * transisi) — bukan error; use-case menerjemahkannya ke 404. Keputusan BOLEH/tidaknya transisi
- * (guard PIC/SUPERVISOR, pencatatan cancellation) tetap milik use-case; repository hanya menulis.
+ * (guard PIC/penerima akses/admin, pencatatan cancellation) tetap milik use-case; repository hanya menulis.
  */
 export async function setEventStatus(
   id: string,
@@ -263,7 +263,7 @@ export async function findEventSummary(id: string): Promise<EventSummary | null>
 
 /**
  * Hapus event dalam workspace. Mengembalikan true bila sebuah baris terhapus, false bila tidak ada
- * yang cocok (event sudah tidak ada). Keputusan boleh/tidaknya hapus (guard PIC/SUPERVISOR,
+ * yang cocok (event sudah tidak ada). Keputusan boleh/tidaknya hapus (guard PIC/penerima akses/admin,
  * pengecekan data turunan) adalah urusan use-case — repository hanya mengeksekusi.
  */
 export async function deleteEvent(id: string): Promise<boolean> {
@@ -332,29 +332,36 @@ export async function checkReferences(input: EventInput): Promise<EventReference
   }
 
   // app_users tidak punya kolom workspace_id — keanggotaan lewat workspace_members (pola
-  // features/auth/repository, sumber yang sama dengan daftar PIC di form).
-  const memberExists = async (userId: string): Promise<boolean> => {
-    const { count, error } = await client
+  // features/auth/repository, sumber yang sama dengan daftar PIC di form). Mengembalikan peran
+  // anggota, atau null bila bukan anggota workspace.
+  const memberRole = async (userId: string): Promise<string | null> => {
+    const { data, error } = await client
       .from('app_users')
-      .select('id, workspace_members!inner(workspace_id)', { count: 'exact', head: true })
+      .select('role, workspace_members!inner(workspace_id)')
       .eq('id', userId)
       .eq('workspace_members.workspace_id', workspaceId)
+      .maybeSingle<{ role: string }>()
     if (error) {
       throw new Error(`Gagal memeriksa referensi app_users: ${error.message}`)
     }
-    return (count ?? 0) > 0
+    return data ? data.role : null
   }
 
   // Referensi kini opsional: yang kosong dianggap valid (tak ada yang perlu diperiksa).
-  const [venueExists, eventOrganizerExists, picExists] = await Promise.all([
+  const [venueExists, eventOrganizerExists, picRole] = await Promise.all([
     input.venueId ? existsIn('venues', input.venueId) : Promise.resolve(true),
     input.eventOrganizerId
       ? existsIn('event_organizers', input.eventOrganizerId)
       : Promise.resolve(true),
-    input.picId ? memberExists(input.picId) : Promise.resolve(true),
+    input.picId ? memberRole(input.picId) : Promise.resolve('CS'),
   ])
 
-  return { venueExists, eventOrganizerExists, picExists }
+  return {
+    venueExists,
+    eventOrganizerExists,
+    picExists: picRole !== null,
+    picIsCs: picRole === 'CS' || picRole === null,
+  }
 }
 
 /**

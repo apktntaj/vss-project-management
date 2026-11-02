@@ -11,7 +11,7 @@ import type { EventOrganizerInput, EventOrganizerRecord } from '@/domain/event/t
 
 /**
  * Buat event organizer baru (create-inline). Urutan WAJIB:
- * 1. Otorisasi `reference:create` SEBELUM tulis apa pun (Req 7.1/7.7) — STAFF/SUPERVISOR; lain 403.
+ * 1. Otorisasi `reference:create` SEBELUM tulis apa pun (Req 7.1/7.7) — CS/STAFF/admin; lain 403.
  * 2. Baru persist. Nama kosong/spasi sudah ditolak skema Zod di batas route (Req 12.4).
  *
  * Mengembalikan `EventOrganizerRecord` tersimpan (dengan id dari DB) — id inilah yang dirujuk event

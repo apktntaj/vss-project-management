@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 
 import { getOperationalDetails, type Job } from '@/lib/data-client'
+import { useCanSeeBilling } from '@/lib/use-billing-access'
 import { invoiceStatusLabels, transportModeLabels } from '@/domain/job/types'
 import { jobJenisLabel, jobJenisKey } from '@/lib/job-jenis'
 import type {
@@ -142,6 +143,7 @@ export function JobRow({
   onGenerate: (job: Job, documentType: BcDocumentKind) => void
   onEditDocument: (job: Job, kind: EditableJobDocument) => void
 }) {
+  const canSeeBilling = useCanSeeBilling()
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
   const operational = getOperationalDetails(job)
@@ -319,27 +321,31 @@ export function JobRow({
           </div>
         </div>
       </td>
-      <td className="px-3 py-3 align-top">
-        <p className="truncate text-slate-600" title={invoice.number || undefined}>
-          {invoice.number || '—'}
-        </p>
-        {invoice.amount !== null && (
-          <p className="mt-1 text-xs tabular-nums text-slate-500">
-            {invoice.currency ?? ''} {new Intl.NumberFormat('id-ID').format(invoice.amount)}
-          </p>
-        )}
-      </td>
-      <td className="px-3 py-3 align-top">
-        {invoice.status === 'SENT' || invoice.status === 'PAID' ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
-            <CheckCircle2 size={12} aria-hidden="true" /> {invoiceStatusLabels[invoice.status]}
-          </span>
-        ) : (
-          <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 ring-1 ring-inset ring-slate-200">
-            {invoiceStatusLabels[invoice.status]}
-          </span>
-        )}
-      </td>
+      {canSeeBilling && (
+        <>
+          <td className="px-3 py-3 align-top">
+            <p className="truncate text-slate-600" title={invoice.number || undefined}>
+              {invoice.number || '—'}
+            </p>
+            {invoice.amount !== null && (
+              <p className="mt-1 text-xs tabular-nums text-slate-500">
+                {invoice.currency ?? ''} {new Intl.NumberFormat('id-ID').format(invoice.amount)}
+              </p>
+            )}
+          </td>
+          <td className="px-3 py-3 align-top">
+            {invoice.status === 'SENT' || invoice.status === 'PAID' ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                <CheckCircle2 size={12} aria-hidden="true" /> {invoiceStatusLabels[invoice.status]}
+              </span>
+            ) : (
+              <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 ring-1 ring-inset ring-slate-200">
+                {invoiceStatusLabels[invoice.status]}
+              </span>
+            )}
+          </td>
+        </>
+      )}
       <td className="px-3 py-3 align-top">
         <p className="line-clamp-2 text-slate-600" title={job.notes || undefined}>
           {job.notes || '—'}

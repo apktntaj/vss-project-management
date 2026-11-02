@@ -108,6 +108,7 @@ const allValid = validateEventReferences({
   venueExists: true,
   eventOrganizerExists: true,
   picExists: true,
+  picIsCs: true,
 })
 assert.equal(allValid.ok, true)
 assert.equal(allValid.ok && allValid.value, true)
@@ -117,6 +118,7 @@ const allInvalid = validateEventReferences({
   venueExists: false,
   eventOrganizerExists: false,
   picExists: false,
+  picIsCs: false,
 })
 assert.equal(allInvalid.ok, false)
 assert.equal(!allInvalid.ok && allInvalid.issues.length, 3)
@@ -125,6 +127,17 @@ assert.equal(
   'venueId,eventOrganizerId,picId',
 )
 
+// PIC ada tetapi bukan CS → tepat satu issue pada picId.
+const picNotCs = validateEventReferences({
+  venueExists: true,
+  eventOrganizerExists: true,
+  picExists: true,
+  picIsCs: false,
+})
+assert.equal(picNotCs.ok, false)
+assert.equal(!picNotCs.ok && picNotCs.issues.length, 1)
+assert.equal(!picNotCs.ok && picNotCs.issues[0].path, 'picId')
+assert.equal(!picNotCs.ok && picNotCs.issues[0].message, 'PIC harus pengguna dengan peran CS.')
 console.log('event domain validation passed')
 
 // ── Keputusan 2026-10-29: semua field opsional kecuali nama ──────────────────────────────────

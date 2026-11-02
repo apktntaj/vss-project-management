@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 // Mengapa: route TIPIS khusus pembatalan event — dipisah dari PATCH edit agar setiap handler
 // tunggal-tujuan (tanpa discriminator). Parse `cancelEventSchema` (alasan 1–1000, kosong/spasi →
-// 400 di batas), delegasi ke use-case `cancelEvent` (otorisasi per-objek PIC/SUPERVISOR + transisi
+// 400 di batas), delegasi ke use-case `cancelEvent` (otorisasi per-objek PIC/penerima akses/admin + transisi
 // CANCELLED + catat cancellation). Tidak ada SQL/aturan bisnis di route (Req 13.x/15.x, 8.1).
 
 import { requireCurrentUser } from '@/features/auth'

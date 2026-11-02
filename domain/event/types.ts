@@ -1,3 +1,5 @@
+import type { Role } from '@/domain/auth/types'
+
 export type EventDisplayStatus = 'unscheduled' | 'soon' | 'ongoing' | 'done'
 export type EventLifecycle = 'ACTIVE' | 'CANCELLED' | 'ARCHIVED'
 export type EventTuntasStatus = 'TUNTAS' | 'BELUM_TUNTAS' | 'TANPA_JOB'
@@ -171,7 +173,7 @@ export type EventOrganizerRecord = {
 // bukan bagian dari model Event redesign di atas.
 
 export type AccessLevel = 'ADMIN' | 'MEMBER'
-export type JobRole = 'STAFF' | 'SUPERVISOR' | 'CUSTOMER_SERVICE' | 'DOCUMENT_ASSISTANT'
+export type JobRole = Role
 
 export type UserProfile = {
   id: string

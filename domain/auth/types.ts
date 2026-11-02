@@ -1,10 +1,20 @@
-export type Role = 'STAFF' | 'SUPERVISOR' | 'CUSTOMER_SERVICE' | 'DOCUMENT_ASSISTANT'
+export type Role = 'CS' | 'STAFF' | 'OPERATIONS' | 'DOCUMENT_ASSISTANT' | 'FINANCE'
 export const ROLES = [
+  'CS',
   'STAFF',
-  'SUPERVISOR',
-  'CUSTOMER_SERVICE',
+  'OPERATIONS',
   'DOCUMENT_ASSISTANT',
+  'FINANCE',
 ] as const satisfies readonly Role[]
+
+/** Label tampilan peran (Indonesia) untuk UI manajemen user. */
+export const ROLE_LABELS: Record<Role, string> = {
+  CS: 'CS (PIC event)',
+  STAFF: 'Staff',
+  OPERATIONS: 'Operations',
+  DOCUMENT_ASSISTANT: 'Document assistant',
+  FINANCE: 'Finance',
+}
 
 export type User = {
   id: string
@@ -17,10 +27,9 @@ export type User = {
   workspaceId: string
 }
 
-export type CurrentUser = { id: string; role: Role; workspaceId: string }
+export type CurrentUser = { id: string; role: Role; workspaceId: string; isAdmin: boolean }
 
 export type AuthenticatedPrincipal = CurrentUser & {
-  isAdmin: boolean
   email: string
   fullName: string
 }

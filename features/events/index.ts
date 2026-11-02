@@ -10,6 +10,12 @@ export { updateEvent } from '@/features/events/use-cases/update-event'
 export { cancelEvent } from '@/features/events/use-cases/cancel-event'
 export { deleteEvent } from '@/features/events/use-cases/delete-event'
 export { archiveEvent } from '@/features/events/use-cases/archive-event'
+export {
+  grantEventAccess,
+  revokeEventAccess,
+  listEventAccess,
+  type EventAccessView,
+} from '@/features/events/use-cases/manage-event-access'
 
 // Use-case baca (dipakai Server Component dashboard + EventCard).
 export { listEventsForDashboard } from '@/features/events/use-cases/list-events-for-dashboard'

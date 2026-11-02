@@ -14,6 +14,7 @@ import {
   type Job,
   type TransportMode,
 } from '@/lib/data-client'
+import { useCanSeeBilling } from '@/lib/use-billing-access'
 import { formatJobNumber, formatManifestSequence } from '@/domain/job/numbering'
 import { invoiceStatusLabels, invoiceStatuses, transportModeLabels, transportModes } from '@/domain/job/types'
 
@@ -375,6 +376,7 @@ export function JobPartyInvoiceCard({
   exhibitors: Exhibitor[]
   onSaved: (job: Job) => void
 }) {
+  const canSeeBilling = useCanSeeBilling()
   const [editing, setEditing] = useState<Editing>(null)
   const saved = (next: Job) => {
     setEditing(null)
@@ -393,7 +395,7 @@ export function JobPartyInvoiceCard({
 
   return (
     <section className="card p-5">
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className={`grid gap-6 ${canSeeBilling ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
         <div>
           <div className="flex items-center justify-between gap-2">
             <h2 className="flex items-center gap-2 font-semibold">
@@ -428,23 +430,25 @@ export function JobPartyInvoiceCard({
             </dl>
           )}
         </div>
-        <div>
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="flex items-center gap-2 font-semibold">
-              <Receipt size={18} className="text-orange-600" aria-hidden="true" /> Tagihan
-            </h2>
-            {editButton('invoice', 'Ubah')}
+        {canSeeBilling && (
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="flex items-center gap-2 font-semibold">
+                <Receipt size={18} className="text-orange-600" aria-hidden="true" /> Tagihan
+              </h2>
+              {editButton('invoice', 'Ubah')}
+            </div>
+            {editing === 'invoice' ? (
+              <InvoiceEditor job={job} onSaved={saved} onCancel={() => setEditing(null)} />
+            ) : (
+              <dl className="mt-3 space-y-3">
+                <Info label="Nomor" value={job.invoice.number} />
+                <Info label="Nilai" value={money(job.invoice.amount, job.invoice.currency)} />
+                <Info label="Status" value={invoiceStatusLabels[job.invoice.status]} />
+              </dl>
+            )}
           </div>
-          {editing === 'invoice' ? (
-            <InvoiceEditor job={job} onSaved={saved} onCancel={() => setEditing(null)} />
-          ) : (
-            <dl className="mt-3 space-y-3">
-              <Info label="Nomor" value={job.invoice.number} />
-              <Info label="Nilai" value={money(job.invoice.amount, job.invoice.currency)} />
-              <Info label="Status" value={invoiceStatusLabels[job.invoice.status]} />
-            </dl>
-          )}
-        </div>
+        )}
       </div>
     </section>
   )

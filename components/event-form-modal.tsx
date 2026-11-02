@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
 import { X } from 'lucide-react'
+import { useSession } from 'next-auth/react'
 import {
   listEos,
   listUsers,
@@ -36,6 +37,10 @@ export function EventFormModal({
   onCancel: () => void
 }) {
   const isEdit = Boolean(event)
+  const sessionUser = useSession().data?.user
+  // Penerima akses tidak boleh mengganti PIC (server menolak dengan 403).
+  const canChangePic =
+    !event || Boolean(sessionUser && (sessionUser.isAdmin || sessionUser.id === event.picId))
   const [venues, setVenues] = useState<LocalVenue[]>([])
   const [organizers, setOrganizers] = useState<LocalEo[]>([])
   const [users, setUsers] = useState<LocalUser[]>([])
@@ -197,7 +202,7 @@ export function EventFormModal({
             PIC
             <select
               required
-              disabled={loading}
+              disabled={loading || !canChangePic}
               value={picId}
               onChange={(event) => setPicId(event.target.value)}
               className="input"

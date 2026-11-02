@@ -94,6 +94,8 @@ export type EventReferenceContext = {
   venueExists: boolean
   eventOrganizerExists: boolean
   picExists: boolean
+  // PIC harus berperan CS. Hanya relevan bila PIC diset; repository menyuplai true bila tak ada PIC.
+  picIsCs: boolean
 }
 
 // Invariant referensi (Requirement 10.6 / 12.4): venue, event organizer, dan PIC harus benar-benar
@@ -106,6 +108,7 @@ export function validateEventReferences(ctx: EventReferenceContext): Validation<
   if (!ctx.eventOrganizerExists)
     issues.push(issue('eventOrganizerId', 'Event organizer tidak ditemukan.'))
   if (!ctx.picExists) issues.push(issue('picId', 'PIC tidak ditemukan.'))
+  else if (!ctx.picIsCs) issues.push(issue('picId', 'PIC harus pengguna dengan peran CS.'))
   return fromIssues(issues, true as const)
 }
 

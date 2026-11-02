@@ -29,7 +29,7 @@ State operasional terstruktur dipersistenkan ke workspace Supabase, dan byte lam
 Buat akun pertama setelah migrasi dengan:
 
 ```bash
-VSS_USER_PASSWORD='password-panjang-unik' npm run supabase:create-user -- admin@contoh.co.id 'Administrator' SUPERVISOR true
+VSS_USER_PASSWORD='password-panjang-unik' npm run supabase:create-user -- admin@contoh.co.id 'Administrator' CS true
 ```
 
 Di production, login demo dinonaktifkan otomatis jika kredensial Supabase belum tersedia. `GEMINI_API_KEY` hanya diperlukan untuk fitur parsing PDF.

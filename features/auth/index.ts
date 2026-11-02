@@ -12,5 +12,10 @@ export type { Capability } from '@/features/auth/authorize'
 export { auth, signIn, signOut, handlers } from '@/features/auth/nextauth'
 
 // Verifikasi kredensial dipakai oleh use-case sign-in; diekspos di batas slice agar konsumen tidak
-// menjangkau repository internal langsung. `listWorkspaceMembers` membaca opsi anggota (picker PIC).
-export { authenticateCredential, listWorkspaceMembers } from '@/features/auth/repository'
+// menjangkau repository internal langsung. `listWorkspaceMembers` membaca opsi anggota (picker akses
+// event); `listCandidatePics` membaca calon PIC (hanya CS).
+export {
+  authenticateCredential,
+  listWorkspaceMembers,
+  listCandidatePics,
+} from '@/features/auth/repository'
