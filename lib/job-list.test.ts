@@ -4,8 +4,11 @@ import { emptyJobTableFilters, filterJobs, isEventActive, sortJobsForTable, type
 import type { Job } from '@/domain/job/types'
 
 const events = new Map<string, JobListEvent>([
-  ['old', { id: 'old', name: 'Expo 2025', startsOn: '2025-05-01', endsOn: '2025-05-03' }],
-  ['new', { id: 'new', name: 'Krista Interfood 2026', startsOn: '2026-11-04', endsOn: '2026-11-07' }],
+  ['old', { id: 'old', name: 'Expo 2025', venueName: null, startsOn: '2025-05-01', endsOn: '2025-05-03' }],
+  [
+    'new',
+    { id: 'new', name: 'Krista Interfood 2026', venueName: null, startsOn: '2026-11-04', endsOn: '2026-11-07' },
+  ],
 ])
 
 let counter = 0

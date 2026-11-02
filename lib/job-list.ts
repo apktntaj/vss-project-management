@@ -6,7 +6,13 @@ import type { InternationalJobJenis, InvoiceStatus, Job, JobStatus, TransportMod
 
 const PREFIX_ORDER = ['S', 'A', 'ATA', 'TI', 'PI', 'RS', 'LOC']
 
-export type JobListEvent = { id: string; name: string; startsOn: string | null; endsOn: string | null }
+export type JobListEvent = {
+  id: string
+  name: string
+  venueName: string | null
+  startsOn: string | null
+  endsOn: string | null
+}
 
 export type JobTableFilters = {
   search: string

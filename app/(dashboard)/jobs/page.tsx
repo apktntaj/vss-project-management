@@ -31,12 +31,13 @@ const segmentLabels: Record<JobSegment, string> = {
   PROJECT: 'Project',
 }
 
-const selectClass = 'input m-0 max-w-48 border-0 bg-slate-50 py-2 text-sm shadow-none'
+const selectClass = 'input m-0 max-w-48 py-2 text-sm shadow-none focus-visible:outline-none'
 
 function toListEvent(event: LocalEvent): JobListEvent {
   return {
     id: event.id,
     name: event.officialName,
+    venueName: event.venue?.name ?? null,
     startsOn: event.startsOn && event.startsOn !== 'null' ? event.startsOn : null,
     endsOn: event.endsOn && event.endsOn !== 'null' ? event.endsOn : null,
   }
@@ -141,14 +142,14 @@ export default function JobsPage() {
   return (
     <div className="space-y-6">
       <section aria-label="Kategori job">
-        <div className="inline-flex rounded-lg bg-slate-100 p-1 text-sm font-medium">
+        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 text-sm font-medium">
           {(Object.keys(segmentLabels) as JobSegment[]).map((value) => (
             <button
               key={value}
               type="button"
               onClick={() => setSegment(value)}
               aria-pressed={segment === value}
-              className={`rounded-md px-3 py-1.5 ${segment === value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+              className={`rounded-md px-3 py-1.5 transition-colors ${segment === value ? 'bg-orange-600 text-white shadow-sm' : 'text-slate-500 hover:bg-orange-50 hover:text-orange-700'}`}
             >
               {segmentLabels[value]}
             </button>
@@ -162,12 +163,12 @@ export default function JobsPage() {
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
               <label className="relative w-full lg:w-80 lg:flex-none">
                 <span className="sr-only">Cari job</span>
-                <Search className="absolute left-3 top-2.5 text-slate-400" size={18} aria-hidden="true" />
+                <Search className="absolute left-3 top-2.5 text-orange-500" size={18} aria-hidden="true" />
                 <input
                   type="search"
                   value={filters.search}
                   onChange={(event) => setFilter('search', event.target.value)}
-                  className="input m-0 border-0 bg-slate-50 pl-10 shadow-none"
+                  className="input m-0 pl-10 shadow-none focus-visible:outline-none"
                   placeholder="Cari No Job, VSS, B/L, invoice, pihak"
                 />
               </label>
