@@ -64,17 +64,21 @@ export function EventFilters({
   const hasFilters = currentSearch.length > 0 || currentStatus !== 'all' || currentPic !== ''
 
   return (
-    <div className="mb-5">
+    <div>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <label className="relative w-full lg:w-80 lg:flex-none">
           <span className="sr-only">Cari event</span>
-          <Search className="absolute left-3 top-2.5 text-slate-400" size={18} aria-hidden="true" />
+          <Search
+            className="absolute left-3 top-[7px] text-orange-500"
+            size={14}
+            aria-hidden="true"
+          />
           <input
             type="search"
             defaultValue={currentSearch}
             onChange={(inputEvent) => applyParams({ search: inputEvent.target.value })}
-            className="input m-0 border-0 bg-slate-50 pl-10 shadow-none"
-            placeholder="Cari nama event, alias, venue, EO, atau PIC"
+            className="input m-0 pl-10 shadow-none focus-visible:outline-none"
+            placeholder="Cari event..."
           />
         </label>
         <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-2 px-0 py-2">
@@ -94,21 +98,19 @@ export function EventFilters({
           ))}
         </fieldset>
         {pics ? (
-          <label className="flex items-center gap-2 text-sm text-slate-500">
-            <span className="flex-none font-medium">PIC</span>
-            <select
-              value={currentPic}
-              onChange={(selectEvent) => applyParams({ pic: selectEvent.target.value || null })}
-              className="input m-0 max-w-44 border-0 bg-slate-50 py-2 shadow-none"
-            >
-              <option value="">Semua PIC</option>
-              {pics.map((pic) => (
-                <option key={pic.id} value={pic.id}>
-                  {pic.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <select
+            value={currentPic}
+            onChange={(selectEvent) => applyParams({ pic: selectEvent.target.value || null })}
+            className="input m-0 max-w-48 py-2 text-sm shadow-none focus-visible:outline-none"
+            aria-label="Filter PIC"
+          >
+            <option value="">Semua PIC</option>
+            {pics.map((pic) => (
+              <option key={pic.id} value={pic.id}>
+                {pic.name}
+              </option>
+            ))}
+          </select>
         ) : null}
         {children ? <div className="flex-none lg:ml-auto">{children}</div> : null}
       </div>

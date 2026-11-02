@@ -345,7 +345,9 @@ export async function queryEventList(q: EventListQuery): Promise<EventListPage> 
     listQuery = listQuery.lt('ends_on', today)
   }
 
-  listQuery = listQuery.order('starts_on', { ascending: false, nullsFirst: false })
+  // Urutan akhir ditentukan sort kedekatan-hari-ini di bawah (butuh "hari ini"); order SQL hanya
+  // memberi urutan deterministik awal.
+  listQuery = listQuery.order('starts_on', { ascending: true, nullsFirst: false })
 
   const { data: listData, error: listError } = await listQuery.returns<EventJoinedRow[]>()
   if (listError) {
@@ -391,6 +393,19 @@ export async function queryEventList(q: EventListQuery): Promise<EventListPage> 
           ].some((value) => value.toLowerCase().includes(needle))
         })
       : items
+
+  // Urut berdasarkan kedekatan dengan hari ini: berlangsung → akan datang (terdekat dulu) →
+  // selesai (terbaru dulu) → belum dijadwalkan. Sort stabil menjaga urutan SQL untuk nilai kembar.
+  const proximityRank = { ongoing: 0, soon: 1, done: 2, unscheduled: 3 } as const
+  visibleItems.sort((a, b) => {
+    const rank = proximityRank[a.displayStatus] - proximityRank[b.displayStatus]
+    if (rank !== 0) return rank
+    if (a.displayStatus === 'soon' || a.displayStatus === 'ongoing') {
+      return (a.startsOn ?? '').localeCompare(b.startsOn ?? '')
+    }
+    if (a.displayStatus === 'done') return (b.endsOn ?? '').localeCompare(a.endsOn ?? '')
+    return 0
+  })
 
   // Rollup tuntas per baris (badge "Belum tuntas" + peringatan arsip) — satu query jobs, digabung
   // di JS karena bentuknya jsonb lintas generasi.

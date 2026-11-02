@@ -94,16 +94,16 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-4 lg:-mb-10 lg:h-[calc(100dvh-104px)]">
       <h1 className="sr-only">Events</h1>
 
-      <section className="space-y-5">
+      <section className="flex min-h-0 flex-1 flex-col gap-3">
         <EventFilters pics={pics}>
           <EventCreateButton venues={venues} organizers={organizers} pics={pics} />
         </EventFilters>
 
         {loadFailed || !page ? (
-          <div className="card border-rose-200 p-12 text-center" role="alert">
+          <div className="card border-rose-200 p-8 text-center" role="alert">
             <AlertTriangle className="mx-auto text-rose-500" size={28} aria-hidden="true" />
             <p className="mt-3 font-semibold text-rose-700">Data gagal dimuat.</p>
             <p className="mt-1 text-sm text-slate-400">Muat ulang halaman untuk mencoba lagi.</p>

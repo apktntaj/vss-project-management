@@ -17,7 +17,7 @@ export const DISPLAY_STATUS_LABEL: Record<EventDisplayStatus, string> = {
 // Kelas badge per display status — warna menandai makna.
 export const DISPLAY_STATUS_BADGE: Record<EventDisplayStatus, string> = {
   unscheduled: 'bg-slate-100 text-slate-400',
-  soon: 'bg-orange-50 text-orange-700',
+  soon: 'bg-blue-100 text-blue-800',
   ongoing: 'bg-emerald-50 text-emerald-700',
   done: 'bg-slate-100 text-slate-600',
 }
