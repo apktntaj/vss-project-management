@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Pencil, Ship, TriangleAlert } from 'lucide-react'
 
 import {
@@ -14,8 +14,8 @@ import {
   type KoliSummary,
   type MilestoneKind,
 } from '@/domain/job/manifest'
-import { internationalJobJenisLabels } from '@/domain/job/types'
 import type { ManifestBlockView, ManifestPeserta } from '@/lib/manifest-view'
+import { ExhibitorIdentity, ExhibitorSummaryTable, numberID } from '@/components/job-exhibitor-summary'
 
 const milestoneOrder: MilestoneKind[] = [
   'ETA',
@@ -30,8 +30,6 @@ const milestoneOrder: MilestoneKind[] = [
 
 const dateID = (value: string) =>
   new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value))
-const numberID = (value: number) =>
-  new Intl.NumberFormat('id-ID', { maximumFractionDigits: 3 }).format(value)
 /** Nilai sel numerik manifest: tampilkan '—' bila belum dirinci agar grid tidak kosong tak bermakna. */
 const cell = (value: number | null | undefined) =>
   value === null || value === undefined ? '—' : numberID(value)
@@ -84,30 +82,9 @@ function ExhibitorCell({
   rowSpan: number
   onEdit: (peserta: ManifestPeserta) => void
 }) {
-  const anomalyNotes = peserta.logistics.notes.filter((note) => note.kind === 'ANOMALI_BARANG')
   return (
     <td className={`${td} min-w-[180px]`} rowSpan={rowSpan}>
-      <p className="font-medium text-slate-800">{peserta.name}</p>
-      {!peserta.linked && (
-        <span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-inset ring-amber-200">
-          belum ditautkan ke exhibitor
-        </span>
-      )}
-      {peserta.linked && peserta.line.nameOnDocument !== peserta.name && (
-        <p className="mt-0.5 text-[11px] text-slate-500">CIPL: {peserta.line.nameOnDocument}</p>
-      )}
-      {anomalyNotes.map((note, index) => (
-        <p key={index} className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-700">
-          <TriangleAlert size={12} aria-hidden="true" /> {note.text}
-        </p>
-      ))}
-      <button
-        type="button"
-        onClick={() => onEdit(peserta)}
-        className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-orange-700 hover:text-orange-800"
-      >
-        <Pencil size={12} aria-hidden="true" /> {peserta.linked ? 'Edit koli' : 'Tautkan & edit'}
-      </button>
+      <ExhibitorIdentity peserta={peserta} onEdit={onEdit} />
     </td>
   )
 }
@@ -121,6 +98,7 @@ export function JobManifestSection({
   onEditManifest: () => void
   onEditPeserta: (peserta: ManifestPeserta) => void
 }) {
+  const [mode, setMode] = useState<'ringkas' | 'manifest'>('ringkas')
   const inward = view.inward
   const milestones = inward?.milestones ?? []
   const kepulangan = view.kepulangan
@@ -235,20 +213,23 @@ export function JobManifestSection({
   return (
     <section className="card border-orange-200 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="eyebrow">Blok manifest · {view.jobNumber}</p>
-          <h2 className="mt-1 text-xl font-bold text-slate-900">{view.partyName}</h2>
-          {view.internationalJenis && (
-            <span className={`${chip('violet')} mt-2`}>
-              {internationalJobJenisLabels[view.internationalJenis] ?? 'Job lama'}
-            </span>
-          )}
-          {!view.transportDocument && (
-            <p className="mt-2 text-sm text-slate-500">Nomor B/L atau AWB belum diisi.</p>
-          )}
-          {!inward && (
-            <p className="mt-1 text-sm text-slate-500">Konfigurasi muatan & milestone belum diisi.</p>
-          )}
+          <dl className="mt-3 grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
+            {(
+              [
+                ['Exhibitor', numberID(view.peserta.length)],
+                ['Total package', numberID(view.totals.totalCount)],
+                ['Total CBM', numberID(view.totals.volumeCbm)],
+                ['Total berat (Kg)', numberID(view.totals.weightKg)],
+              ] as const
+            ).map(([title, value]) => (
+              <div key={title}>
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">{title}</dt>
+                <dd className="mt-1 text-2xl font-bold tabular-nums text-slate-900">{value}</dd>
+              </div>
+            ))}
+          </dl>
         </div>
         <button type="button" onClick={onEditManifest} className="btn-secondary shrink-0">
           <Pencil size={16} /> Edit manifest
@@ -267,6 +248,36 @@ export function JobManifestSection({
         </p>
       ))}
 
+      <div className="mt-5 flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-slate-800">Exhibitor</p>
+        <div
+          role="group"
+          aria-label="Tampilan manifest"
+          className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs font-medium"
+        >
+          {(
+            [
+              ['ringkas', 'Ringkas'],
+              ['manifest', 'Tabel manifest'],
+            ] as const
+          ).map(([value, text]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setMode(value)}
+              aria-pressed={mode === value}
+              className={`rounded-md px-3 py-1 transition-colors ${mode === value ? 'bg-orange-600 text-white shadow-sm' : 'text-slate-500 hover:bg-orange-50 hover:text-orange-700'}`}
+            >
+              {text}
+            </button>
+          ))}
+        </div>
+      </div>
+      {mode === 'ringkas' ? (
+        <div className="mt-3">
+          <ExhibitorSummaryTable peserta={view.peserta} onEdit={onEditPeserta} />
+        </div>
+      ) : (
       <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full border-collapse text-left text-xs">
           <caption className="sr-only">Rincian manifest exhibitor pada blok {view.jobNumber}</caption>
@@ -310,6 +321,7 @@ export function JobManifestSection({
           </tbody>
         </table>
       </div>
+      )}
       {view.peserta.some((peserta) => !peserta.linked) && (
         <p className="mt-2 text-xs text-slate-500">
           Baris yang belum ditautkan tidak terhitung sebagai barang exhibitor mana pun. Tautkan lewat

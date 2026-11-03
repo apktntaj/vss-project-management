@@ -36,7 +36,6 @@ import { JobDocumentEditorDialog } from '@/components/job-document-editor-dialog
 import { JobPartyInvoiceCard } from '@/components/job-party-invoice-card'
 import { JobDetailSkeleton, JobEventInfoSkeleton } from '@/components/loading-skeletons'
 import { compareInvoiceWithTransport, type DocumentComparison } from '@/lib/document-comparison'
-import { ContextTicketList } from '@/components/context-ticket-list'
 import { jobLabel } from '@/domain/job/numbering'
 
 const date = (value: string | null) =>
@@ -488,7 +487,6 @@ export default function JobDetail({ params }: { params: { id: string } }) {
             </section>
           </aside>
         </div>
-        <ContextTicketList contextKind="JOB" contextId={job.id} />
       </>
       {manifestModalOpen && (
         <JobManifestEditorModal
