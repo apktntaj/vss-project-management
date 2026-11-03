@@ -8,18 +8,21 @@ export const MOCK_USERS: readonly User[] = [
     email: 'admin@vss.demo',
     password: 'nurulhandayani',
     isAdmin: true,
+    role: 'CS',
   },
   {
     nama: 'Andy',
     email: 'operasional@vss.demo',
     password: 'andyandyandy',
     isAdmin: false,
+    role: 'OPERATIONS',
   },
   {
     nama: 'Kevin',
     email: 'viewer@vss.demo',
     password: 'kevinkevin',
     isAdmin: false,
+    role: 'FINANCE',
   },
 ]
 
@@ -74,6 +77,7 @@ export function updateDemoUser(
   candidate.nama = parsed.data.nama
   candidate.email = parsed.data.email
   candidate.isAdmin = parsed.data.isAdmin
+  candidate.role = parsed.data.role
   if (parsed.data.password) candidate.password = parsed.data.password
   return { ok: true, user: withoutPassword(candidate) }
 }

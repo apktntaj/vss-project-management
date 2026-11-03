@@ -7,6 +7,7 @@ import 'server-only'
 // sejak event dibuat (Req 11.3/12.4). `import 'server-only'` menjaga batas server/klien (Req 3.2).
 
 import { authorize } from '@/features/auth'
+import { eventManagerGuard } from '@/features/events/use-cases/event-guards'
 import {
   checkReferences,
   findEventById,
@@ -20,8 +21,9 @@ import type { EventInput } from '@/domain/event/types'
 
 /**
  * Perbarui event. Urutan WAJIB:
- * 1. Otorisasi `event:update` (Req 11.1) — STAFF/SUPERVISOR; peran lain 403.
- * 2. Muat event via `findEventById`; tidak ada → 404 `Event tidak ditemukan.` (Req 11.2).
+ * 1. Muat event via `findEventById`; tidak ada → 404 `Event tidak ditemukan.` (Req 11.2).
+ * 2. Otorisasi `event:update` (Req 11.1) + guard per-objek `eventManagerGuard` (PIC, penerima
+ *    akses, atau admin); peran/guard gagal → 403.
  * 3. Cek referensi lagi (venue/EO/PIC harus tetap ada pada edit) lewat repository +
  *    validator domain murni; invalid → 400 pesan Indonesia (Req 11.3).
  * 4. Tulis via `updateEvent` repository (menyetel `updated_at`, Req 11.4). Bila repository
@@ -34,11 +36,20 @@ export async function updateEvent(
   eventId: string,
   input: EventInput,
 ): Promise<EventRow> {
-  await authorize(currentUser, 'event:update')
-
   const existing = await findEventById(eventId)
   if (!existing) {
     throw new ApiError(404, 'Event tidak ditemukan.')
+  }
+
+  await authorize(currentUser, 'event:update', eventManagerGuard(currentUser, existing))
+
+  // PIC hanya boleh diganti oleh PIC saat ini atau admin; penerima akses tidak.
+  if (
+    input.picId !== existing.picId &&
+    !currentUser.isAdmin &&
+    existing.picId !== currentUser.id
+  ) {
+    throw new ApiError(403, 'Hanya PIC event atau admin yang dapat mengganti PIC.')
   }
 
   const references = await checkReferences(input)

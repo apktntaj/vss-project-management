@@ -1,10 +1,13 @@
 import { z } from 'zod'
 
+import { ROLES } from '@/domain/auth/types'
+
 export const UserSchema = z.object({
   nama: z.string().trim().min(1, 'Nama wajib diisi.'),
   email: z.string().trim().toLowerCase().email('Format email tidak valid.'),
   password: z.string().min(1, 'Password wajib diisi.'),
   isAdmin: z.boolean(),
+  role: z.enum(ROLES, { errorMap: () => ({ message: 'Peran tidak valid.' }) }),
 })
 
 export const PasswordChangeSchema = z.object({

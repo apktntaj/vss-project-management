@@ -10,7 +10,7 @@ import {
   type BcDocumentKind,
   type JobCustomsDocument,
   type JobDocumentKind,
-  type LocalJob,
+  type Job,
 } from '@/lib/data-client'
 import { FormSkeleton } from '@/components/loading-skeletons'
 
@@ -41,10 +41,13 @@ function TransportFields({
   prefix,
   title,
   detail,
+  document,
 }: {
   prefix: 'inbound' | 'outbound'
   title: string
   detail: ReturnType<typeof getOperationalDetails>['inbound']
+  /** Dokumen angkut job (hanya leg masuk) — identitas kiriman, disimpan di job, bukan di leg. */
+  document?: { type: Job['transportDocumentType']; number: string | null }
 }) {
   return (
     <section className="rounded-xl border border-slate-200 p-4">
@@ -59,26 +62,22 @@ function TransportFields({
             <option value="LOCAL">Lokal</option>
           </select>
         </label>
-        <label className="label">
-          Dokumen transport
-          <select
-            name={`${prefix}.documentType`}
-            defaultValue={detail.documentType || ''}
-            className="input"
-          >
-            <option value="">Belum ada</option>
-            <option value="BL">B/L</option>
-            <option value="AWB">AWB</option>
-          </select>
-        </label>
-        <label className="label">
-          Nomor B/L atau AWB
-          <input
-            name={`${prefix}.documentNumber`}
-            defaultValue={detail.documentNumber || ''}
-            className="input"
-          />
-        </label>
+        {document && (
+          <>
+            <label className="label">
+              Dokumen transport
+              <select name="transportDocument.type" defaultValue={document.type || ''} className="input">
+                <option value="">Belum ada</option>
+                <option value="BL">B/L</option>
+                <option value="AWB">AWB</option>
+              </select>
+            </label>
+            <label className="label">
+              Nomor B/L atau AWB
+              <input name="transportDocument.number" defaultValue={document.number || ''} className="input" />
+            </label>
+          </>
+        )}
         <label className="label">
           Carrier
           <input name={`${prefix}.carrier`} defaultValue={detail.carrier || ''} className="input" />
@@ -181,7 +180,7 @@ function CustomsCard({ kind, detail }: { kind: BcDocumentKind; detail: JobCustom
 
 export function JobEditor({ jobId }: { jobId: string }) {
   const router = useRouter()
-  const [job, setJob] = useState<LocalJob | null>(null)
+  const [job, setJob] = useState<Job | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -223,10 +222,6 @@ export function JobEditor({ jobId }: { jobId: string }) {
       mode: (form.get(`${prefix}.mode`) || null) as ReturnType<
         typeof getOperationalDetails
       >['inbound']['mode'],
-      documentType: (form.get(`${prefix}.documentType`) || null) as ReturnType<
-        typeof getOperationalDetails
-      >['inbound']['documentType'],
-      documentNumber: text(form, `${prefix}.documentNumber`),
       carrier: text(form, `${prefix}.carrier`),
       scheduleAt: text(form, `${prefix}.scheduleAt`),
       actualAt: text(form, `${prefix}.actualAt`),
@@ -238,10 +233,6 @@ export function JobEditor({ jobId }: { jobId: string }) {
       registrationNumber: text(form, `${kind}.registrationNumber`),
       registrationDate: text(form, `${kind}.registrationDate`),
       warehouseName: text(form, `${kind}.warehouseName`),
-      billing:
-        kind === 'BC_2_5' && form.get(`${kind}.applicable`) !== 'on'
-          ? { kind: 'NOT_APPLICABLE' }
-          : { kind: 'NOT_READY' },
     })
     const attachments: Array<{ kind: JobDocumentKind; file: File }> = [
       'CIPL',
@@ -253,25 +244,18 @@ export function JobEditor({ jobId }: { jobId: string }) {
       const file = form.get(`attachment:${kind}`)
       return file instanceof File && file.size ? [{ kind: kind as JobDocumentKind, file }] : []
     })
-    const exhibitorName = loadedJob.exhibitor?.legalName || loadedJob.clientName
     try {
       await saveJobOperationalDetails(
-        loadedJob.id,
+        loadedJob,
         {
-          jobNumber: String(form.get('jobNumber') ?? '').trim(),
-          clientName: exhibitorName,
-          shipper: exhibitorName,
-          agent: text(form, 'agent'),
-          consignee: text(form, 'consignee'),
-          notifyParty: text(form, 'notifyParty'),
-          assignedToId: loadedJob.assignedToId,
-          status: String(form.get('status')) as LocalJob['status'],
+          status: String(form.get('status')) as Job['status'],
+          transportDocumentType: (form.get('transportDocument.type') || null) as Job['transportDocumentType'],
+          transportDocumentNumber: text(form, 'transportDocument.number'),
           notes: text(form, 'notes'),
-          billTo: text(form, 'billTo') || null,
-          emptyStorage: text(form, 'emptyStorage') || null,
-          reExport: text(form, 'reExport') || null,
-          invoiceSent: form.get('invoiceSent') === 'on',
+          emptyStorage: text(form, 'emptyStorage'),
+          reExport: text(form, 'reExport'),
           operational: {
+            ...operational,
             inbound: transport('inbound'),
             outbound: transport('outbound'),
             invoiceNumber: text(form, 'invoiceNumber'),
@@ -318,34 +302,25 @@ export function JobEditor({ jobId }: { jobId: string }) {
           <label className="label">
             No Job
             <input
-              name="jobNumber"
-              defaultValue={job.jobNumber}
-              className="input"
-              placeholder="Isi manual"
-            />
-          </label>
-          <label className="label">
-            Exhibitor
-            <input
               readOnly
-              value={job.exhibitor?.legalName || job.clientName}
+              value={`${job.jobNumber ?? 'Belum ditetapkan'} · ${job.vssNumber}`}
               className="input bg-slate-50 text-slate-500"
             />
             <span className="mt-1 block text-xs font-normal text-slate-500">
-              Exhibitor berperan sebagai shipper dalam shipment pameran.
+              Ditetapkan di kartu “No Job” pada detail job.
             </span>
           </label>
           <label className="label">
-            Agent
-            <input name="agent" defaultValue={job.agent || ''} className="input" />
-          </label>
-          <label className="label">
-            Consignee
-            <input name="consignee" defaultValue={job.consignee || ''} className="input" />
-          </label>
-          <label className="label">
-            Notify party
-            <input name="notifyParty" defaultValue={job.notifyParty || ''} className="input" />
+            Pihak yang ditagih
+            <input
+              readOnly
+              value={job.party?.name || 'Belum ditetapkan'}
+              className="input bg-slate-50 text-slate-500"
+            />
+            <span className="mt-1 block text-xs font-normal text-slate-500">
+              Diubah di kartu “Pihak” pada detail job. Shipper, consignee, dan notify party dibaca
+              dari B/L/AWB.
+            </span>
           </label>
           <label className="label">
             Status Job
@@ -365,7 +340,12 @@ export function JobEditor({ jobId }: { jobId: string }) {
           Satu Job dapat mencatat perjalanan masuk dan keluar dengan moda berbeda.
         </p>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <TransportFields prefix="inbound" title="Perjalanan masuk" detail={operational.inbound} />
+          <TransportFields
+            prefix="inbound"
+            title="Perjalanan masuk"
+            detail={operational.inbound}
+            document={{ type: job.transportDocumentType, number: job.transportDocumentNumber }}
+          />
           <TransportFields
             prefix="outbound"
             title="Perjalanan keluar"
@@ -435,17 +415,9 @@ export function JobEditor({ jobId }: { jobId: string }) {
         </div>
       </section>
       <section className="card p-5">
-        <h2 className="font-semibold">Penagihan &amp; logistik</h2>
+        <h2 className="font-semibold">Logistik</h2>
+        <p className="mt-1 text-sm text-slate-500">Tagihan job diatur di kartu “Tagihan” pada detail job.</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="label">
-            Bill to
-            <input
-              name="billTo"
-              defaultValue={job.billTo || ''}
-              className="input"
-              placeholder="Pihak yang ditagihkan invoice"
-            />
-          </label>
           <label className="label">
             Empty storage
             <input
@@ -463,17 +435,6 @@ export function JobEditor({ jobId }: { jobId: string }) {
               className="input"
               placeholder="Rencana / status re-ekspor"
             />
-          </label>
-          <label className="label">
-            <span className="flex items-center gap-2 font-normal">
-              <input
-                type="checkbox"
-                name="invoiceSent"
-                defaultChecked={job.invoiceSent === true}
-                className="size-4 rounded border-slate-300"
-              />
-              Invoice terkirim
-            </span>
           </label>
         </div>
       </section>

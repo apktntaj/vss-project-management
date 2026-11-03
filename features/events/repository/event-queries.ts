@@ -98,29 +98,39 @@ function computeAttention(rows: AttentionRow[]): EventListAttention {
 
 // ── Insight operasional (panel "Perlu tindakan" + statistik) ─────────────────────────────────
 
-// Muat payload `jobs` workspace dan kelompokkan per eventId — bahan rollup tuntas. Payload jsonb
-// dibaca structural (TuntasJobShape): bentuk job lama dan baru sama-sama diterima; job tanpa
-// eventId (job lama lepas) diabaikan.
+// Muat kolom job yang dibutuhkan rollup tuntas dan kelompokkan per event. Hanya kolom yang
+// dipakai `TuntasJobShape` yang diambil — bukan seluruh aggregate.
+type TuntasJobRow = {
+  event_id: string
+  kind: string
+  international_jenis: string | null
+  kepulangan: unknown
+  operational: TuntasJobShape['operational']
+}
+
 async function fetchJobsGroupedByEvent(
   client: Awaited<ReturnType<typeof withWorkspace>>['client'],
   workspaceId: string,
 ): Promise<Map<string, TuntasJobShape[]>> {
   const { data, error } = await client
     .from('jobs')
-    .select('payload')
+    .select('event_id, kind, international_jenis, kepulangan, operational')
     .eq('workspace_id', workspaceId)
-    .returns<{ payload: (TuntasJobShape & { eventId?: string | null }) | null }[]>()
+    .returns<TuntasJobRow[]>()
 
   if (error) {
     throw new Error(`Gagal memuat job untuk insight: ${error.message}`)
   }
   const grouped = new Map<string, TuntasJobShape[]>()
   for (const row of data ?? []) {
-    const eventId = row?.payload?.eventId
-    if (!eventId) continue
-    const list = grouped.get(eventId) ?? []
-    list.push(row.payload as TuntasJobShape)
-    grouped.set(eventId, list)
+    const list = grouped.get(row.event_id) ?? []
+    list.push({
+      kind: row.kind,
+      internationalJenis: row.international_jenis,
+      kepulangan: row.kepulangan,
+      operational: row.operational,
+    })
+    grouped.set(row.event_id, list)
   }
   return grouped
 }
@@ -335,7 +345,9 @@ export async function queryEventList(q: EventListQuery): Promise<EventListPage> 
     listQuery = listQuery.lt('ends_on', today)
   }
 
-  listQuery = listQuery.order('starts_on', { ascending: false, nullsFirst: false })
+  // Urutan akhir ditentukan sort kedekatan-hari-ini di bawah (butuh "hari ini"); order SQL hanya
+  // memberi urutan deterministik awal.
+  listQuery = listQuery.order('starts_on', { ascending: true, nullsFirst: false })
 
   const { data: listData, error: listError } = await listQuery.returns<EventJoinedRow[]>()
   if (listError) {
@@ -381,6 +393,19 @@ export async function queryEventList(q: EventListQuery): Promise<EventListPage> 
           ].some((value) => value.toLowerCase().includes(needle))
         })
       : items
+
+  // Urut berdasarkan kedekatan dengan hari ini: berlangsung → akan datang (terdekat dulu) →
+  // selesai (terbaru dulu) → belum dijadwalkan. Sort stabil menjaga urutan SQL untuk nilai kembar.
+  const proximityRank = { ongoing: 0, soon: 1, done: 2, unscheduled: 3 } as const
+  visibleItems.sort((a, b) => {
+    const rank = proximityRank[a.displayStatus] - proximityRank[b.displayStatus]
+    if (rank !== 0) return rank
+    if (a.displayStatus === 'soon' || a.displayStatus === 'ongoing') {
+      return (a.startsOn ?? '').localeCompare(b.startsOn ?? '')
+    }
+    if (a.displayStatus === 'done') return (b.endsOn ?? '').localeCompare(a.endsOn ?? '')
+    return 0
+  })
 
   // Rollup tuntas per baris (badge "Belum tuntas" + peringatan arsip) — satu query jobs, digabung
   // di JS karena bentuknya jsonb lintas generasi.
@@ -458,51 +483,25 @@ async function queryEventAttention(
 
 /**
  * Baris event dalam bentuk legacy (snake_case + embed venues/event_organizers/
- * event_cancellations/exhibitors) untuk klien lama lewat GET /api/events — halaman
- * detail event dan detail CIPL masih memetakannya via `eventFromRow`/`exhibitorFromRow`
- * di lib/data-client sampai keduanya pindah ke bentuk features.
+ * event_cancellations/exhibitors) untuk klien lama lewat GET /api/events — halaman detail event
+ * dan daftar job masih memetakannya via `eventFromRow`/`exhibitorFromRow` di lib/data-client.
  */
 export async function listLegacyEventRows(): Promise<Record<string, unknown>[]> {
   const { client, workspaceId } = await withWorkspace()
-
-  // exhibitors TIDAK bisa di-embed: tabel legacy ini tidak punya FK ke events,
-  // jadi diambil terpisah lalu dijahit per event_id (pola /api/jobs).
-  const [eventsResult, exhibitorsResult] = await Promise.all([
-    client
-      .from('events')
-      .select(
-        'id, name, alias, venue_id, event_organizer_id, pic_id, starts_on, ends_on, status, created_at, created_by_id, updated_at, ' +
-          'venues(id, legal_name, alias_name, city, created_at, updated_at), ' +
-          'event_organizers(id, legal_name, created_at, updated_at), ' +
-          'event_cancellations(event_id, reason, cancelled_at, cancelled_by_id)',
-      )
-      .eq('workspace_id', workspaceId)
-      .order('starts_on')
-      .returns<Record<string, unknown>[]>(),
-    client
-      .from('exhibitors')
-      .select('id, event_id, name, kind, contact, agent_id, npwp, created_at, created_by_id, updated_at')
-      .eq('workspace_id', workspaceId)
-      .order('name')
-      .returns<Record<string, unknown>[]>(),
-  ])
-
-  if (eventsResult.error) {
-    throw new Error(`Gagal memuat event: ${eventsResult.error.message}`)
+  const { data, error } = await client
+    .from('events')
+    .select(
+      'id, name, alias, venue_id, event_organizer_id, pic_id, starts_on, ends_on, status, created_at, created_by_id, updated_at, ' +
+        'venues(id, legal_name, alias_name, city, created_at, updated_at), ' +
+        'event_organizers(id, legal_name, created_at, updated_at), ' +
+        'event_cancellations(event_id, reason, cancelled_at, cancelled_by_id), ' +
+        'exhibitors(id, event_id, kind, name, npwp, contact, hall, booth, created_at, updated_at)',
+    )
+    .eq('workspace_id', workspaceId)
+    .order('starts_on')
+    .returns<Record<string, unknown>[]>()
+  if (error) {
+    throw new Error(`Gagal memuat event: ${error.message}`)
   }
-  if (exhibitorsResult.error) {
-    throw new Error(`Gagal memuat exhibitor: ${exhibitorsResult.error.message}`)
-  }
-
-  const exhibitorsByEvent = new Map<string, Record<string, unknown>[]>()
-  for (const exhibitor of exhibitorsResult.data ?? []) {
-    const key = String(exhibitor.event_id)
-    const bucket = exhibitorsByEvent.get(key)
-    if (bucket) bucket.push(exhibitor)
-    else exhibitorsByEvent.set(key, [exhibitor])
-  }
-  return (eventsResult.data ?? []).map((row) => ({
-    ...row,
-    exhibitors: exhibitorsByEvent.get(String(row.id)) ?? [],
-  }))
+  return data ?? []
 }

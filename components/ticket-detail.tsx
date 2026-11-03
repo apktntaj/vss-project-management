@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { addTicketComment, assignTicket, getTicketDetail, listEvents, listJobs, listUsers, moveAndReorderTickets, takeTicket, type LocalEvent, type LocalJob, type LocalUser, type TicketDetail as TicketDetailData, type TicketStatus } from '@/lib/data-client'
+import { addTicketComment, assignTicket, getTicketDetail, listEvents, listJobSummaries, listUsers, moveAndReorderTickets, takeTicket, type LocalEvent, type JobSummary, type LocalUser, type TicketDetail as TicketDetailData, type TicketStatus } from '@/lib/data-client'
 import { mergeTicketTimeline } from '@/domain/ticket/timeline'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -17,7 +17,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
   const [detail, setDetail] = useState<TicketDetailData | null>(null)
   const [users, setUsers] = useState<LocalUser[]>([])
   const [events, setEvents] = useState<LocalEvent[]>([])
-  const [jobs, setJobs] = useState<LocalJob[]>([])
+  const [jobs, setJobs] = useState<JobSummary[]>([])
   const [error, setError] = useState('')
   const [comment, setComment] = useState('')
   const [commentSaving, setCommentSaving] = useState(false)
@@ -26,7 +26,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
 
   const load = useCallback(async () => {
     try {
-      const [nextDetail, nextUsers, nextEvents, nextJobs] = await Promise.all([getTicketDetail(ticketId), listUsers(), listEvents(), listJobs()])
+      const [nextDetail, nextUsers, nextEvents, nextJobs] = await Promise.all([getTicketDetail(ticketId), listUsers(), listEvents(), listJobSummaries()])
       setDetail(nextDetail); setUsers(nextUsers); setEvents(nextEvents); setJobs(nextJobs); setError('')
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Ticket tidak dapat dimuat.') }
   }, [ticketId])
@@ -34,7 +34,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
 
   const names = useMemo(() => new Map(users.map((user) => [user.id, user.name])), [users])
   const eventNames = useMemo(() => new Map(events.map((event) => [event.id, event.officialName])), [events])
-  const jobNames = useMemo(() => new Map(jobs.map((job) => [job.id, `${job.jobNumber} · ${job.clientName}`])), [jobs])
+  const jobNames = useMemo(() => new Map(jobs.map((job) => [job.id, `${job.jobNumber ?? job.vssNumber} · ${job.partyName ?? "Pihak belum ditetapkan"}`])), [jobs])
   if (error) return <div className="card mx-auto max-w-xl p-8"><h1 className="text-xl font-semibold">Ticket tidak tersedia</h1><p className="mt-2 text-sm text-muted-foreground">{error}</p><Link href="/kanban" className="mt-5 inline-flex">Kembali ke tickets</Link></div>
   if (!detail) return <div className="card p-8 text-sm text-muted-foreground">Memuat ticket…</div>
 

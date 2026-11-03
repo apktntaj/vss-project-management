@@ -1,43 +1,20 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { nanoid } from 'nanoid'
-import { Plus, Search, Trash2, X } from 'lucide-react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Plus, Search, X } from 'lucide-react'
 
 import {
-  applyCiplAutofill,
-  createInternationalJobInit,
-  createLocalJobInit,
+  createJob as createJobRecord,
   listAgents,
-  listEventExhibitors,
   saveAgent,
-  saveJobManifestExhibitors,
-  saveJobTransportExtraction,
   type Agent,
   type InternationalJobJenis,
   type LocalEvent,
-  type LocalExhibitor,
-  type LocalJob,
+  type Job,
+  type TransportMode,
 } from '@/lib/data-client'
-import {
-  barisBarangSchema,
-  disposisiBarangs,
-  disposisiBarangLabels,
-  type BarisBarang,
-  type DisposisiBarang,
-} from '@/domain/exhibition/cipl-document'
-import {
-  autofillResolutionLabels,
-  reconcileKoliTotal,
-  resolveCiplAutofill,
-  summarizeAutofill,
-  type CiplScanEntry,
-} from '@/domain/exhibition/cipl-autofill'
-import { matchExhibitorByName } from '@/domain/event/exhibitor-matching'
-import { exhibitorLogisticsSchema, type Koli } from '@/domain/job/manifest'
+import { transportModeLabels, transportModes } from '@/domain/job/types'
 import { internationalJobJenisLabels } from '@/domain/job/types'
-import type { JobTransportExtraction } from '@/domain/exhibition/source-documents'
-import { TransportEditor } from '@/components/job-document-editor-dialog'
 
 function toast(message: string, tone: 'success' | 'error') {
   window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
@@ -77,168 +54,9 @@ function jobTypeLabel(value: JobTypeSelection) {
   return value === 'LOCAL' ? 'Local' : internationalJobJenisLabels[value]
 }
 
-const slideLabels = ['Job', 'CIPL', 'B/L atau AWB']
-
-type CiplLineDraft = {
-  label: string
-  length: string
-  width: string
-  height: string
-  cbm: string
-  weight: string
-  satuanKemasan: string
-  uraian: string
-  merekModel: string
-  kodeHs: string
-  jumlah: string
-  satuan: string
-  nilaiSatuan: string
-  nilaiTotal: string
-  disposisi: DisposisiBarang
-}
-type CiplRowDraft = {
-  key: string
-  jobNo: string
-  name: string
-  totalPackage: string
-  bareCase: string
-  hall: string
-  booth: string
-  lines: CiplLineDraft[]
-}
-
-/** Badge status penautan satu baris terhadap exhibitor event — diturunkan dari nama, bukan disimpan. */
-function rowLinkStatus(name: string, pool: ReadonlyArray<LocalExhibitor>) {
-  const trimmed = name.trim()
-  if (!trimmed) return null
-  const match = matchExhibitorByName(trimmed, pool)
-  if (match.kind === 'MATCHED') return { kind: 'TERTAUT' as const, hint: match.exhibitor.name }
-  if (match.kind === 'AMBIGUOUS')
-    return { kind: 'AMBIGU' as const, hint: `${match.candidates.length} exhibitor bernama sama` }
-  return { kind: 'BARU' as const, hint: 'akan didaftarkan ke event' }
-}
-
-const linkStatusClass: Record<'TERTAUT' | 'BARU' | 'AMBIGU', string> = {
-  TERTAUT: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  BARU: 'bg-amber-50 text-amber-700 ring-amber-200',
-  AMBIGU: 'bg-rose-50 text-rose-700 ring-rose-200',
-}
-
-const emptyLine = (): CiplLineDraft => ({
-  label: '',
-  length: '',
-  width: '',
-  height: '',
-  cbm: '',
-  weight: '',
-  satuanKemasan: '',
-  uraian: '',
-  merekModel: '',
-  kodeHs: '',
-  jumlah: '',
-  satuan: '',
-  nilaiSatuan: '',
-  nilaiTotal: '',
-  disposisi: 'TIDAK_DISEBUT',
-})
-
-const emptyRow = (key: string): CiplRowDraft => ({
-  key,
-  jobNo: '',
-  name: '',
-  totalPackage: '',
-  bareCase: '',
-  hall: '',
-  booth: '',
-  lines: [emptyLine()],
-})
-
-/** Satu baris gabungan (kemasan + barang) → BarisBarang; refKoli diwariskan dari kolom case (fill-down). */
-function lineToBarang(line: CiplLineDraft, refKoli: string | null): BarisBarang | null {
-  const parsed = barisBarangSchema.safeParse({
-    uraian: line.uraian.trim(),
-    merekModel: line.merekModel.trim() || null,
-    kodeHs: line.kodeHs.trim() || null,
-    jumlah: numberOrNull(line.jumlah),
-    satuan: line.satuan.trim() || 'UNIT',
-    nilaiSatuan: numberOrNull(line.nilaiSatuan),
-    nilaiTotal: numberOrNull(line.nilaiTotal),
-    disposisi: line.disposisi,
-    refKoli,
-  })
-  return parsed.success ? parsed.data : null
-}
-
-/** Minimal satu field terisi — gerbang tombol "Tambah exhibitor". */
-function isRowFilled(row: CiplRowDraft): boolean {
-  if (
-    row.name.trim() ||
-    row.totalPackage.trim() ||
-    row.bareCase.trim() ||
-    row.hall.trim() ||
-    row.booth.trim()
-  ) {
-    return true
-  }
-  return row.lines.some((line) =>
-    Boolean(
-      line.label.trim() ||
-      line.length.trim() ||
-      line.width.trim() ||
-      line.height.trim() ||
-      line.cbm.trim() ||
-      line.weight.trim() ||
-      line.satuanKemasan.trim() ||
-      line.uraian.trim() ||
-      line.merekModel.trim() ||
-      line.kodeHs.trim() ||
-      line.jumlah.trim() ||
-      line.satuan.trim() ||
-      line.nilaiSatuan.trim() ||
-      line.nilaiTotal.trim() ||
-      line.disposisi !== 'TIDAK_DISEBUT',
-    ),
-  )
-}
-
-const emptyTransport = (): JobTransportExtraction => ({
-  documentNumber: null,
-  documentDate: null,
-  carrier: null,
-  vesselOrFlight: null,
-  voyageOrFlightNumber: null,
-  bookingNumber: null,
-  shipper: null,
-  consignee: null,
-  notifyParty: null,
-  portOfLoading: null,
-  portOfDischarge: null,
-  placeOfReceipt: null,
-  placeOfDelivery: null,
-  etd: null,
-  eta: null,
-  packageCount: null,
-  packageType: null,
-  marksAndNumbers: null,
-  grossWeightKg: null,
-  netWeightKg: null,
-  volumeM3: null,
-  containers: [],
-})
-
-const numberOrNull = (value: string): number | null => {
-  if (!value.trim()) return null
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : null
-}
-
 /**
- * Wizard pembuatan job tiga bagian: (1) job — event via pencarian, jenis, No Job,
- * agent, bill to; (2) informasi CIPL — daftar exhibitor + rincian koli, diisi manual;
- * (3) data B/L atau AWB, diisi manual. Bagian dapat diisi dalam urutan
- * bebas lewat langkah di header; "Selesai" tersedia di semua bagian dan menyimpan
- * seluruh isian yang sudah terisi (syarat wajib hanya event pada bagian job), sehingga
- * membatalkan kapan pun tidak meninggalkan data.
+ * Wizard pembuatan job ramping: event via pencarian, jenis job, moda transport, dan agent.
+ * CIPL dan B/L/AWB diisi sesudahnya dari halaman detail job.
  */
 export function JobCreateWizard({
   events,
@@ -248,17 +66,14 @@ export function JobCreateWizard({
 }: {
   events: LocalEvent[]
   presetEvent?: LocalEvent | null
-  onCreated: (job: LocalJob) => void
+  onCreated: (job: Job) => void
   onCancel: () => void
 }) {
-  const [slide, setSlide] = useState(0)
   const [selection, setSelection] = useState<JobTypeSelection>('TPPB_BC_23')
   const [eventQuery, setEventQuery] = useState(presetEvent?.officialName ?? '')
   const [selectedEventId, setSelectedEventId] = useState<string | null>(presetEvent?.id ?? null)
-  const [jobNumberInput, setJobNumberInput] = useState('')
-  const [billToInput, setBillToInput] = useState('')
-  /** Benar setelah user mengetik bill to sendiri — bill to berhenti mengikuti agent. */
-  const [billToTouched, setBillToTouched] = useState(false)
+  /** Jalur kiriman — bersama jenis job menentukan awalan No Job (S/A/ATA/…). */
+  const [transportMode, setTransportMode] = useState<TransportMode | ''>('SEA')
   const [agents, setAgents] = useState<Agent[]>([])
   const [loadingAgents, setLoadingAgents] = useState(true)
   const [tanpaAgent, setTanpaAgent] = useState(false)
@@ -270,14 +85,7 @@ export function JobCreateWizard({
   const [newAgentEmail, setNewAgentEmail] = useState('')
   const [newAgentPhone, setNewAgentPhone] = useState('')
   const [error, setError] = useState('')
-  const [ciplRows, setCiplRows] = useState<CiplRowDraft[]>(() => [emptyRow('cipl-row-0')])
-  /** Exhibitor event terpilih — kolam pencocokan autofill CIPL. */
-  const [eventExhibitors, setEventExhibitors] = useState<LocalExhibitor[]>([])
-  const [docKind, setDocKind] = useState<'BL' | 'AWB'>('BL')
-  const [transport, setTransport] = useState<JobTransportExtraction | null>(null)
   const [finishing, setFinishing] = useState(false)
-  const rowKeyRef = useRef(0)
-  const nextRowKey = () => `cipl-row-${++rowKeyRef.current}`
 
   useEffect(() => {
     let active = true
@@ -290,26 +98,6 @@ export function JobCreateWizard({
       active = false
     }
   }, [])
-
-  // Exhibitor event dimuat begitu event dipilih: tanpa kolam ini setiap entri CIPL akan
-  // tampak "baru" dan autofill mendaftarkan ulang exhibitor yang sudah ada.
-  useEffect(() => {
-    if (!selectedEventId) {
-      setEventExhibitors([])
-      return
-    }
-    let active = true
-    listEventExhibitors(selectedEventId)
-      .then((loaded) => {
-        if (active) setEventExhibitors(loaded)
-      })
-      .catch(() => {
-        if (active) setEventExhibitors([])
-      })
-    return () => {
-      active = false
-    }
-  }, [selectedEventId])
 
   const selectedEvent = useMemo(
     () => events.find((event) => event.id === selectedEventId) ?? presetEvent ?? null,
@@ -334,8 +122,10 @@ export function JobCreateWizard({
 
   function changeSelection(next: JobTypeSelection) {
     setSelection(next)
-    // Local dan road shipment tidak membutuhkan agent — centang "Tanpa agent" dan bersihkan pilihan agent.
-    const tanpaAgentDefault = next === 'LOCAL' || next === 'ROAD_SHIPMENT'
+    if (next === 'ROAD_SHIPMENT') setTransportMode('ROAD')
+    else if (transportMode === 'ROAD') setTransportMode('SEA')
+    // Job Local selalu dipegang exhibitor — tanpa agent.
+    const tanpaAgentDefault = next === 'LOCAL'
     setTanpaAgent(tanpaAgentDefault)
     if (tanpaAgentDefault) {
       setSelectedAgentId(null)
@@ -354,7 +144,6 @@ export function JobCreateWizard({
   function selectAgent(agent: Agent) {
     setSelectedAgentId(agent.id)
     setAgentQuery(agent.name)
-    if (!billToTouched) setBillToInput(agent.name)
   }
 
   async function resolveAgentId(): Promise<{ agentId: string | null; agentName: string }> {
@@ -382,24 +171,24 @@ export function JobCreateWizard({
     return { agentId: null, agentName: '' }
   }
 
-  async function createJob(): Promise<LocalJob> {
+  /** Job Local selalu dipegang exhibitor (aturan server/DB). */
+  const exhibitorOnlySelection = selection === 'LOCAL'
+
+  async function createJob(): Promise<Job> {
     if (!selectedEvent) throw new Error('Pilih event untuk job ini terlebih dahulu.')
-    const { agentId } = await resolveAgentId()
-    return selection === 'LOCAL'
-      ? await createLocalJobInit(selectedEvent.id, agentId, null, {
-          jobNumber: jobNumberInput,
-          billTo: billToInput,
-        })
-      : await createInternationalJobInit({
-          eventId: selectedEvent.id,
-          agentId,
-          internationalJenis: selection,
-          jobNumber: jobNumberInput,
-          billTo: billToInput,
-        })
+    const { agentId } = exhibitorOnlySelection ? { agentId: null } : await resolveAgentId()
+    return createJobRecord({
+      eventId: selectedEvent.id,
+      kind: selection === 'LOCAL' ? 'LOCAL' : 'INTERNATIONAL',
+      internationalJenis: selection === 'LOCAL' ? null : selection,
+      transportMode: transportMode || null,
+      agentId,
+      // Pihak exhibitor ditetapkan sesudah CIPL tersimpan (exhibitor-nya bisa baru dibuat di sana).
+      exhibitorId: null,
+    })
   }
 
-  function submitSlideJob(formEvent: FormEvent<HTMLFormElement>) {
+  async function createAndClose(formEvent: FormEvent<HTMLFormElement>) {
     formEvent.preventDefault()
     setError('')
     if (!selectedEvent) {
@@ -408,161 +197,19 @@ export function JobCreateWizard({
       toast(message, 'error')
       return
     }
-    if (selection === 'LOCAL') {
-      void finish()
-      return
-    }
-    setSlide(1)
-  }
-
-  /**
-   * Draft tabel → entri scan domain. "Total pkg" yang terlihat operator diteruskan sebagai
-   * total yang DISEBUT dokumen, sehingga angka yang ia ketik sendiri menang; bila dikosongkan,
-   * label koli ("7-11", "in package No. 22") yang menentukan jumlah paket.
-   */
-  function buildScanEntries(): CiplScanEntry[] {
-    const entries: CiplScanEntry[] = []
-    for (const row of ciplRows) {
-      const name = row.name.trim()
-      if (!name) continue
-      const details: Koli[] = []
-      const labelToId = new Map<string, string>()
-      const items: BarisBarang[] = []
-      let currentLabel: string | null = null
-      let currentKoliId: string | null = null
-      for (const line of row.lines) {
-        const label = line.label.trim() || null
-        if (label !== null) currentLabel = label
-        const lengthCm = numberOrNull(line.length)
-        const widthCm = numberOrNull(line.width)
-        const heightCm = numberOrNull(line.height)
-        const dimension =
-          lengthCm !== null && widthCm !== null && heightCm !== null
-            ? { lengthCm, widthCm, heightCm }
-            : null
-        const volumeCbm = numberOrNull(line.cbm)
-        const weightKg = numberOrNull(line.weight)
-        const hasPackage =
-          label !== null || dimension !== null || volumeCbm !== null || weightKg !== null
-        if (label !== null && labelToId.has(label)) {
-          // case berulang: pakai id koli yang sudah ada (dims hanya di baris pertama)
-          currentKoliId = labelToId.get(label)!
-        } else if (hasPackage) {
-          const id = nanoid()
-          details.push({
-            id,
-            label,
-            dimension,
-            volumeCbm,
-            weightKg,
-            satuanKemasan: line.satuanKemasan.trim() || null,
-          })
-          if (label !== null) labelToId.set(label, id)
-          currentKoliId = id
-        }
-        const barang = lineToBarang(line, currentLabel)
-        if (barang) items.push({ ...barang, refKoliIds: currentKoliId ? [currentKoliId] : [] })
-      }
-      const stated = numberOrNull(row.totalPackage)
-      const statedTotalCount = stated === null ? null : Math.round(stated)
-      const parsed = exhibitorLogisticsSchema.safeParse({
-        hall: row.hall.trim() || null,
-        booth: row.booth.trim() || null,
-        koli: {
-          totalCount: reconcileKoliTotal(details, statedTotalCount),
-          bareCaseCount:
-            numberOrNull(row.bareCase) == null ? null : Math.round(numberOrNull(row.bareCase)!),
-          details,
-        },
-        notes: [],
-      })
-      if (parsed.success) {
-        entries.push({ name, statedTotalCount, logistics: parsed.data, items })
-      }
-    }
-    return entries
-  }
-
-  async function finish() {
     setFinishing(true)
-    let job: LocalJob
     try {
-      job = await createJob()
+      const job = await createJob()
+      toast(`Job (${jobTypeLabel(selection)}) dibuat.`, 'success')
+      // Tetap sibuk sampai halaman tujuan menggantikan wizard ini: tanpa itu, selama navigasi
+      // berjalan form tampak siap dan tombol Selesai bisa ditekan lagi (job ganda).
+      onCreated(job)
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Job tidak dapat dibuat.'
       toast(message, 'error')
       setError(message)
-      setSlide(0)
       setFinishing(false)
-      return
     }
-    let failures = 0
-    const scanEntries = buildScanEntries()
-    const skippedNames = ciplRows.length - scanEntries.length
-    // Satu entri CIPL = satu exhibitor event: yang sudah terdaftar ditautkan lewat nama
-    // ternormalisasi, yang belum didaftarkan di sini, lalu hall/booth/koli-nya ikut tersimpan.
-    const plan = resolveCiplAutofill(scanEntries, eventExhibitors)
-    const manifestRows = plan.rows
-    let autofill: Awaited<ReturnType<typeof applyCiplAutofill>> | null = null
-    if (manifestRows.length) {
-      try {
-        autofill = job.eventId
-          ? await applyCiplAutofill({
-              jobId: job.id,
-              eventId: job.eventId,
-              agentId: job.agentId ?? null,
-              rows: manifestRows,
-            })
-          : // Tanpa event tidak ada master exhibitor yang bisa dituju; baris tetap disimpan di
-            // job apa adanya supaya hasil scan tidak hilang.
-            await saveJobManifestExhibitors(
-              job.id,
-              manifestRows.map((row) => ({
-                exhibitorId: null,
-                name: row.name,
-                logistics: row.logistics,
-              })),
-            ).then(() => null)
-      } catch {
-        failures += 1
-        toast('Baris CIPL tidak dapat disimpan — bisa dilengkapi di detail job.', 'error')
-      }
-    }
-    if (transport) {
-      try {
-        await saveJobTransportExtraction(job.id, transport)
-      } catch {
-        failures += 1
-        toast('Data B/L atau AWB tidak dapat disimpan.', 'error')
-      }
-    }
-    const parts = [`Job (${jobTypeLabel(selection)}) dibuat`]
-    if (manifestRows.length) {
-      const ringkasan = summarizeAutofill(manifestRows)
-      const rincian = [
-        ringkasan.tertaut ? `${ringkasan.tertaut} tertaut` : null,
-        autofill?.created.length ? `${autofill.created.length} exhibitor baru` : null,
-      ].filter(Boolean)
-      parts.push(
-        `${manifestRows.length} exhibitor CIPL${rincian.length ? ` (${rincian.join(', ')})` : ''}`,
-      )
-    }
-    const itemCount = manifestRows.reduce((sum, row) => sum + row.items.length, 0)
-    if (itemCount) parts.push(`${itemCount} baris barang`)
-    if (transport) parts.push(docKind === 'AWB' ? 'AWB' : 'B/L')
-    toast(
-      `${parts.join(' · ')}.${failures ? ' Sebagian data gagal — periksa detail job.' : ''}`,
-      failures ? 'error' : 'success',
-    )
-    if (skippedNames > 0)
-      toast(`${skippedNames} baris CIPL dilewati karena belum ada nama exhibitor.`, 'error')
-    for (const warning of plan.warnings) toast(warning, 'error')
-    if (autofill?.unlinked.length)
-      toast(
-        `${autofill.unlinked.length} baris belum tertaut ke exhibitor event — tautkan dari detail job.`,
-        'error',
-      )
-    onCreated(job)
   }
 
   const busy = finishing
@@ -583,29 +230,6 @@ export function JobCreateWizard({
             <h2 id="job-create-title" className="text-2xl font-bold">
               Job Baru
             </h2>
-            <ol
-              className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs"
-              aria-label="Langkah pembuatan job"
-            >
-              {slideLabels.map((label, index) => (
-                <li key={label} className="flex items-center gap-1.5">
-                  {index > 0 ? <span className="text-slate-300">›</span> : null}
-                  <button
-                    type="button"
-                    onClick={() => setSlide(index)}
-                    disabled={busy}
-                    aria-current={index === slide ? 'step' : undefined}
-                    className={`rounded-full px-2 py-0.5 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                      index === slide
-                        ? 'bg-orange-100 text-orange-800'
-                        : 'text-slate-400 hover:bg-slate-100'
-                    }`}
-                  >
-                    {index + 1}. {label}
-                  </button>
-                </li>
-              ))}
-            </ol>
           </div>
           <button
             type="button"
@@ -617,591 +241,252 @@ export function JobCreateWizard({
           </button>
         </div>
 
-        {slide === 0 ? (
-          <form onSubmit={submitSlideJob} className="flex min-h-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-6 sm:p-8">
-              <div className="relative">
-                <label className="label">
-                  Event
-                  <div className="relative mt-1">
-                    <Search
-                      size={16}
-                      className="pointer-events-none absolute left-3 top-2.5 text-slate-400"
-                      aria-hidden="true"
-                    />
-                    <input
-                      value={eventQuery}
-                      onChange={(inputEvent) => {
-                        setEventQuery(inputEvent.target.value)
-                        setSelectedEventId(null)
-                      }}
-                      onKeyDown={(keyboardEvent) => {
-                        if (keyboardEvent.key === 'Enter' && eventSuggestions.length > 0) {
-                          keyboardEvent.preventDefault()
-                          setSelectedEventId(eventSuggestions[0].id)
-                          setEventQuery(eventSuggestions[0].officialName)
-                        }
-                      }}
-                      className="input py-2 pl-9"
-                      placeholder="Cari nama event, venue, atau EO…"
-                      aria-label="Cari event"
-                      autoComplete="off"
-                      disabled={Boolean(presetEvent)}
-                    />
-                  </div>
-                </label>
-                {eventSuggestions.length > 0 && !selectedEventId ? (
-                  <ul
-                    className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-black/10 bg-white py-1 shadow-lg"
-                    aria-label="Saran event"
-                  >
-                    {eventSuggestions.map((event) => (
-                      <li key={event.id}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedEventId(event.id)
-                            setEventQuery(event.officialName)
-                          }}
-                          className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-orange-50"
-                        >
-                          {event.officialName}
-                          <span className="ml-2 text-xs text-slate-400">
-                            {[event.venue?.name, event.eventOrganizer?.legalName]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                {selectedEventId && selectedEvent ? (
-                  <p className="mt-1.5 text-xs font-medium text-emerald-700">
-                    Event terpilih: {selectedEvent.officialName}
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="label">
-                  Jenis job
-                  <select
-                    value={selection}
-                    onChange={(selectEvent) =>
-                      changeSelection(selectEvent.target.value as JobTypeSelection)
-                    }
-                    className="input mt-1"
-                  >
-                    {jobTypeOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {jobTypeLabel(option.value)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="label">
-                  No Job <span className="font-normal text-slate-400">(opsional)</span>
-                  <input
-                    value={jobNumberInput}
-                    onChange={(inputEvent) =>
-                      setJobNumberInput(inputEvent.target.value.toLocaleUpperCase('id-ID'))
-                    }
-                    className="input mt-1"
-                    placeholder="cth. S.01/ISFEX-VPN/2026"
+        <form onSubmit={createAndClose} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-6 sm:p-8">
+            <div className="relative">
+              <label className="label">
+                Event
+                <div className="relative mt-1">
+                  <Search
+                    size={16}
+                    className="pointer-events-none absolute left-3 top-2.5 text-slate-400"
+                    aria-hidden="true"
                   />
-                </label>
-              </div>
-
-              <section>
-                <div className="flex items-center justify-between gap-3">
-                  <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={tanpaAgent}
-                      onChange={(checkEvent) => changeTanpaAgent(checkEvent.target.checked)}
-                      className="h-4 w-4 accent-orange-600"
-                    />
-                    Tanpa agent
-                  </label>
-                  {!creatingNew ? (
-                    <button
-                      type="button"
-                      onClick={() => setCreatingNew(true)}
-                      disabled={tanpaAgent}
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-orange-700 hover:text-orange-800 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Plus size={13} aria-hidden="true" />
-                      Tambah agent
-                    </button>
-                  ) : null}
+                  <input
+                    value={eventQuery}
+                    onChange={(inputEvent) => {
+                      setEventQuery(inputEvent.target.value)
+                      setSelectedEventId(null)
+                    }}
+                    onKeyDown={(keyboardEvent) => {
+                      if (keyboardEvent.key === 'Enter' && eventSuggestions.length > 0) {
+                        keyboardEvent.preventDefault()
+                        setSelectedEventId(eventSuggestions[0].id)
+                        setEventQuery(eventSuggestions[0].officialName)
+                      }
+                    }}
+                    className="input py-2 pl-9"
+                    placeholder="Cari nama event, venue, atau EO…"
+                    aria-label="Cari event"
+                    autoComplete="off"
+                    disabled={Boolean(presetEvent)}
+                  />
                 </div>
-
-                {!tanpaAgent && creatingNew ? (
-                  <div className="mt-3">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <label className="label sm:col-span-2">
-                        Nama agent
-                        <input
-                          value={newAgentName}
-                          onChange={(inputEvent) => {
-                            const name = inputEvent.target.value.toLocaleUpperCase('id-ID')
-                            setNewAgentName(name)
-                            if (!billToTouched) setBillToInput(name)
-                          }}
-                          className="input mt-1"
-                          placeholder="cth. JS LOGISTICS"
-                        />
-                      </label>
-                      <label className="label">
-                        Nama PIC
-                        <input
-                          value={newAgentContactName}
-                          onChange={(inputEvent) => setNewAgentContactName(inputEvent.target.value)}
-                          className="input mt-1"
-                        />
-                      </label>
-                      <label className="label">
-                        Telepon PIC
-                        <input
-                          value={newAgentPhone}
-                          onChange={(inputEvent) => setNewAgentPhone(inputEvent.target.value)}
-                          className="input mt-1"
-                        />
-                      </label>
-                      <label className="label sm:col-span-2">
-                        Email PIC
-                        <input
-                          type="email"
-                          value={newAgentEmail}
-                          onChange={(inputEvent) => setNewAgentEmail(inputEvent.target.value)}
-                          className="input mt-1"
-                        />
-                      </label>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setCreatingNew(false)}
-                      className="mt-3 text-xs font-semibold text-orange-700 hover:text-orange-800"
-                    >
-                      Pilih agent tersimpan
-                    </button>
-                  </div>
-                ) : (
-                  <div className="mt-3">
-                    <div className="relative">
-                      <input
-                        value={agentQuery}
-                        onChange={(inputEvent) => {
-                          setAgentQuery(inputEvent.target.value)
-                          setSelectedAgentId(null)
+              </label>
+              {eventSuggestions.length > 0 && !selectedEventId ? (
+                <ul
+                  className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-black/10 bg-white py-1 shadow-lg"
+                  aria-label="Saran event"
+                >
+                  {eventSuggestions.map((event) => (
+                    <li key={event.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedEventId(event.id)
+                          setEventQuery(event.officialName)
                         }}
-                        className="input"
-                        placeholder={loadingAgents ? 'Memuat agent...' : 'Ketik nama agent...'}
-                        disabled={tanpaAgent}
-                        aria-label="Cari agent"
-                        autoComplete="off"
-                      />
-                      {agentSuggestions.length > 0 && !selectedAgentId ? (
-                        <ul
-                          className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-black/10 bg-white py-1 shadow-lg"
-                          aria-label="Saran agent"
-                        >
-                          {agentSuggestions.map((agent) => (
-                            <li key={agent.id}>
-                              <button
-                                type="button"
-                                onClick={() => selectAgent(agent)}
-                                className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-orange-50"
-                              >
-                                {agent.name}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </div>
-                    {selectedAgentId ? (
-                      <p className="mt-1.5 text-xs font-medium text-emerald-700">
-                        Agent terpilih: {agents.find((agent) => agent.id === selectedAgentId)?.name}
-                      </p>
-                    ) : null}
-                  </div>
-                )}
-              </section>
+                        className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-orange-50"
+                      >
+                        {event.officialName}
+                        <span className="ml-2 text-xs text-slate-400">
+                          {[event.venue?.name, event.eventOrganizer?.legalName]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {selectedEventId && selectedEvent ? (
+                <p className="mt-1.5 text-xs font-medium text-emerald-700">
+                  Event terpilih: {selectedEvent.officialName}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="label">
+                Jenis job
+                <select
+                  value={selection}
+                  onChange={(selectEvent) =>
+                    changeSelection(selectEvent.target.value as JobTypeSelection)
+                  }
+                  className="input mt-1"
+                >
+                  {jobTypeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {jobTypeLabel(option.value)}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
               <label className="label">
-                Bill to <span className="font-normal text-slate-400">(opsional)</span>
-                <input
-                  value={billToInput}
-                  onChange={(inputEvent) => {
-                    setBillToInput(inputEvent.target.value)
-                    setBillToTouched(true)
-                  }}
+                Jalur
+                <select
+                  value={transportMode}
+                  disabled={selection === 'ROAD_SHIPMENT'}
+                  onChange={(selectEvent) =>
+                    setTransportMode(selectEvent.target.value as TransportMode | '')
+                  }
                   className="input mt-1"
-                  placeholder="Pihak yang ditagih (mis. agent atau exhibitor)"
-                />
+                >
+                  <option value="">Belum diketahui</option>
+                  {transportModes.map((mode) => (
+                    <option
+                      key={mode}
+                      value={mode}
+                      disabled={mode !== 'ROAD' && selection === 'ROAD_SHIPMENT'}
+                    >
+                      {transportModeLabels[mode]}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-xs font-normal text-slate-500">
+                  No Job (S.01, A.01, …) ditetapkan di detail job sesuai urutan barang datang.
+                </span>
               </label>
             </div>
 
-            <div className="shrink-0 border-t px-6 py-4 sm:px-8">
-              {error && <p className="mb-4 text-sm text-rose-700">{error}</p>}
-              <div className="flex justify-end gap-3">
-                <button type="button" onClick={onCancel} className="btn-secondary" disabled={busy}>
-                  Batal
-                </button>
-                <button
-                  type={selection === 'LOCAL' ? 'submit' : 'button'}
-                  onClick={selection === 'LOCAL' ? undefined : finish}
-                  disabled={busy}
-                  className="btn-primary"
-                >
-                  {finishing ? 'Menyimpan...' : 'Selesai'}
-                </button>
+            <section>
+              <div className="flex items-center justify-between gap-3">
+                <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={tanpaAgent}
+                    disabled={exhibitorOnlySelection}
+                    onChange={(checkEvent) => changeTanpaAgent(checkEvent.target.checked)}
+                    className="h-4 w-4 accent-orange-600"
+                  />
+                  Tanpa agent
+                  {exhibitorOnlySelection ? ' (job Local selalu dipegang exhibitor)' : ''}
+                </label>
+                {!creatingNew ? (
+                  <button
+                    type="button"
+                    onClick={() => setCreatingNew(true)}
+                    disabled={tanpaAgent}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-orange-700 hover:text-orange-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Plus size={13} aria-hidden="true" />
+                    Tambah agent
+                  </button>
+                ) : null}
               </div>
-            </div>
-          </form>
-        ) : null}
 
-        {slide === 1 ? (
-          <>
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6 sm:p-8">
-              <ul className="space-y-4">
-                {ciplRows.map((row, rowIndex) => {
-                  const sums = row.lines.reduce(
-                    (total, line) => ({
-                      cbm: total.cbm + (numberOrNull(line.cbm) ?? 0),
-                      kg: total.kg + (numberOrNull(line.weight) ?? 0),
-                    }),
-                    { cbm: 0, kg: 0 },
-                  )
-                  const link = selectedEventId ? rowLinkStatus(row.name, eventExhibitors) : null
-                  return (
-                    <li key={row.key} className="rounded-xl border border-black/10 p-4">
-                      <div className="space-y-3">
-                        <div className="flex items-end gap-2">
-                          <label className="label flex-1">
-                            Exhibitor
-                            {row.jobNo ? (
-                              <span className="ml-1 text-xs font-normal text-slate-400">
-                                {row.jobNo}
-                              </span>
-                            ) : null}
-                            {link ? (
-                              <span
-                                className={`ml-2 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${linkStatusClass[link.kind]}`}
-                                title={link.hint}
-                              >
-                                {autofillResolutionLabels[link.kind]}
-                              </span>
-                            ) : null}
-                            <input
-                              value={row.name}
-                              onChange={(inputEvent) =>
-                                setCiplRows((current) =>
-                                  current.map((item, i) =>
-                                    i === rowIndex
-                                      ? { ...item, name: inputEvent.target.value }
-                                      : item,
-                                  ),
-                                )
-                              }
-                              className="input mt-1"
-                              disabled={finishing}
-                            />
-                          </label>
-                          <button
-                            type="button"
-                            aria-label={`Hapus exhibitor ${row.name || rowIndex + 1}`}
-                            onClick={() =>
-                              setCiplRows((current) => current.filter((_, i) => i !== rowIndex))
-                            }
-                            className="mb-1 rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-700"
-                            disabled={finishing}
-                          >
-                            <Trash2 size={16} aria-hidden="true" />
-                          </button>
-                        </div>
-                        <div className="flex flex-wrap items-end gap-3">
-                          <label className="label w-24">
-                            Total pkg
-                            <input
-                              type="number"
-                              min="0"
-                              value={row.totalPackage}
-                              onChange={(inputEvent) =>
-                                setCiplRows((current) =>
-                                  current.map((item, i) =>
-                                    i === rowIndex
-                                      ? { ...item, totalPackage: inputEvent.target.value }
-                                      : item,
-                                  ),
-                                )
-                              }
-                              className="input mt-1"
-                              disabled={finishing}
-                            />
-                          </label>
-                          <label className="label w-28">
-                            Booth no
-                            <input
-                              value={row.booth}
-                              onChange={(inputEvent) =>
-                                setCiplRows((current) =>
-                                  current.map((item, i) =>
-                                    i === rowIndex
-                                      ? { ...item, booth: inputEvent.target.value }
-                                      : item,
-                                  ),
-                                )
-                              }
-                              className="input mt-1"
-                              disabled={finishing}
-                            />
-                          </label>
-                          <label className="label w-28">
-                            Hall
-                            <input
-                              value={row.hall}
-                              onChange={(inputEvent) =>
-                                setCiplRows((current) =>
-                                  current.map((item, i) =>
-                                    i === rowIndex
-                                      ? { ...item, hall: inputEvent.target.value }
-                                      : item,
-                                  ),
-                                )
-                              }
-                              className="input mt-1"
-                              disabled={finishing}
-                            />
-                          </label>
-                          <label className="label w-24">
-                            Bare case
-                            <input
-                              type="number"
-                              min="0"
-                              value={row.bareCase}
-                              onChange={(inputEvent) =>
-                                setCiplRows((current) =>
-                                  current.map((item, i) =>
-                                    i === rowIndex
-                                      ? { ...item, bareCase: inputEvent.target.value }
-                                      : item,
-                                  ),
-                                )
-                              }
-                              className="input mt-1"
-                              disabled={finishing}
-                            />
-                          </label>
-                        </div>
-                      </div>
-
-                      <div className="mt-4">
-                        <div className="space-y-3">
-                          {row.lines.map((line, lineIndex) => (
-                            <div
-                              key={lineIndex}
-                              className="rounded-lg border border-black/5 bg-slate-50/60 p-3"
+              {!tanpaAgent && creatingNew ? (
+                <div className="mt-3">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="label sm:col-span-2">
+                      Nama agent
+                      <input
+                        value={newAgentName}
+                        onChange={(inputEvent) => {
+                          const name = inputEvent.target.value.toLocaleUpperCase('id-ID')
+                          setNewAgentName(name)
+                        }}
+                        className="input mt-1"
+                        placeholder="cth. JS LOGISTICS"
+                      />
+                    </label>
+                    <label className="label">
+                      Nama PIC
+                      <input
+                        value={newAgentContactName}
+                        onChange={(inputEvent) => setNewAgentContactName(inputEvent.target.value)}
+                        className="input mt-1"
+                      />
+                    </label>
+                    <label className="label">
+                      Telepon PIC
+                      <input
+                        value={newAgentPhone}
+                        onChange={(inputEvent) => setNewAgentPhone(inputEvent.target.value)}
+                        className="input mt-1"
+                      />
+                    </label>
+                    <label className="label sm:col-span-2">
+                      Email PIC
+                      <input
+                        type="email"
+                        value={newAgentEmail}
+                        onChange={(inputEvent) => setNewAgentEmail(inputEvent.target.value)}
+                        className="input mt-1"
+                      />
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCreatingNew(false)}
+                    className="mt-3 text-xs font-semibold text-orange-700 hover:text-orange-800"
+                  >
+                    Pilih agent tersimpan
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-3">
+                  <div className="relative">
+                    <input
+                      value={agentQuery}
+                      onChange={(inputEvent) => {
+                        setAgentQuery(inputEvent.target.value)
+                        setSelectedAgentId(null)
+                      }}
+                      className="input"
+                      placeholder={loadingAgents ? 'Memuat agent...' : 'Ketik nama agent...'}
+                      disabled={tanpaAgent}
+                      aria-label="Cari agent"
+                      autoComplete="off"
+                    />
+                    {agentSuggestions.length > 0 && !selectedAgentId ? (
+                      <ul
+                        className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-black/10 bg-white py-1 shadow-lg"
+                        aria-label="Saran agent"
+                      >
+                        {agentSuggestions.map((agent) => (
+                          <li key={agent.id}>
+                            <button
+                              type="button"
+                              onClick={() => selectAgent(agent)}
+                              className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-orange-50"
                             >
-                              <div className="flex flex-wrap items-end gap-2">
-                                {(
-                                  [
-                                    ['label', 'Case', 'text', 'cth. PKG 1', 'w-28 grow'],
-                                    ['length', 'L (cm)', 'number', '', 'w-20'],
-                                    ['width', 'W (cm)', 'number', '', 'w-20'],
-                                    ['height', 'H (cm)', 'number', '', 'w-20'],
-                                    ['cbm', 'CBM', 'number', '', 'w-20'],
-                                    ['weight', 'Kg', 'number', '', 'w-20'],
-                                    ['satuanKemasan', 'Satuan', 'text', 'cth. CARTON', 'w-24'],
-                                    ['uraian', 'Uraian', 'text', 'Nama barang', 'w-40 grow'],
-                                    ['merekModel', 'Merek/model', 'text', '', 'w-28'],
-                                    ['kodeHs', 'HS code', 'text', '', 'w-24'],
-                                    ['jumlah', 'Jumlah', 'number', '', 'w-20'],
-                                    ['satuan', 'Satuan', 'text', '', 'w-20'],
-                                    ['nilaiSatuan', 'Nilai satuan', 'number', '', 'w-24'],
-                                    ['nilaiTotal', 'Nilai total', 'number', '', 'w-24'],
-                                  ] as const
-                                ).map(([field, fieldLabel, type, placeholder, width]) => (
-                                  <label key={field} className={`label text-xs ${width}`}>
-                                    {fieldLabel}
-                                    <input
-                                      type={type}
-                                      {...(type === 'number' ? { min: '0', step: 'any' } : {})}
-                                      value={line[field]}
-                                      onChange={(inputEvent) =>
-                                        setCiplRows((current) =>
-                                          current.map((item, i) =>
-                                            i === rowIndex
-                                              ? {
-                                                  ...item,
-                                                  lines: item.lines.map((entry, j) =>
-                                                    j === lineIndex
-                                                      ? {
-                                                          ...entry,
-                                                          [field]: inputEvent.target.value,
-                                                        }
-                                                      : entry,
-                                                  ),
-                                                }
-                                              : item,
-                                          ),
-                                        )
-                                      }
-                                      placeholder={placeholder || undefined}
-                                      className="input mt-1 py-1.5 text-sm"
-                                      disabled={finishing}
-                                    />
-                                  </label>
-                                ))}
-                                <label className="label w-36 text-xs">
-                                  Disposisi
-                                  <select
-                                    value={line.disposisi}
-                                    onChange={(inputEvent) =>
-                                      setCiplRows((current) =>
-                                        current.map((item, i) =>
-                                          i === rowIndex
-                                            ? {
-                                                ...item,
-                                                lines: item.lines.map((entry, j) =>
-                                                  j === lineIndex
-                                                    ? {
-                                                        ...entry,
-                                                        disposisi: inputEvent.target
-                                                          .value as DisposisiBarang,
-                                                      }
-                                                    : entry,
-                                                ),
-                                              }
-                                            : item,
-                                        ),
-                                      )
-                                    }
-                                    className="input mt-1 py-1.5 text-sm"
-                                    disabled={finishing}
-                                  >
-                                    {disposisiBarangs.map((disposisi) => (
-                                      <option key={disposisi} value={disposisi}>
-                                        {disposisiBarangLabels[disposisi]}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </label>
-                                <button
-                                  type="button"
-                                  aria-label={`Hapus baris ${lineIndex + 1}`}
-                                  onClick={() =>
-                                    setCiplRows((current) =>
-                                      current.map((item, i) =>
-                                        i === rowIndex
-                                          ? {
-                                              ...item,
-                                              lines: item.lines.filter((_, j) => j !== lineIndex),
-                                            }
-                                          : item,
-                                      ),
-                                    )
-                                  }
-                                  className="mb-1 rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-700"
-                                  disabled={finishing}
-                                >
-                                  <Trash2 size={14} aria-hidden="true" />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="mt-2 flex items-center justify-between gap-3">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setCiplRows((current) =>
-                                current.map((item, i) =>
-                                  i === rowIndex
-                                    ? { ...item, lines: [...item.lines, emptyLine()] }
-                                    : item,
-                                ),
-                              )
-                            }
-                            className="inline-flex items-center gap-1 text-xs font-semibold text-orange-700 hover:text-orange-800"
-                            disabled={finishing}
-                          >
-                            <Plus size={13} aria-hidden="true" />
-                            Tambah baris
-                          </button>
-                          <p className="text-xs text-slate-500">
-                            Σ {sums.cbm.toLocaleString('id-ID')} CBM ·{' '}
-                            {sums.kg.toLocaleString('id-ID')} kg
-                          </p>
-                        </div>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
+                              {agent.name}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                  {selectedAgentId ? (
+                    <p className="mt-1.5 text-xs font-medium text-emerald-700">
+                      Agent terpilih: {agents.find((agent) => agent.id === selectedAgentId)?.name}
+                    </p>
+                  ) : null}
+                </div>
+              )}
+            </section>
 
-              <button
-                type="button"
-                onClick={() => setCiplRows((current) => [...current, emptyRow(nextRowKey())])}
-                className="btn-secondary"
-                disabled={finishing || (ciplRows.length > 0 && !ciplRows.some(isRowFilled))}
-              >
-                <Plus size={16} aria-hidden="true" />
-                Tambah exhibitor
+            <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              Tagihan job dikirim ke agent; tanpa agent, ke exhibitor pemilik barang (ditetapkan
+              dari CIPL atau di detail job).
+            </p>
+          </div>
+
+          <div className="shrink-0 border-t px-6 py-4 sm:px-8">
+            {error && <p className="mb-4 text-sm text-rose-700">{error}</p>}
+            <div className="flex justify-end gap-3">
+              <button type="button" onClick={onCancel} className="btn-secondary" disabled={busy}>
+                Batal
+              </button>
+              <button type="submit" disabled={busy} className="btn-primary">
+                {finishing ? 'Menyimpan...' : 'Selesai'}
               </button>
             </div>
-
-            <div className="shrink-0 border-t px-6 py-4 sm:px-8">
-              <div className="flex justify-end gap-3">
-                <button type="button" onClick={onCancel} className="btn-secondary" disabled={busy}>
-                  Batal
-                </button>
-                <button type="button" onClick={finish} disabled={busy} className="btn-primary">
-                  {finishing ? 'Menyimpan...' : 'Selesai'}
-                </button>
-              </div>
-            </div>
-          </>
-        ) : null}
-
-        {slide === 2 ? (
-          <>
-            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden p-6 sm:p-8">
-              <div className="grid shrink-0 gap-4 sm:grid-cols-[220px]">
-                <label className="label">
-                  Jenis dokumen
-                  <select
-                    value={docKind}
-                    onChange={(selectEvent) => setDocKind(selectEvent.target.value as 'BL' | 'AWB')}
-                    className="input mt-1"
-                    disabled={finishing}
-                  >
-                    <option value="BL">B/L (laut)</option>
-                    <option value="AWB">AWB (udara)</option>
-                  </select>
-                </label>
-              </div>
-
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-black/10">
-                <TransportEditor value={transport ?? emptyTransport()} onChange={setTransport} />
-              </div>
-            </div>
-
-            <div className="shrink-0 border-t px-6 py-4 sm:px-8">
-              <div className="flex justify-end gap-3">
-                <button type="button" onClick={onCancel} className="btn-secondary" disabled={busy}>
-                  Batal
-                </button>
-                <button type="button" onClick={finish} disabled={busy} className="btn-primary">
-                  {finishing ? 'Menyimpan...' : 'Selesai'}
-                </button>
-              </div>
-            </div>
-          </>
-        ) : null}
+          </div>
+        </form>
       </div>
     </div>
   )

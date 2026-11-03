@@ -10,8 +10,6 @@ import { EventCardActions } from '@/features/events/components/event-card-action
 import {
   DISPLAY_STATUS_BADGE,
   displayStatusLabel,
-  formatDay,
-  formatDayShort,
   formatDateRange,
   lifecycleBadge,
 } from '@/features/events/components/event-presentation'
@@ -30,7 +28,7 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
   const today = new Date().toISOString().slice(0, 10)
   if (items.length === 0) {
     return (
-      <div className="card p-12 text-center">
+      <div className="card p-8 text-center">
         <p className="font-medium text-slate-600">Belum ada event yang sesuai</p>
         <p className="mt-1 text-sm text-slate-400">Coba ubah atau reset filter.</p>
       </div>
@@ -38,42 +36,40 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
   }
 
   return (
-    <div className="card max-h-[65vh] overflow-auto">
-      <table className="min-w-[920px] w-full table-fixed text-left text-sm">
+    <div className="card max-h-[65vh] overflow-auto lg:max-h-none lg:min-h-0 lg:flex-1">
+      <table className="min-w-[1060px] w-full table-fixed text-left text-sm">
         <colgroup>
           <col className="w-[44px]" />
           <col />
-          <col className="w-[130px]" />
           <col className="w-[150px]" />
-          <col className="w-[150px]" />
-          <col className="w-[100px]" />
+          <col className="w-[215px]" />
+          <col className="w-[215px]" />
+          <col className="w-[180px]" />
           <col className="w-[56px]" />
           <col className="w-[48px]" />
         </colgroup>
         <thead className="text-xs font-semibold uppercase tracking-wider text-slate-400">
           <tr>
-            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-3 text-right">
+            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2 text-right">
               No
             </th>
-            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-3 py-3">
+            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2">
               Event
             </th>
-            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-3 py-3">
+            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2">
               Tanggal
             </th>
-            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-3 py-3">
+            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2">
               Venue
             </th>
-            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-3 py-3">
-              EO
+            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2">
+              Event Organizer
             </th>
-            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-3 py-3">
-              PIC
-            </th>
-            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-3 py-3 text-right">
+            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2">PIC</th>
+            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2 text-right">
               Jobs
             </th>
-            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-3 py-3">
+            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2">
               <span className="sr-only">Aksi</span>
             </th>
           </tr>
@@ -89,10 +85,10 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
                   isInactive ? 'opacity-80' : ''
                 }`}
               >
-                <td className="px-2 py-3 text-right align-top tabular-nums text-slate-400">
+                <td className="px-2 py-2 text-right align-top tabular-nums text-slate-400">
                   {index + 1}
                 </td>
-                <td className="px-3 py-3 align-top">
+                <td className="px-2 py-2 align-top">
                   <Link
                     href={`/events/${item.id}`}
                     className="block truncate font-semibold text-slate-600 hover:text-orange-700"
@@ -100,7 +96,7 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
                   >
                     {item.name}
                   </Link>
-                  <div className="mt-1 flex flex-wrap items-center gap-1">
+                  <div className="mt-0.5 flex flex-wrap items-center gap-1">
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs font-semibold ${DISPLAY_STATUS_BADGE[item.displayStatus]}`}
                     >
@@ -120,45 +116,21 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
                     </p>
                   ) : null}
                 </td>
-                <td className="px-3 py-3 align-top">
+                <td className="px-2 py-2 align-top">
                   {item.startsOn && item.endsOn ? (
-                    <>
-                      <p className="font-medium text-slate-500">
-                        {formatDateRange(item.startsOn, item.endsOn)}
-                      </p>
-                      {item.moveInOn || item.moveOutOn ? (
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {item.moveInOn ? (
-                            <span
-                              className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700"
-                              title={`Move in — barang masuk venue: ${formatDay(item.moveInOn)}`}
-                            >
-                              <span className="font-bold">in</span>
-                              {formatDayShort(item.moveInOn)}
-                            </span>
-                          ) : null}
-                          {item.moveOutOn ? (
-                            <span
-                              className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700"
-                              title={`Move out — barang keluar venue: ${formatDay(item.moveOutOn)}`}
-                            >
-                              <span className="font-bold">out</span>
-                              {formatDayShort(item.moveOutOn)}
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </>
+                    <p className="font-medium text-slate-500">
+                      {formatDateRange(item.startsOn, item.endsOn)}
+                    </p>
                   ) : (
                     <p className="text-sm text-slate-300">Belum dijadwalkan</p>
                   )}
                 </td>
-                <td className="px-3 py-3 align-top">
+                <td className="px-2 py-2 align-top">
                   <p className="truncate text-slate-500" title={item.venueName || undefined}>
                     {item.venueName || 'Venue belum diinput'}
                   </p>
                 </td>
-                <td className="px-3 py-3 align-top">
+                <td className="px-2 py-2 align-top">
                   <p
                     className="truncate text-slate-500"
                     title={item.eventOrganizerName || undefined}
@@ -166,12 +138,12 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
                     {item.eventOrganizerName || 'EO belum diinput'}
                   </p>
                 </td>
-                <td className="px-3 py-3 align-top">
+                <td className="px-2 py-2 align-top">
                   <p className="truncate text-slate-500" title={item.picName || undefined}>
                     {item.picName || 'Belum diinput'}
                   </p>
                 </td>
-                <td className="px-3 py-3 text-right align-top tabular-nums">
+                <td className="px-2 py-2 text-right align-top tabular-nums">
                   {item.jobCount > 0 ? (
                     <span
                       className="text-sm font-semibold text-slate-500"
@@ -183,7 +155,7 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
                     <span className="text-sm text-slate-300">—</span>
                   )}
                 </td>
-                <td className="px-3 py-3 align-top text-right">
+                <td className="px-2 py-2 align-top text-right">
                   <EventCardActions
                     event={{
                       id: item.id,

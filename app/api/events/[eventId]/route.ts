@@ -31,7 +31,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 }
 
 /**
- * Hapus event. Delegasi ke use-case `deleteEvent` (otorisasi per-objek PIC/SUPERVISOR + 404 +
+ * Hapus event. Delegasi ke use-case `deleteEvent` (otorisasi per-objek PIC/penerima akses/admin + 404 +
  * 409 bila ada data turunan). Pada sukses kembalikan 204 tanpa body (Req 14.2).
  */
 export async function DELETE(_request: NextRequest, { params }: RouteContext) {

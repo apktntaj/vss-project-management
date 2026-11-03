@@ -2,45 +2,19 @@
 
 /** Public Supabase-backed data access boundary for all browser UI code. */
 
-import type {
-  Attachment,
-  Cipl,
-  CiplItem,
-  CiplStatus,
-  CiplVersion,
-  CoordinationAgent,
-  CustomsJob,
-  CustomsJobStatus,
-  JobAllocation,
-  MigrationReviewItem,
-  Shipment,
-  ShipmentAllocation,
-} from '@/domain/exhibition/types'
-import type { CiplDocument } from '@/domain/exhibition/cipl-document'
+import type { Role } from '@/domain/auth/types'
 import type {
   Contact,
   Event as EventRecord,
   EventOrganizer,
-  Exhibitor,
-  ExhibitorContact,
   Venue,
 } from '@/domain/event/types'
-import {
-  validateCiplVersionReady,
-  validateJobAllocation,
-  validateJobTransition,
-  validateShipmentAllocation,
-  type CiplVersionFromExtractionInput,
-} from '@/domain/exhibition/validation'
+import type { Exhibitor, ExhibitorContact, ExhibitorKind } from '@/domain/exhibitor/types'
 import type {
   JobInvoiceExtraction,
   JobInvoiceItem,
   JobTransportExtraction,
 } from '@/domain/exhibition/source-documents'
-import type {
-  ExtractionResult,
-} from '@/domain/exhibition/source-documents'
-import type { MandatoryDocumentView } from '@/domain/exhibition/mandatory-documents'
 import type {
   Ticket,
   TicketActivity,
@@ -50,17 +24,26 @@ import type {
   TicketStatus,
 } from '@/domain/ticket/types'
 import type { Agent, EventAgent } from '@/domain/agent/types'
-import type { InternationalJobJenis, JobKind, BcDocumentKind } from '@/domain/job/types'
+import type {
+  InternationalJobJenis,
+  Job,
+  JobCiplLineInput,
+  JobDocumentKind,
+  JobInvoice,
+  JobKind,
+  JobOperationalDetails,
+  JobSummary,
+  TransportMode,
+} from '@/domain/job/types'
+import { normalizeOperationalDetails } from '@/domain/job/operational'
 import {
   exhibitorLogisticsSchema,
-  inwardManifestSchema,
-  jobReturnSchema,
   type ExhibitorLogistics,
   type InwardManifest,
   type JobReturn,
 } from '@/domain/job/manifest'
-import { ciplDocumentSchema } from '@/domain/exhibition/cipl-document'
 import type { CiplAutofillRow } from '@/domain/exhibition/cipl-autofill'
+import type { CiplDocument } from '@/domain/exhibition/cipl-document'
 
 export type {
   Ticket,
@@ -71,7 +54,27 @@ export type {
   TicketStatus,
 } from '@/domain/ticket/types'
 export type { Agent, EventAgent } from '@/domain/agent/types'
-export type { InternationalJobJenis, JobKind, BcDocumentKind } from '@/domain/job/types'
+export type { Exhibitor, ExhibitorContact, ExhibitorKind } from '@/domain/exhibitor/types'
+export type {
+  BcDocumentKind,
+  InternationalJobJenis,
+  InvoiceStatus,
+  Job,
+  JobCiplInfo,
+  JobCiplLine,
+  JobCiplLineInput,
+  JobCustomsDocument,
+  JobDocumentKind,
+  JobInvoice,
+  JobKind,
+  JobOperationalDetails,
+  JobParty,
+  JobStatus,
+  JobSummary,
+  JobTransportLeg,
+  TransportDocumentType,
+  TransportMode,
+} from '@/domain/job/types'
 export type {
   ContainerSize,
   ExhibitorLogistics,
@@ -93,84 +96,12 @@ export type LocalUser = {
   id: string
   name: string
   email: string
-  jobRole: 'STAFF' | 'SUPERVISOR' | 'CUSTOMER_SERVICE' | 'DOCUMENT_ASSISTANT'
+  jobRole: Role
   accessLevel: 'ADMIN' | 'MEMBER'
   isActive: boolean
   createdAt: string
   updatedAt: string
 }
-
-export type LocalStage = {
-  id: string
-  jobId: string
-  name: string
-  status: 'PENDING' | 'IN_PROGRESS' | 'DONE'
-  order: number
-  notes: string | null
-  createdAt: string
-  updatedAt: string
-}
-
-export type JobTransportLeg = {
-  mode: 'SEA' | 'AIR' | 'LOCAL' | null
-  documentType: 'BL' | 'AWB' | null
-  documentNumber: string | null
-  carrier: string | null
-  scheduleAt: string | null
-  actualAt: string | null
-}
-
-export type JobCiplInfo = {
-  status: 'MISSING' | 'REQUESTED' | 'RECEIVED' | 'VERIFIED'
-  referenceNumber: string | null
-  receivedAt: string | null
-}
-
-export type JobBilling =
-  | { kind: 'NOT_READY' }
-  | { kind: 'NOT_APPLICABLE' }
-  | { kind: 'READY'; amount: number; currency: string }
-  | { kind: 'INVOICED'; amount: number; currency: string; reference: string }
-  | { kind: 'PAID'; reference: string }
-
-export type JobCustomsDocument = {
-  applicable: boolean
-  status:
-    'NOT_STARTED' | 'PREPARING' | 'SUBMITTED' | 'REGISTERED' | 'RELEASED' | 'COMPLETED' | 'ON_HOLD'
-  ajuNumber: string | null
-  registrationNumber: string | null
-  registrationDate: string | null
-  warehouseName: string | null
-  billing: JobBilling
-}
-
-export type JobOperationalDetails = {
-  inbound: JobTransportLeg
-  outbound: JobTransportLeg
-  /** Optional for compatibility with Jobs saved before invoice tracking existed. */
-  invoiceNumber?: string | null
-  invoiceItems?: JobInvoiceItem[]
-  /** Complete commercial invoice extraction retained as the source for BC 2.3. */
-  invoice?: JobInvoiceExtraction | null
-  /** Complete B/L or AWB extraction retained alongside the inbound leg summary. */
-  inboundDocument?: JobTransportExtraction | null
-  cipl: JobCiplInfo
-  customs: Record<BcDocumentKind, JobCustomsDocument>
-}
-
-export type JobDocumentKind =
-  | 'SOURCE'
-  | 'INBOUND_TRANSPORT'
-  | 'OUTBOUND_TRANSPORT'
-  | 'BILL_OF_LADING'
-  | 'AIR_WAYBILL'
-  | 'COMMERCIAL_INVOICE'
-  | 'CIPL'
-  | 'BC_2_3'
-  | 'BC_2_5'
-  | 'BC_3_0'
-  | 'BC_2_7'
-  | 'OTHER'
 
 export type JobDocumentMimeType =
   | 'application/pdf'
@@ -181,96 +112,9 @@ export type JobDocumentMimeType =
   | 'application/vnd.ms-excel.template.macroenabled.12'
   | 'application/vnd.ms-excel.sheet.binary.macroenabled.12'
 
-/**
- * Baris exhibitor pada sebuah job. `exhibitorId` menautkannya ke exhibitor event — itulah yang
- * membuat laporan inward manifest per event dapat dirakit dari satu sumber. Baris lama (sebelum
- * autofill CIPL menautkan) hanya punya `name`, jadi id-nya nullable.
- */
-export type JobManifestExhibitor = {
-  exhibitorId?: string | null
-  name: string
-  logistics: ExhibitorLogistics
-}
-
-export type LocalJob = {
-  id: string
-  jobNumber: string
-  awbNumber: string | null
-  blNumber: string | null
-  shipper: string | null
-  consignee: string | null
-  notifyParty: string | null
-  agent: string | null
-  shippingLine: string | null
-  cargoDescription: string | null
-  shipmentMode: 'FCL' | 'LCL' | null
-  cargoDetails: string | null
-  journeyDetails: string | null
-  type: 'IMPORT' | 'EXPORT'
-  clientName: string
-  clientInfo: string | null
-  status: 'DRAFT' | 'IN_PROGRESS' | 'ON_HOLD' | 'COMPLETED' | 'CANCELLED'
-  notes: string | null
-  /** Pihak yang ditagihkan atas invoice job (mis. agent atau exhibitor). */
-  billTo?: string | null
-  /** Keterangan penyimpanan kemasan kosong (empty storage) selama pameran. */
-  emptyStorage?: string | null
-  /** Keterangan rencana/status re-ekspor barang. */
-  reExport?: string | null
-  /** Apakah invoice penagihan sudah dikirim ke pihak yang ditagih. */
-  invoiceSent?: boolean | null
-  trackingToken: string
-  assignedToId: string | null
-  createdById?: string | null
-  eventId?: string | null
-  exhibitorId?: string | null
-  /** Job international terikat ke agent (master data); null pada job lama per exhibitor. */
-  agentId?: string | null
-  kind?: JobKind | null
-  internationalJenis?: InternationalJobJenis | null
-  /** Isi blok inward manifest (dokumen angkut, konfigurasi muatan, milestone, catatan). */
-  inward?: InwardManifest | null
-  /** Fase kepulangan ala return list container/LCL. */
-  kepulangan?: JobReturn | null
-  /** Baris exhibitor + rincian koli hasil scan CIPL/manifest saat job dibuat. */
-  manifestExhibitors?: JobManifestExhibitor[] | null
-  /** Snapshot CiplDocument hasil scan CIPL saat job dibuat (menyertakan baris barang). */
-  manifestCiplDocument?: CiplDocument | null
-  sourceDocumentName?: string | null
-  createdAt: string
-  updatedAt: string
-  assignedTo?: LocalUser | null
-  createdBy?: LocalUser | null
-  exhibitor?: LocalExhibitor | null
-  stages: LocalStage[]
-  documents: LocalJobDocument[]
-  operational?: JobOperationalDetails
-}
-
-export type LocalJobDocument = {
-  id: string
-  jobId: string
-  fileName: string
-  mimeType: JobDocumentMimeType
-  fileSize: number
-  attachmentId: string
-  createdAt: string
-  kind?: JobDocumentKind
-}
-
-/** File bytes are an application input, never part of a persisted domain entity. */
-export type AttachmentUpload = {
-  id: string
-  fileName: string
-  mimeType: 'application/pdf'
-  fileSize: number
-  content: Blob
-  createdAt: string
-}
-
 type StoredFile = {
   id: string
-  ownerType: 'CIPL_VERSION' | 'SHIPMENT' | 'CUSTOMS_JOB' | 'LEGACY_JOB'
+  ownerType: 'JOB'
   ownerId: string
   kind: string | null
   fileName: string
@@ -308,66 +152,32 @@ export type LocalEvent = Omit<EventRecord, 'venue' | 'eventOrganizer'> & {
   venue?: LocalVenue
   eventOrganizer?: LocalEo
 }
-/** Display adapter; the domain form remains a discriminated union on `kind`. */
-export type LocalExhibitor = Exhibitor & {
-  legalName: string
-  aliasName: string | null
-  type: 'LOCAL' | 'INTERNATIONAL'
-  email: string | null
-  phone: string | null
-  agent: string | null
-  address: string | null
-  countryCode: string | null
-  /** Data fisik kepesertaan ala inward manifest: hall, booth, koli, catatan. */
-  logistics?: ExhibitorLogistics | null
-}
 
 type StoreName =
-  | 'jobs'
-  | 'stages'
   | 'users'
   | 'events'
   | 'venues'
   | 'eos'
-  | 'exhibitors'
   | 'agents'
-  | 'jobDocuments'
-  | 'coordinationAgents'
-  | 'cipls'
-  | 'ciplVersions'
-  | 'shipmentsV2'
-  | 'customsJobs'
-  | 'counters'
-  | 'migrationReviewItems'
   | 'files'
   | 'tickets'
   | 'preferences'
 
 type StoredRecord = { id: string }
 
-const collectionTable: Record<Exclude<StoreName, 'files' | 'counters'>, string> = {
-  jobs: 'jobs',
-  stages: 'job_stages',
+const collectionTable: Record<Exclude<StoreName, 'files'>, string> = {
   users: 'operational_users',
   events: 'events',
   venues: 'venues',
   eos: 'event_organizers',
-  exhibitors: 'exhibitors',
   agents: 'agents',
-  jobDocuments: 'job_documents',
-  coordinationAgents: 'coordination_agents',
-  cipls: 'cipls',
-  ciplVersions: 'cipl_versions',
-  shipmentsV2: 'shipments',
-  customsJobs: 'customs_jobs',
-  migrationReviewItems: 'migration_review_items',
   tickets: 'tickets',
   preferences: 'preferences',
 }
 
 async function records<T>(storeName: StoreName, init?: RequestInit, recordId?: string): Promise<T> {
   if (storeName === 'files') throw new Error('Gunakan repository lampiran.')
-  const table = storeName === 'counters' ? 'preferences' : collectionTable[storeName]
+  const table = collectionTable[storeName]
   const params = new URLSearchParams({ table })
   if (recordId) params.set('id', recordId)
   const response = await fetch(`/api/operational-records?${params}`, {
@@ -395,11 +205,6 @@ function put<T extends StoredRecord>(storeName: StoreName, value: T): Promise<T>
   return records<T>(storeName, { method: 'PUT', body: JSON.stringify(value) })
 }
 
-function remove(storeName: StoreName, recordId: string) {
-  if (storeName === 'files') return
-  void records<void>(storeName, { method: 'DELETE' }, recordId)
-}
-
 function now() {
   return new Date().toISOString()
 }
@@ -418,77 +223,9 @@ function id() {
   return crypto.randomUUID()
 }
 
-function emptyCustomsDocument(applicable = true): JobCustomsDocument {
-  return {
-    applicable,
-    status: 'NOT_STARTED',
-    ajuNumber: null,
-    registrationNumber: null,
-    registrationDate: null,
-    warehouseName: null,
-    billing: applicable ? { kind: 'NOT_READY' } : { kind: 'NOT_APPLICABLE' },
-  }
-}
-
-/** Gives pre-existing event-initialized Jobs a useful operational starting point. */
-export function getOperationalDetails(
-  job: Pick<LocalJob, 'operational' | 'blNumber' | 'awbNumber' | 'shippingLine'>,
-): JobOperationalDetails {
-  const stored = job.operational
-  if (stored) {
-    // Job lama menyimpan customs sebelum BC_2_7 ada — lengkapi jenis yang hilang dengan default.
-    const customs = (stored.customs ?? {}) as Partial<Record<BcDocumentKind, JobCustomsDocument>>
-    return {
-      ...stored,
-      customs: {
-        BC_2_3: customs.BC_2_3 ?? emptyCustomsDocument(),
-        BC_2_5: customs.BC_2_5 ?? emptyCustomsDocument(false),
-        BC_3_0: customs.BC_3_0 ?? emptyCustomsDocument(),
-        BC_2_7: customs.BC_2_7 ?? emptyCustomsDocument(false),
-      },
-    }
-  }
-  const documentType = job.blNumber ? 'BL' : job.awbNumber ? 'AWB' : null
-  return {
-    inbound: {
-      mode: documentType === 'BL' ? 'SEA' : documentType === 'AWB' ? 'AIR' : null,
-      documentType,
-      documentNumber: job.blNumber ?? job.awbNumber,
-      carrier: job.shippingLine,
-      scheduleAt: null,
-      actualAt: null,
-    },
-    outbound: {
-      mode: null,
-      documentType: null,
-      documentNumber: null,
-      carrier: null,
-      scheduleAt: null,
-      actualAt: null,
-    },
-    invoiceNumber: null,
-    cipl: { status: 'MISSING', referenceNumber: null, receivedAt: null },
-    customs: {
-      BC_2_3: emptyCustomsDocument(),
-      BC_2_5: emptyCustomsDocument(false),
-      BC_3_0: emptyCustomsDocument(),
-      BC_2_7: emptyCustomsDocument(false),
-    },
-  }
-}
-
-function attachmentMetadata(upload: AttachmentUpload): Attachment {
-  const { content: _content, ...attachment } = upload
-  return attachment
-}
-
-function toStoredFile(
-  upload: AttachmentUpload,
-  ownerType: StoredFile['ownerType'],
-  ownerId: string,
-  kind: string | null = null,
-): StoredFile {
-  return { ...upload, ownerType, ownerId, kind }
+/** Bentuk operational lengkap untuk tampilan (server sudah menyimpan bentuk utuh). */
+export function getOperationalDetails(job: Pick<Job, 'operational'>): JobOperationalDetails {
+  return normalizeOperationalDetails(job.operational)
 }
 
 async function saveFile(file: StoredFile) {
@@ -506,6 +243,40 @@ async function saveFile(file: StoredFile) {
   const response = await fetch('/api/attachments', { method: 'POST', body: form })
   const body = (await response.json().catch(() => null)) as { error?: string } | null
   if (!response.ok) throw new Error(body?.error ?? 'Lampiran tidak dapat diunggah.')
+}
+
+/**
+ * Unduh inward manifest satu event (Excel, format dokumen klien). Mengembalikan isi file + nama
+ * file dari server; pemanggil yang memicu unduhan di browser.
+ */
+export async function downloadEventManifest(eventId: string): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(`/api/events/${encodeURIComponent(eventId)}/manifest-export`, {
+    cache: 'no-store',
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null
+    throw new Error(body?.error ?? 'Manifest tidak dapat diekspor.')
+  }
+  const disposition = response.headers.get('Content-Disposition') ?? ''
+  const encoded = /filename\*=UTF-8''([^;]+)/.exec(disposition)?.[1]
+  const filename = encoded ? decodeURIComponent(encoded) : 'INWARD-MANIFEST.xlsx'
+  return { blob: await response.blob(), filename }
+}
+
+/**
+ * Unduh daftar event (Excel) dengan filter yang sama dengan layar. `search` adalah query string
+ * halaman events (`search`/`status`/`pic`); parameter lain diabaikan server.
+ */
+export async function downloadEventsExport(search: string): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(`/api/events/export${search ? `?${search}` : ''}`, {
+    cache: 'no-store',
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null
+    throw new Error(body?.error ?? 'Daftar event tidak dapat diekspor.')
+  }
+  const filename = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '')?.[1] ?? 'events.xlsx'
+  return { blob: await response.blob(), filename }
 }
 
 /** Returns attachment bytes without leaking the active storage implementation to UI code. */
@@ -619,66 +390,69 @@ export function addTicketComment(ticketId: string, body: string): Promise<Ticket
   })
 }
 
-type JobsApiPayload = {
-  jobs: LocalJob[]
-  stages: LocalStage[]
-  users: LocalUser[]
-  documents: LocalJobDocument[]
-  exhibitors: Record<string, unknown>[]
-  events: Record<string, unknown>[]
+async function jobsRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    cache: 'no-store',
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+  })
+  if (response.status === 204) return undefined as T
+  const data = (await response.json().catch(() => null)) as T | { error?: string } | null
+  if (!response.ok) {
+    throw new Error(
+      data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+        ? data.error
+        : 'Data job tidak dapat diproses.',
+    )
+  }
+  return data as T
 }
 
-export async function listJobsWithEvents() {
-  const response = await fetch('/api/jobs', { cache: 'no-store' })
-  const data = (await response.json().catch(() => null)) as
-    JobsApiPayload | { error?: string } | null
-  if (!response.ok || !data || ('error' in data && typeof data.error === 'string')) {
+function jobPath(jobId: string, suffix = '') {
+  return `/api/jobs/${encodeURIComponent(jobId)}${suffix}`
+}
+
+export type JobListFilter = {
+  eventId?: string
+  status?: string
+  search?: string
+}
+
+function jobListParams(filter: JobListFilter, view: 'full' | 'summary') {
+  const params = new URLSearchParams({ view })
+  if (filter.eventId) params.set('eventId', filter.eventId)
+  if (filter.status) params.set('status', filter.status)
+  if (filter.search?.trim()) params.set('search', filter.search.trim())
+  return params
+}
+
+/** Job lengkap, disaring server. */
+export function listJobs(filter: JobListFilter = {}): Promise<Job[]> {
+  return jobsRequest<Job[]>(`/api/jobs?${jobListParams(filter, 'full')}`)
+}
+
+/** Bentuk ringkas untuk dropdown/label (tiket, dashboard). */
+export function listJobSummaries(filter: JobListFilter = {}): Promise<JobSummary[]> {
+  return jobsRequest<JobSummary[]>(`/api/jobs?${jobListParams(filter, 'summary')}`)
+}
+
+export function listEventJobs(eventId: string): Promise<Job[]> {
+  return listJobs({ eventId })
+}
+
+/** Satu job; null bila tidak ditemukan. */
+export async function getJob(jobId: string): Promise<Job | null> {
+  const response = await fetch(jobPath(jobId), { cache: 'no-store' })
+  if (response.status === 404) return null
+  const data = (await response.json().catch(() => null)) as Job | { error?: string } | null
+  if (!response.ok || !data) {
     throw new Error(
       data && 'error' in data && typeof data.error === 'string'
         ? data.error
-        : 'Data jobs tidak dapat dimuat.',
+        : 'Job tidak dapat dimuat.',
     )
   }
-
-  const payload = data as JobsApiPayload
-  const exhibitors = payload.exhibitors.map(exhibitorFromRow)
-  const jobs = payload.jobs
-    .map((job) => ({
-      ...job,
-      operational: getOperationalDetails(job),
-      assignedTo: payload.users.find((user) => user.id === job.assignedToId) ?? null,
-      createdBy: payload.users.find((user) => user.id === job.createdById) ?? null,
-      exhibitor: exhibitors.find((exhibitor) => exhibitor.id === job.exhibitorId) ?? null,
-      stages: payload.stages
-        .filter((stage) => stage.jobId === job.id)
-        .sort((left, right) => left.order - right.order),
-      documents: payload.documents.filter((document) => document.jobId === job.id),
-    }))
-    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-
-  return { jobs, events: payload.events.map(eventFromRow) }
-}
-
-export async function listJobs(filters: { search?: string; status?: string } = {}) {
-  const { jobs } = await listJobsWithEvents()
-  const search = filters.search?.toLowerCase() ?? ''
-  return jobs.filter(
-    (job) =>
-      (!filters.status || job.status === filters.status) &&
-      (!search ||
-        [job.jobNumber, job.clientName, job.awbNumber, job.blNumber].some((value) =>
-          value?.toLowerCase().includes(search),
-        )),
-  )
-}
-
-export async function getJob(jobId: string) {
-  return (await listJobs()).find((job) => job.id === jobId) ?? null
-}
-
-export async function listEventJobs(eventId: string) {
-  const jobs = await listJobs()
-  return jobs.filter((job) => job.eventId === eventId)
+  return data as Job
 }
 
 type EventResource = 'venues' | 'event-organizers'
@@ -814,32 +588,25 @@ function eventFromRow(row: Record<string, unknown>): LocalEvent {
   }
 }
 
-function exhibitorFromRow(row: Record<string, unknown>): LocalExhibitor {
-  const contact = contactFromRow((row.contact as Record<string, unknown>) ?? {})
-  const logisticsPayload = (row.payload as Record<string, unknown> | null)?.logistics
-  const logistics = logisticsPayload ? exhibitorLogisticsSchema.safeParse(logisticsPayload) : null
-  const shared = {
+function exhibitorFromRow(row: Record<string, unknown>): Exhibitor {
+  const contact = (row.contact ?? {}) as Partial<ExhibitorContact>
+  return {
     id: String(row.id),
     eventId: String(row.event_id),
+    kind: row.kind === 'LOCAL' ? 'LOCAL' : 'INTERNATIONAL',
     name: String(row.name),
-    legalName: String(row.name),
-    aliasName: null,
-    type: row.kind === 'LOCAL' ? ('LOCAL' as const) : ('INTERNATIONAL' as const),
-    contact,
-    email: contact.email,
-    phone: contact.phone,
-    agentId: (row.agent_id as string | null) ?? null,
-    agent: null,
-    address: null,
-    countryCode: null,
-    logistics: logistics && logistics.success ? logistics.data : null,
+    npwp: (row.npwp as string | null) ?? null,
+    contact: {
+      name: contact.name ?? null,
+      role: contact.role ?? null,
+      email: contact.email ?? null,
+      phone: contact.phone ?? null,
+    },
+    hall: (row.hall as string | null) ?? null,
+    booth: (row.booth as string | null) ?? null,
     createdAt: String(row.created_at),
-    createdById: String(row.created_by_id),
     updatedAt: String(row.updated_at),
   }
-  return row.kind === 'LOCAL'
-    ? { ...shared, kind: 'LOCAL', npwp: (row.npwp as string | null) ?? null }
-    : { ...shared, kind: 'INTERNATIONAL' }
 }
 
 export async function listEvents(): Promise<LocalEvent[]> {
@@ -858,7 +625,7 @@ export async function listEventsWithExhibitors() {
           ? (row.exhibitors as Record<string, unknown>[]).map(exhibitorFromRow)
           : [],
       ]),
-    ) as Record<string, LocalExhibitor[]>,
+    ) as Record<string, Exhibitor[]>,
   }
 }
 
@@ -959,23 +726,63 @@ export async function addAgentToEvent(eventId: string, agentId: string): Promise
   })
 }
 
-export async function setExhibitorAgent(
-  eventId: string,
-  exhibitorId: string,
-  agentId: string | null,
-) {
-  return eventsRequest(`/api/events/${encodeURIComponent(eventId)}/exhibitors`, {
-    method: 'PATCH',
-    body: JSON.stringify({ exhibitorId, agentId }),
+export type EventGrantee = { userId: string; fullName: string; grantedAt: string }
+export type EventAccessView = {
+  grantees: EventGrantee[]
+  candidates: { id: string; fullName: string }[]
+}
+
+const eventAccessPath = (eventId: string) => `/api/events/${encodeURIComponent(eventId)}/access`
+
+/** Penerima akses event + calon penerima. Hanya PIC/admin; selain itu 403. */
+export function listEventAccess(eventId: string): Promise<EventAccessView> {
+  return eventsRequest<EventAccessView>(eventAccessPath(eventId))
+}
+
+/** Beri `userId` akses kelola event (PIC/admin). */
+export async function grantEventAccess(eventId: string, userId: string): Promise<void> {
+  await eventsRequest<void>(eventAccessPath(eventId), {
+    method: 'POST',
+    body: JSON.stringify({ userId }),
   })
 }
 
-/** Exhibitor satu event, termasuk data fisik kepesertaan (payload.logistics). */
-export async function listEventExhibitors(eventId: string): Promise<LocalExhibitor[]> {
-  const rows = await eventsRequest<Array<Record<string, unknown>>>(
-    `/api/events/${encodeURIComponent(eventId)}/exhibitors`,
-  )
-  return rows.map(exhibitorFromRow)
+/** Cabut akses kelola event dari `userId` (PIC/admin). */
+export async function revokeEventAccess(eventId: string, userId: string): Promise<void> {
+  await eventsRequest<void>(eventAccessPath(eventId), {
+    method: 'DELETE',
+    body: JSON.stringify({ userId }),
+  })
+}
+
+/** Exhibitor satu event (pihak bisnis: nama, jenis, NPWP, kontak, hall, booth). */
+export function listEventExhibitors(eventId: string): Promise<Exhibitor[]> {
+  return eventsRequest<Exhibitor[]>(`/api/events/${encodeURIComponent(eventId)}/exhibitors`)
+}
+
+export type ExhibitorInput = {
+  name: string
+  kind: ExhibitorKind
+  npwp?: string | null
+  contact?: ExhibitorContact
+  hall?: string | null
+  booth?: string | null
+}
+
+/** Daftarkan exhibitor baru pada sebuah event; respons berurutan sama dengan masukan. */
+export function createEventExhibitors(eventId: string, inputs: ExhibitorInput[]): Promise<Exhibitor[]> {
+  return eventsRequest<Exhibitor[]>(`/api/events/${encodeURIComponent(eventId)}/exhibitors`, {
+    method: 'POST',
+    body: JSON.stringify(inputs),
+  })
+}
+
+/** Ubah sebagian data exhibitor; hanya field yang dikirim yang ditulis. */
+export function updateExhibitor(exhibitorId: string, patch: Partial<ExhibitorInput>): Promise<Exhibitor> {
+  return eventsRequest<Exhibitor>(`/api/exhibitors/${encodeURIComponent(exhibitorId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
 }
 
 /** Simpan venue master data. */
@@ -991,7 +798,7 @@ export type SettingsUser = {
   id: string
   nama: string
   email: string
-  jobRole?: string
+  role: Role
   isAdmin: boolean
   isActive?: boolean
 }
@@ -1088,38 +895,13 @@ export async function deleteEvent(eventId: string) {
   })
 }
 
-/** Hapus permanen job beserta dokumen, stage, shipment, customs job, dan ticket yang terikat padanya. */
+/** Hapus permanen job beserta lampiran dan ticket yang terikat padanya. */
 export async function deleteJob(jobId: string) {
-  const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' })
-  if (response.ok) return
-  const data = (await response.json().catch(() => null)) as { error?: string } | null
-  throw new Error(data?.error ?? 'Job tidak dapat dihapus.')
+  await jobsRequest<void>(jobPath(jobId), { method: 'DELETE' })
 }
 
-export type JobInput = Pick<
-  LocalJob,
-  | 'awbNumber'
-  | 'blNumber'
-  | 'shipper'
-  | 'consignee'
-  | 'notifyParty'
-  | 'agent'
-  | 'shippingLine'
-  | 'cargoDescription'
-  | 'shipmentMode'
-  | 'cargoDetails'
-  | 'journeyDetails'
-  | 'type'
-  | 'clientName'
-  | 'clientInfo'
-  | 'status'
-  | 'notes'
-  | 'assignedToId'
-> & {
-  eventId?: string | null
-  exhibitorId?: string | null
-  sourceDocumentName?: string | null
-}
+/** Rujukan minimal untuk menulis aggregate Job: id + versi yang terakhir dibaca. */
+export type JobRef = Pick<Job, 'id' | 'version'>
 
 const jobDocumentMimeTypes: Record<string, JobDocumentMimeType> = {
   pdf: 'application/pdf',
@@ -1138,857 +920,252 @@ function jobDocumentMimeType(file: File): JobDocumentMimeType {
   return mimeType
 }
 
+/** Unggah satu berkas sebagai lampiran milik job; mengembalikan id lampiran. */
+async function uploadJobAttachment(jobId: string, file: File, kind: JobDocumentKind) {
+  const attachmentId = id()
+  await saveFile({
+    id: attachmentId,
+    ownerType: 'JOB',
+    ownerId: jobId,
+    kind,
+    fileName: file.name,
+    mimeType: jobDocumentMimeType(file),
+    fileSize: file.size,
+    content: file,
+    createdAt: now(),
+  })
+  return attachmentId
+}
+
+export type JobExtractionInput = {
+  invoice?: JobInvoiceExtraction | null
+  transport?: JobTransportExtraction | null
+  transportDocumentType?: 'BL' | 'AWB' | null
+}
+
+/** Terapkan hasil ekstraksi dokumen ke job; penggabungan ke operational terjadi di server. */
+export function applyJobExtraction(job: JobRef, extraction: JobExtractionInput): Promise<Job> {
+  return jobsRequest<Job>(jobPath(job.id, '/extraction'), {
+    method: 'POST',
+    body: JSON.stringify({ version: job.version, ...extraction }),
+  })
+}
+
+export type JobDocumentUploadResult = {
+  attachmentId: string
+  /** Job terbaru bila hasil ekstraksi ikut diterapkan; null bila hanya lampiran. */
+  job: Job | null
+}
+
+/**
+ * Unggah dokumen job. Bila disertai hasil ekstraksi, terapkan ke job sesudah lampiran tersimpan.
+ * Ekstraksi B/L/AWB hanya dipakai bila dokumennya memang dokumen angkut.
+ */
 export async function saveJobDocument(
-  jobId: string,
+  job: JobRef,
   file: File,
   kind: JobDocumentKind = 'SOURCE',
   invoiceExtraction?: JobInvoiceExtraction | null,
   transportExtraction?: JobTransportExtraction | null,
-): Promise<LocalJobDocument> {
-  const timestamp = now()
-  const mimeType = jobDocumentMimeType(file)
-  const document: LocalJobDocument = {
-    id: id(),
-    jobId,
-    fileName: file.name,
-    mimeType,
-    fileSize: file.size,
-    attachmentId: id(),
-    createdAt: timestamp,
-    kind,
-  }
-  const storedFile: StoredFile = {
-    id: document.attachmentId,
-    ownerType: 'LEGACY_JOB',
-    ownerId: jobId,
-    kind,
-    fileName: document.fileName,
-    mimeType: document.mimeType,
-    fileSize: document.fileSize,
-    content: file,
-    createdAt: timestamp,
-  }
-  const invoice = invoiceExtraction ?? null
-  const transport = transportExtraction ?? null
+): Promise<JobDocumentUploadResult> {
+  const attachmentId = await uploadJobAttachment(job.id, file, kind)
   const isTransportDocument = kind === 'BILL_OF_LADING' || kind === 'AIR_WAYBILL'
-  const previous = invoice || (isTransportDocument && transport) ? await getJob(jobId) : null
-  if ((invoice || (isTransportDocument && transport)) && !previous)
-    throw new Error('Job tidak ditemukan.')
-  const updatedJob = previous
-    ? (() => {
-        const operational = getOperationalDetails(previous)
-        const inbound =
-          isTransportDocument && transport
-            ? {
-                ...operational.inbound,
-                mode: kind === 'BILL_OF_LADING' ? ('SEA' as const) : ('AIR' as const),
-                documentType: kind === 'BILL_OF_LADING' ? ('BL' as const) : ('AWB' as const),
-                documentNumber: transport.documentNumber,
-                carrier: transport.carrier,
-                scheduleAt: transport.eta ?? operational.inbound.scheduleAt,
-              }
-            : operational.inbound
-        return {
-          ...previous,
-          ...(isTransportDocument && transport
-            ? kind === 'BILL_OF_LADING'
-              ? { blNumber: transport.documentNumber }
-              : { awbNumber: transport.documentNumber }
-            : {}),
-          ...(isTransportDocument && transport ? { shippingLine: transport.carrier } : {}),
-          ...(isTransportDocument && transport?.shipper?.name
-            ? { shipper: transport.shipper.name }
-            : {}),
-          ...(isTransportDocument && transport?.consignee?.name
-            ? { consignee: transport.consignee.name }
-            : {}),
-          ...(isTransportDocument && transport?.notifyParty?.name
-            ? { notifyParty: transport.notifyParty.name }
-            : {}),
-          operational: {
-            ...operational,
-            inbound,
-            ...(isTransportDocument && transport ? { inboundDocument: transport } : {}),
-            ...(invoice
-              ? {
-                  invoiceNumber: invoice.invoiceNumber ?? operational.invoiceNumber ?? null,
-                  invoiceItems: invoice.items,
-                  invoice,
-                }
-              : {}),
-          },
-          updatedAt: timestamp,
-        }
-      })()
-    : null
-  await Promise.all([
-    put('jobDocuments', document),
-    put('files', storedFile),
-    ...(updatedJob ? [put('jobs', updatedJob)] : []),
-  ])
-  return document
+  const invoice = invoiceExtraction ?? null
+  const transport = isTransportDocument ? (transportExtraction ?? null) : null
+  if (!invoice && !transport) return { attachmentId, job: null }
+  const updated = await applyJobExtraction(job, {
+    invoice,
+    transport,
+    transportDocumentType: transport ? (kind === 'BILL_OF_LADING' ? 'BL' : 'AWB') : null,
+  })
+  return { attachmentId, job: updated }
 }
 
-export async function saveJobInvoiceExtraction(jobId: string, invoice: JobInvoiceExtraction) {
-  const previous = await getJob(jobId)
-  if (!previous) throw new Error('Job tidak ditemukan.')
-  const operational = getOperationalDetails(previous)
-  const updated: LocalJob = {
-    ...previous,
-    operational: {
-      ...operational,
-      invoiceNumber: invoice.invoiceNumber,
-      invoiceItems: invoice.items,
-      invoice,
-    },
-    updatedAt: now(),
-  }
-  await put('jobs', updated)
-  return updated
+export function saveJobInvoiceExtraction(job: JobRef, invoice: JobInvoiceExtraction) {
+  return applyJobExtraction(job, { invoice })
 }
 
-export async function saveJobTransportExtraction(jobId: string, transport: JobTransportExtraction) {
-  const previous = await getJob(jobId)
-  if (!previous) throw new Error('Job tidak ditemukan.')
-  const operational = getOperationalDetails(previous)
-  const documentType =
-    operational.inbound.documentType ??
-    (previous.blNumber ? 'BL' : previous.awbNumber ? 'AWB' : 'BL')
-  const updated: LocalJob = {
-    ...previous,
-    ...(documentType === 'BL'
-      ? { blNumber: transport.documentNumber }
-      : { awbNumber: transport.documentNumber }),
-    shippingLine: transport.carrier,
-    ...(transport.shipper?.name ? { shipper: transport.shipper.name } : {}),
-    ...(transport.consignee?.name ? { consignee: transport.consignee.name } : {}),
-    ...(transport.notifyParty?.name ? { notifyParty: transport.notifyParty.name } : {}),
-    operational: {
-      ...operational,
-      inbound: {
-        ...operational.inbound,
-        mode: documentType === 'BL' ? 'SEA' : 'AIR',
-        documentType,
-        documentNumber: transport.documentNumber,
-        carrier: transport.carrier,
-        scheduleAt: transport.eta ?? operational.inbound.scheduleAt,
-      },
-      inboundDocument: transport,
-    },
-    updatedAt: now(),
-  }
-  await put('jobs', updated)
-  return updated
+export function saveJobTransportExtraction(job: JobRef, transport: JobTransportExtraction) {
+  return applyJobExtraction(job, { transport })
 }
 
 export type JobOperationalAttachment = { kind: JobDocumentKind; file: File }
 
-/** Saves Job details and uploads new PDFs to Supabase Storage. */
-export async function saveJobOperationalDetails(
-  jobId: string,
-  patch: Pick<
-    LocalJob,
-    | 'jobNumber'
-    | 'clientName'
-    | 'agent'
-    | 'shipper'
-    | 'consignee'
-    | 'notifyParty'
-    | 'assignedToId'
+export type JobDetailsInput = Partial<
+  Pick<
+    Job,
     | 'status'
+    | 'transportMode'
+    | 'manifestSeq'
+    | 'commercialInvoiceNumber'
+    | 'transportDocumentType'
+    | 'transportDocumentNumber'
     | 'notes'
-    | 'billTo'
     | 'emptyStorage'
     | 'reExport'
-    | 'invoiceSent'
-  > & { operational: JobOperationalDetails },
+    | 'operational'
+  >
+> & {
+  /** Ganti pihak yang ditagih: agent ATAU exhibitor (yang lain null). */
+  party?: { agentId: string | null; exhibitorId: string | null }
+}
+
+/** Simpan detail job (hanya field yang dikirim), lalu unggah lampiran baru. */
+export async function saveJobOperationalDetails(
+  job: JobRef,
+  patch: JobDetailsInput,
   attachments: JobOperationalAttachment[] = [],
-) {
-  const previous = await getJob(jobId)
-  if (!previous) throw new Error('Job tidak ditemukan.')
-  const timestamp = now()
-  const job: LocalJob = {
-    ...previous,
-    ...patch,
-    id: previous.id,
-    eventId: previous.eventId,
-    createdAt: previous.createdAt,
-    updatedAt: timestamp,
-    stages: previous.stages,
-    documents: previous.documents,
-  }
-  const documents: LocalJobDocument[] = attachments.map(({ kind, file }) => ({
-    id: id(),
-    jobId,
-    kind,
-    fileName: file.name,
-    mimeType: 'application/pdf',
-    fileSize: file.size,
-    attachmentId: id(),
-    createdAt: timestamp,
-  }))
-  await Promise.all([
-    put('jobs', job),
-    ...documents.map((document) => put('jobDocuments', document)),
-    ...documents.map((document, index) =>
-      put('files', {
-        id: document.attachmentId,
-        ownerType: 'LEGACY_JOB',
-        ownerId: jobId,
-        kind: document.kind ?? null,
-        fileName: document.fileName,
-        mimeType: document.mimeType,
-        fileSize: document.fileSize,
-        content: attachments[index].file,
-        createdAt: timestamp,
-      } satisfies StoredFile),
-    ),
-  ])
-  return job
+): Promise<Job> {
+  const updated = await jobsRequest<Job>(jobPath(job.id), {
+    method: 'PATCH',
+    body: JSON.stringify({ version: job.version, ...patch }),
+  })
+  for (const { kind, file } of attachments) await uploadJobAttachment(job.id, file, kind)
+  return updated
 }
 
-export type InternationalJobInitInput = {
+export type JobCreateInput = {
   eventId: string
+  kind: JobKind
+  internationalJenis: InternationalJobJenis | null
+  transportMode: TransportMode | null
+  /** Pihak yang ditagih: agent ATAU exhibitor. Job Local selalu exhibitor. */
   agentId: string | null
-  /** Exhibitor yang mengatur sendiri pengirimannya — hanya saat tanpa agent. */
-  exhibitorId?: string | null
-  internationalJenis: InternationalJobJenis
-  /** No Job (mis. S.01/234YFN) bila sudah diketahui saat inisiasi. */
-  jobNumber?: string
-  /** Pihak yang ditagih; boleh kosong dan diisi belakangan. */
-  billTo?: string | null
+  exhibitorId: string | null
 }
 
 /**
- * Inisiasi job international: biasanya satu agent = satu job per event, tetapi agent
- * opsional (exhibitor dapat bertindak sendiri). Fase inisiasi hanya mencatat jenis
- * dan agent; exhibitor binaan dilekatkan belakangan di detail job.
+ * Buat job (satu kiriman). Server mendaftarkan agent ke event bila perlu dan membuat nomor
+ * internal VSS otomatis; No Job manifest ditetapkan belakangan.
  */
-export async function createInternationalJobInit(
-  input: InternationalJobInitInput,
-): Promise<LocalJob> {
-  const [jobs, agents] = await Promise.all([readAll<LocalJob>('jobs'), readAll<Agent>('agents')])
-  const agent = input.agentId ? (agents.find((item) => item.id === input.agentId) ?? null) : null
-  if (input.agentId && !agent) throw new Error('Agent tidak ditemukan.')
-  if (agent && jobs.some((job) => job.agentId === agent.id && job.eventId === input.eventId)) {
-    throw new Error('Agent ini sudah memiliki job di event ini.')
-  }
-
-  if (agent) await addAgentToEvent(input.eventId, agent.id)
-
-  const timestamp = now()
-  const job: LocalJob = {
-    id: agent ? `job-for-agent-${agent.id}-${input.eventId}` : id(),
-    jobNumber: input.jobNumber?.trim() ?? '',
-    awbNumber: null,
-    blNumber: null,
-    shipper: null,
-    consignee: null,
-    notifyParty: null,
-    agent: agent?.name ?? null,
-    shippingLine: null,
-    cargoDescription: null,
-    shipmentMode: null,
-    cargoDetails: null,
-    journeyDetails: null,
-    type: 'IMPORT',
-    clientName: agent?.name ?? '',
-    clientInfo: null,
-    status: 'DRAFT',
-    notes: null,
-    billTo: input.billTo?.trim() || null,
-    trackingToken: crypto.randomUUID(),
-    assignedToId: null,
-    createdById: null,
-    eventId: input.eventId,
-    exhibitorId: input.exhibitorId ?? null,
-    agentId: agent?.id ?? null,
-    kind: 'INTERNATIONAL',
-    internationalJenis: input.internationalJenis,
-    sourceDocumentName: null,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    stages: [],
-    documents: [],
-  }
-  return put('jobs', job)
+export function createJob(input: JobCreateInput): Promise<Job> {
+  return jobsRequest<Job>('/api/jobs', { method: 'POST', body: JSON.stringify(input) })
 }
 
-/**
- * Inisiasi job Local: tanpa dokumen kepabeanan; agent opsional (job local tidak
- * membutuhkan agent). Exhibitor lokal dilekatkan belakangan di detail job.
- */
-export async function createLocalJobInit(
-  eventId: string,
-  agentId?: string | null,
-  exhibitorId?: string | null,
-  init?: { jobNumber?: string; billTo?: string | null },
-): Promise<LocalJob> {
-  let agent: Agent | null = null
-  if (agentId) {
-    const [jobs, agents] = await Promise.all([readAll<LocalJob>('jobs'), readAll<Agent>('agents')])
-    agent = agents.find((item) => item.id === agentId) ?? null
-    if (!agent) throw new Error('Agent tidak ditemukan.')
-    if (jobs.some((job) => job.agentId === agent!.id && job.eventId === eventId)) {
-      throw new Error('Agent ini sudah memiliki job di event ini.')
-    }
-    await addAgentToEvent(eventId, agent.id)
-  }
+/** Tagihan job ke pihaknya (satu job = satu tagihan). */
+export function saveJobInvoice(job: JobRef, invoice: JobInvoice): Promise<Job> {
+  return jobsRequest<Job>(jobPath(job.id, '/invoice'), {
+    method: 'PUT',
+    body: JSON.stringify({ version: job.version, invoice }),
+  })
+}
 
-  const timestamp = now()
-  const job: LocalJob = {
-    id: agent ? `job-for-agent-${agent.id}-${eventId}` : id(),
-    jobNumber: init?.jobNumber?.trim() ?? '',
-    awbNumber: null,
-    blNumber: null,
-    shipper: null,
-    consignee: null,
-    notifyParty: null,
-    agent: agent?.name ?? null,
-    shippingLine: null,
-    cargoDescription: null,
-    shipmentMode: null,
-    cargoDetails: null,
-    journeyDetails: null,
-    type: 'IMPORT',
-    clientName: agent?.name ?? 'Local',
-    clientInfo: null,
-    status: 'DRAFT',
-    notes: null,
-    billTo: init?.billTo?.trim() || null,
-    trackingToken: crypto.randomUUID(),
-    assignedToId: null,
-    createdById: null,
-    eventId,
-    exhibitorId: exhibitorId ?? null,
-    agentId: agent?.id ?? null,
-    kind: 'LOCAL',
-    internationalJenis: null,
-    sourceDocumentName: null,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    stages: [],
-    documents: [],
-  }
-  return put('jobs', job)
+/** Saran urutan No Job berikutnya untuk awalan job ini di event-nya. */
+export function getNextManifestSeq(
+  jobId: string,
+): Promise<{ prefix: string | null; suggestedSeq: number | null }> {
+  return jobsRequest(jobPath(jobId, '/next-manifest-seq'))
 }
 
 /** Simpan blok inward manifest (dokumen angkut, konfigurasi muatan, milestone, catatan). */
-export async function saveJobInward(jobId: string, input: InwardManifest): Promise<LocalJob> {
-  const inward = inwardManifestSchema.parse(input)
-  const previous = await getJob(jobId)
-  if (!previous) throw new Error('Job tidak ditemukan.')
-  if (previous.kind === 'LOCAL') throw new Error('Job Local tidak memiliki dokumen kepabeanan.')
-  return put('jobs', { ...previous, inward, updatedAt: now() })
+export function saveJobInward(job: JobRef, inward: InwardManifest): Promise<Job> {
+  return jobsRequest<Job>(jobPath(job.id, '/inward'), {
+    method: 'PUT',
+    body: JSON.stringify({ version: job.version, inward }),
+  })
 }
 
-/** Simpan baris exhibitor + rincian koli hasil scan CIPL/manifest pada job. */
-export async function saveJobManifestExhibitors(
-  jobId: string,
-  exhibitors: JobManifestExhibitor[],
-): Promise<LocalJob> {
-  const previous = await getJob(jobId)
-  if (!previous) throw new Error('Job tidak ditemukan.')
-  return put('jobs', { ...previous, manifestExhibitors: exhibitors, updatedAt: now() })
+/** Simpan CIPL job: dokumen mentah + SELURUH baris per exhibitor (diganti utuh), atomik. */
+export function saveJobCipl(
+  job: JobRef,
+  ciplDocument: CiplDocument | null,
+  lines: JobCiplLineInput[],
+): Promise<Job> {
+  return jobsRequest<Job>(jobPath(job.id, '/cipl'), {
+    method: 'PUT',
+    body: JSON.stringify({ version: job.version, ciplDocument, lines }),
+  })
 }
 
-/** Daftarkan exhibitor baru pada sebuah event; route menerima array dan menjawab urutan sama. */
-async function createEventExhibitors(
-  eventId: string,
-  inputs: Array<{ name: string; agentId: string | null }>,
-): Promise<LocalExhibitor[]> {
-  const rows = await eventsRequest<Array<Record<string, unknown>>>(
-    `/api/events/${encodeURIComponent(eventId)}/exhibitors`,
-    {
-      method: 'POST',
-      body: JSON.stringify(
-        inputs.map((input) => ({
-          kind: 'INTERNATIONAL',
-          name: input.name,
-          contact: { name: null, role: null, email: null, phone: null },
-          agentId: input.agentId,
-        })),
-      ),
-    },
-  )
-  return rows.map(exhibitorFromRow)
+/** Baris CIPL job dalam bentuk masukan (untuk dikirim ulang setelah diubah). */
+export function ciplLineInputs(job: Pick<Job, 'ciplLines'>): JobCiplLineInput[] {
+  return job.ciplLines.map(({ exhibitorId, nameOnDocument, koli, items, notes }) => ({
+    exhibitorId,
+    nameOnDocument,
+    koli,
+    items,
+    notes,
+  }))
+}
+
+/** Simpan fase kepulangan (return list) pada job; null mengosongkannya. */
+export function saveJobKepulangan(job: JobRef, kepulangan: JobReturn | null): Promise<Job> {
+  return jobsRequest<Job>(jobPath(job.id, '/kepulangan'), {
+    method: 'PUT',
+    body: JSON.stringify({ version: job.version, kepulangan }),
+  })
 }
 
 export type CiplAutofillOutcome = {
-  saved: JobManifestExhibitor[]
+  /** Job terbaru (versi naik) sesudah CIPL tersimpan. */
+  job: Job
   /** Exhibitor event yang baru dibuat karena belum terdaftar di event. */
-  created: LocalExhibitor[]
-  /** Baris yang tidak dapat ditautkan (nama cocok dengan lebih dari satu exhibitor event). */
+  created: Exhibitor[]
+  /** Baris yang belum tertaut (nama cocok dengan lebih dari satu exhibitor event). */
   unlinked: string[]
 }
 
 /**
- * Tulis hasil scan CIPL ke dua tempat sekaligus, dalam satu urutan yang jelas:
+ * Simpan hasil scan CIPL ke job, dalam satu urutan yang jelas:
  *
- *   1. entri yang belum terdaftar → dibuat sebagai exhibitor event (INTERNATIONAL, dibawa agent job),
- *   2. hall/booth/koli tiap entri → disimpan pada exhibitor event itu (payload.logistics),
- *   3. baris exhibitor + `exhibitorId` → disimpan pada job.
+ *   1. entri yang belum terdaftar → dibuat sebagai exhibitor event (hall/booth dari dokumen),
+ *   2. exhibitor tertaut yang hall/booth-nya masih kosong → dilengkapi dari dokumen,
+ *   3. dokumen CIPL mentah + baris CIPL (koli & barang per exhibitor) → disimpan pada job.
  *
- * Langkah 1 dan 2 menyentuh master data event, jadi keduanya hanya dijalankan untuk baris yang
- * benar-benar punya target. Baris AMBIGU tetap tersimpan di job sebagai nama supaya datanya tidak
- * hilang, dan dilaporkan lewat `unlinked` agar operator dapat menautkannya manual.
+ * Baris AMBIGU tetap tersimpan sebagai nama (belum tertaut) supaya datanya tidak hilang, dan
+ * dilaporkan lewat `unlinked` agar operator dapat menautkannya manual di detail job.
  */
 export async function applyCiplAutofill(input: {
-  jobId: string
-  eventId: string
-  agentId?: string | null
+  job: JobRef & Pick<Job, 'eventId' | 'kind'>
   rows: CiplAutofillRow[]
+  ciplDocument: CiplDocument | null
+  /** Exhibitor event yang sudah ada — untuk melengkapi hall/booth yang kosong. */
+  eventExhibitors: Exhibitor[]
+  /** Baris CIPL job yang sudah ada — dipertahankan karena penyimpanan mengganti seluruh baris. */
+  keepLines?: JobCiplLineInput[]
 }): Promise<CiplAutofillOutcome> {
+  const exhibitorKind: ExhibitorKind = input.job.kind === 'LOCAL' ? 'LOCAL' : 'INTERNATIONAL'
   const pending = input.rows.filter((row) => row.resolution === 'BARU' && !row.exhibitorId)
   const created = pending.length
     ? await createEventExhibitors(
-        input.eventId,
-        pending.map((row) => ({ name: row.name, agentId: input.agentId ?? null })),
+        input.job.eventId,
+        pending.map((row) => ({
+          name: row.name,
+          kind: exhibitorKind,
+          hall: row.logistics.hall,
+          booth: row.logistics.booth,
+        })),
       )
     : []
-
   const idByRow = new Map<CiplAutofillRow, string>()
   pending.forEach((row, index) => {
     const exhibitor = created[index]
     if (exhibitor) idByRow.set(row, exhibitor.id)
   })
 
-  const saved: JobManifestExhibitor[] = input.rows.map((row) => ({
-    exhibitorId: row.exhibitorId ?? idByRow.get(row) ?? null,
-    name: row.name,
-    logistics: row.logistics,
-  }))
-
+  const existingById = new Map(input.eventExhibitors.map((exhibitor) => [exhibitor.id, exhibitor]))
   await Promise.all(
-    saved
-      .filter((row): row is JobManifestExhibitor & { exhibitorId: string } => Boolean(row.exhibitorId))
-      .map((row) => saveExhibitorLogistics(input.eventId, row.exhibitorId, row.logistics)),
+    input.rows.flatMap((row) => {
+      const exhibitor = row.exhibitorId ? existingById.get(row.exhibitorId) : undefined
+      if (!exhibitor) return []
+      const patch: Partial<ExhibitorInput> = {}
+      if (!exhibitor.hall && row.logistics.hall) patch.hall = row.logistics.hall
+      if (!exhibitor.booth && row.logistics.booth) patch.booth = row.logistics.booth
+      return Object.keys(patch).length ? [updateExhibitor(exhibitor.id, patch)] : []
+    }),
   )
-  await saveJobManifestExhibitors(input.jobId, saved)
 
+  const lines: JobCiplLineInput[] = input.rows.map((row) => ({
+    exhibitorId: row.exhibitorId ?? idByRow.get(row) ?? null,
+    nameOnDocument: row.namaTertera,
+    koli: row.logistics.koli,
+    items: row.items,
+    notes: row.logistics.notes,
+  }))
+  const job = await saveJobCipl(input.job, input.ciplDocument, [...(input.keepLines ?? []), ...lines])
   return {
-    saved,
+    job,
     created,
-    unlinked: saved.filter((row) => !row.exhibitorId).map((row) => row.name),
+    unlinked: lines.filter((line) => !line.exhibitorId).map((line) => line.nameOnDocument),
   }
-}
-
-/** Simpan snapshot CiplDocument hasil scan CIPL pada job. */
-export async function saveJobCiplDocument(jobId: string, document: CiplDocument): Promise<LocalJob> {
-  const previous = await getJob(jobId)
-  if (!previous) throw new Error('Job tidak ditemukan.')
-  const parsed = ciplDocumentSchema.parse(document)
-  return put('jobs', { ...previous, manifestCiplDocument: parsed, updatedAt: now() })
-}
-
-/** Simpan fase kepulangan (return list) pada job; null mengosongkannya. */
-export async function saveJobKepulangan(jobId: string, input: JobReturn | null): Promise<LocalJob> {
-  const kepulangan = input === null ? null : jobReturnSchema.parse(input)
-  const previous = await getJob(jobId)
-  if (!previous) throw new Error('Job tidak ditemukan.')
-  return put('jobs', { ...previous, kepulangan, updatedAt: now() })
-}
-
-/** Simpan data fisik kepesertaan exhibitor (hall, booth, koli, catatan) ala inward manifest. */
-export async function saveExhibitorLogistics(
-  eventId: string,
-  exhibitorId: string,
-  input: ExhibitorLogistics,
-): Promise<ExhibitorLogistics> {
-  const logistics = exhibitorLogisticsSchema.parse(input)
-  return eventsRequest<ExhibitorLogistics>(
-    `/api/events/${encodeURIComponent(eventId)}/exhibitor-logistics`,
-    { method: 'PUT', body: JSON.stringify({ exhibitorId, logistics }) },
-  )
-}
-
-export type CiplVersionInput = {
-  receivedAt: string
-  receivedBy: string
-  sourceDocumentName?: string | null
-  sourceDocument?: AttachmentUpload | null
-  items: CiplItem[]
-  revisionNote?: string | null
-}
-
-export async function listCipls(eventExhibitorId: string) {
-  return (await readAll<Cipl>('cipls'))
-    .filter((cipl) => cipl.eventExhibitorId === eventExhibitorId)
-    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-}
-
-export async function getCipl(ciplId: string) {
-  return (await readAll<Cipl>('cipls')).find((cipl) => cipl.id === ciplId) ?? null
-}
-
-export async function listCiplVersions(ciplId: string) {
-  return (await readAll<CiplVersion>('ciplVersions'))
-    .filter((version) => version.ciplId === ciplId)
-    .sort((left, right) => right.versionNumber - left.versionNumber)
-}
-
-export async function createCipl(eventExhibitorId: string, initialVersion?: CiplVersionInput) {
-  const exhibitor = (await readAll<LocalExhibitor>('exhibitors')).find(
-    (item) => item.id === eventExhibitorId,
-  )
-  if (!exhibitor) throw new Error('Exhibitor tidak ditemukan.')
-  const timestamp = now()
-  const cipl: Cipl = {
-    id: id(),
-    eventExhibitorId,
-    referenceNumber: null,
-    status: initialVersion ? 'RECEIVED' : 'AWAITING_DOCUMENT',
-    activeVersionId: null,
-    sourceDocumentUnavailable: !initialVersion,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  }
-  await put('cipls', cipl)
-  if (initialVersion) {
-    const version: CiplVersion = {
-      id: id(),
-      ciplId: cipl.id,
-      versionNumber: 1,
-      receivedAt: initialVersion.receivedAt,
-      receivedBy: initialVersion.receivedBy,
-      sourceDocumentName: initialVersion.sourceDocumentName ?? null,
-      sourceDocument: initialVersion.sourceDocument
-        ? attachmentMetadata(initialVersion.sourceDocument)
-        : null,
-      items: initialVersion.items,
-      revisionNote: initialVersion.revisionNote ?? null,
-      createdAt: timestamp,
-    }
-    cipl.activeVersionId = version.id
-    await Promise.all([
-      put('cipls', cipl),
-      put('ciplVersions', version),
-      ...(initialVersion.sourceDocument
-        ? [
-            put(
-              'files',
-              toStoredFile(initialVersion.sourceDocument, 'CIPL_VERSION', version.id, 'SOURCE'),
-            ),
-          ]
-        : []),
-    ])
-  }
-  return cipl
-}
-
-export async function addCiplVersion(ciplId: string, input: CiplVersionInput) {
-  const [cipl, versions, shipments] = await Promise.all([
-    getCipl(ciplId),
-    listCiplVersions(ciplId),
-    listShipments(ciplId),
-  ])
-  if (!cipl) throw new Error('CIPL tidak ditemukan.')
-  if (
-    cipl.activeVersionId &&
-    shipments.some((shipment) => shipment.sourceCiplVersionId === cipl.activeVersionId)
-  ) {
-    // Version lama tetap immutable setelah dipakai Shipment; versi baru selalu aman dibuat.
-  }
-  const timestamp = now()
-  const version: CiplVersion = {
-    id: id(),
-    ciplId,
-    versionNumber: (versions[0]?.versionNumber ?? 0) + 1,
-    receivedAt: input.receivedAt,
-    receivedBy: input.receivedBy,
-    sourceDocumentName: input.sourceDocumentName ?? null,
-    sourceDocument: input.sourceDocument ? attachmentMetadata(input.sourceDocument) : null,
-    items: input.items,
-    revisionNote: input.revisionNote ?? null,
-    createdAt: timestamp,
-  }
-  const validation = validateCiplVersionReady(version)
-  if (!validation.ok && cipl.status === 'READY')
-    throw new Error(validation.issues.map((issue) => issue.message).join(' '))
-  await Promise.all([
-    put('ciplVersions', version),
-    ...(input.sourceDocument
-      ? [put('files', toStoredFile(input.sourceDocument, 'CIPL_VERSION', version.id, 'SOURCE'))]
-      : []),
-  ])
-  return version
-}
-
-export async function activateCiplVersion(
-  ciplId: string,
-  versionId: string,
-  status: CiplStatus = 'UNDER_REVIEW',
-) {
-  const version = (await listCiplVersions(ciplId)).find((item) => item.id === versionId)
-  const cipl = await getCipl(ciplId)
-  if (!cipl || !version) throw new Error('Versi CIPL bukan milik CIPL yang dipilih.')
-  return put('cipls', {
-    ...cipl,
-    activeVersionId: versionId,
-    status,
-    sourceDocumentUnavailable: false,
-    updatedAt: now(),
-  })
-}
-
-export async function listShipments(ciplId: string) {
-  return (await readAll<Shipment>('shipmentsV2'))
-    .filter((shipment) => shipment.ciplId === ciplId)
-    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-}
-
-export async function getShipment(shipmentId: string) {
-  return (
-    (await readAll<Shipment>('shipmentsV2')).find((shipment) => shipment.id === shipmentId) ?? null
-  )
-}
-
-export type ShipmentInput = Omit<
-  Shipment,
-  | 'id'
-  | 'ciplId'
-  | 'sourceCiplVersionId'
-  | 'allocations'
-  | 'createdAt'
-  | 'updatedAt'
-  | 'legacyReference'
-> & { legacyReference?: string | null }
-
-export async function createShipment(
-  ciplId: string,
-  sourceVersionId: string,
-  input: ShipmentInput,
-  allocations: ShipmentAllocation[],
-) {
-  const [cipl, versions, existing] = await Promise.all([
-    getCipl(ciplId),
-    listCiplVersions(ciplId),
-    listShipments(ciplId),
-  ])
-  const version = versions.find((item) => item.id === sourceVersionId)
-  if (!cipl || !version) throw new Error('CIPL atau versi sumber tidak ditemukan.')
-  if (input.documentType !== 'BL' && input.documentType !== 'AWB')
-    throw new Error('Shipment harus memiliki tepat satu B/L atau AWB.')
-  const allocationValidation = validateShipmentAllocation(version, existing, allocations)
-  if (!allocationValidation.ok)
-    throw new Error(allocationValidation.issues.map((issue) => issue.message).join(' '))
-  const timestamp = now()
-  const shipment: Shipment = {
-    ...input,
-    id: id(),
-    ciplId,
-    sourceCiplVersionId: sourceVersionId,
-    allocations,
-    legacyReference: input.legacyReference ?? null,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  }
-  return put('shipmentsV2', shipment)
-}
-
-export async function listCustomsJobs(shipmentId: string) {
-  return (await readAll<CustomsJob>('customsJobs'))
-    .filter((job) => job.shipmentId === shipmentId)
-    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-}
-
-export async function getCustomsJob(jobId: string) {
-  return (await readAll<CustomsJob>('customsJobs')).find((job) => job.id === jobId) ?? null
-}
-
-export type CustomsJobInput = Omit<
-  CustomsJob,
-  'id' | 'jobNumber' | 'shipmentId' | 'allocations' | 'statusHistory' | 'createdAt' | 'updatedAt'
->
-
-/** CustomsJob numbering is derived from persisted Supabase records. */
-export async function createCustomsJob(
-  shipmentId: string,
-  input: CustomsJobInput,
-  allocations: JobAllocation[],
-) {
-  const shipment = (await readAll<Shipment>('shipmentsV2')).find((item) => item.id === shipmentId)
-  if (!shipment) throw new Error('Shipment tidak ditemukan.')
-  const existing = await listCustomsJobs(shipmentId)
-  const allocationValidation = validateJobAllocation(shipment, existing, allocations)
-  if (!allocationValidation.ok)
-    throw new Error(allocationValidation.issues.map((issue) => issue.message).join(' '))
-  const timestamp = now()
-  const counter = (await readAll<{ id: string; value: number }>('counters')).find(
-    (item) => item.id === 'customsJobNumber',
-  ) ?? { id: 'customsJobNumber', value: 0 }
-  const next = counter.value + 1
-  const job: CustomsJob = {
-    ...input,
-    id: id(),
-    jobNumber: `VSS-${String(next).padStart(5, '0')}`,
-    shipmentId,
-    allocations,
-    statusHistory: [],
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  }
-  await Promise.all([put('counters', { ...counter, value: next }), put('customsJobs', job)])
-  return job
-}
-
-export async function updateCustomsJob(
-  jobId: string,
-  patch: Partial<
-    Omit<
-      CustomsJob,
-      'id' | 'jobNumber' | 'shipmentId' | 'createdAt' | 'allocations' | 'statusHistory'
-    >
-  >,
-  changeReason?: string,
-) {
-  const previous = (await readAll<CustomsJob>('customsJobs')).find((job) => job.id === jobId)
-  if (!previous) throw new Error('Customs Job tidak ditemukan.')
-  const nextStatus = patch.status ?? previous.status
-  const transition = validateJobTransition(
-    previous.status,
-    nextStatus,
-    patch.attachments ?? previous.attachments,
-    changeReason,
-  )
-  if (!transition.ok) throw new Error(transition.issues.map((issue) => issue.message).join(' '))
-  const statusHistory =
-    nextStatus === previous.status
-      ? previous.statusHistory
-      : [
-          ...previous.statusHistory,
-          {
-            from: previous.status,
-            to: nextStatus,
-            reason: changeReason?.trim() ?? '',
-            changedAt: now(),
-          },
-        ]
-  return put('customsJobs', {
-    ...previous,
-    ...patch,
-    id: previous.id,
-    jobNumber: previous.jobNumber,
-    shipmentId: previous.shipmentId,
-    allocations: previous.allocations,
-    statusHistory,
-    createdAt: previous.createdAt,
-    updatedAt: now(),
-  })
-}
-
-// ── Ekstraksi dokumen pabean (customs-document-extraction) ────────────────────
-
-export type DocumentOwner = { ownerType: 'SHIPMENT' | 'CIPL_VERSION'; ownerId: string }
-export type ExtractionOutcome = { attachmentId: string; result: ExtractionResult }
-
-export type ShipmentDocument = {
-  id: string
-  ownerType: string
-  ownerId: string
-  kind: string | null
-  fileName: string
-  mimeType: string
-  fileSize: number
-  createdAt: string
-}
-
-export type ShipmentDocumentsView = {
-  documents: ShipmentDocument[]
-  completeness: MandatoryDocumentView
-}
-
-/** Visibilitas konfigurasi provider LLM untuk menonaktifkan tombol ekstraksi ulang (R3.4). */
-export async function getExtractionCapabilities(): Promise<{ llmAvailable: boolean }> {
-  const response = await fetch('/api/extract-document', { cache: 'no-store' })
-  const body = (await response.json().catch(() => null)) as { llmAvailable?: boolean; error?: string } | null
-  if (!response.ok) throw new Error(body?.error ?? 'Konfigurasi ekstraksi tidak dapat dimuat.')
-  return { llmAvailable: body?.llmAvailable === true }
-}
-
-/** Error ekstraksi dengan attachmentId bila file sudah tersimpan (persist-first) walau parsingnya gagal. */
-export type ExtractionError = Error & { attachmentId?: string }
-
-async function postExtract(form: FormData): Promise<ExtractionOutcome> {
-  const response = await fetch('/api/extract-document', { method: 'POST', body: form })
-  const body = (await response.json().catch(() => null)) as
-    | (ExtractionOutcome & { error?: string; attachmentId?: string })
-    | null
-  if (!response.ok || !body?.result) {
-    const failure = new Error(body?.error ?? 'Dokumen tidak dapat diekstrak.') as ExtractionError
-    if (!response.ok && body?.attachmentId) failure.attachmentId = body.attachmentId
-    throw failure
-  }
-  return { attachmentId: body.attachmentId, result: body.result }
-}
-
-export async function extractDocument(
-  input: DocumentOwner & { intendedKind: 'CIPL' | 'TRANSPORT'; file: File },
-): Promise<ExtractionOutcome> {
-  const form = new FormData()
-  form.set('ownerType', input.ownerType)
-  form.set('ownerId', input.ownerId)
-  form.set('intendedKind', input.intendedKind)
-  form.set('mode', 'DETERMINISTIC')
-  form.set('file', input.file)
-  return postExtract(form)
-}
-
-export async function reExtractWithLlm(
-  input: DocumentOwner & { attachmentId: string; intendedKind?: 'CIPL' | 'TRANSPORT' },
-): Promise<ExtractionOutcome> {
-  const form = new FormData()
-  form.set('ownerType', input.ownerType)
-  form.set('ownerId', input.ownerId)
-  form.set('attachmentId', input.attachmentId)
-  form.set('intendedKind', input.intendedKind ?? 'CIPL')
-  form.set('mode', 'LLM')
-  return postExtract(form)
-}
-
-export async function uploadSupportingDocument(
-  input: DocumentOwner & { label?: string; file: File },
-): Promise<{ attachmentId: string }> {
-  const form = new FormData()
-  form.set('ownerType', input.ownerType)
-  form.set('ownerId', input.ownerId)
-  form.set('intendedKind', 'SUPPORTING')
-  if (input.label?.trim()) form.set('label', input.label.trim())
-  form.set('file', input.file)
-  const response = await fetch('/api/extract-document', { method: 'POST', body: form })
-  const body = (await response.json().catch(() => null)) as { attachmentId?: string; error?: string } | null
-  if (!response.ok || !body?.attachmentId) throw new Error(body?.error ?? 'Dokumen tidak dapat diunggah.')
-  return { attachmentId: body.attachmentId }
-}
-
-export async function createCiplVersionFromExtraction(input: CiplVersionFromExtractionInput): Promise<CiplVersion> {
-  const response = await fetch('/api/cipl-versions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  })
-  const body = (await response.json().catch(() => null)) as { version?: CiplVersion; error?: string } | null
-  if (!response.ok || !body?.version) throw new Error(body?.error ?? 'Versi CIPL tidak dapat disimpan.')
-  return body.version
-}
-
-export async function listShipmentDocuments(shipmentId: string): Promise<ShipmentDocumentsView> {
-  const response = await fetch(`/api/shipment-documents?shipmentId=${encodeURIComponent(shipmentId)}`, {
-    cache: 'no-store',
-  })
-  const body = (await response.json().catch(() => null)) as (ShipmentDocumentsView & { error?: string }) | null
-  if (!response.ok) throw new Error(body?.error ?? 'Dokumen shipment tidak dapat dimuat.')
-  if (!body?.documents || !body?.completeness) throw new Error('Dokumen shipment tidak dapat dimuat.')
-  return { documents: body.documents, completeness: body.completeness }
-}
-
-export async function markShipmentReadyForCustoms(shipmentId: string): Promise<Shipment> {
-  const response = await fetch('/api/shipment-documents/mark-ready', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ shipmentId }),
-  })
-  const body = (await response.json().catch(() => null)) as { shipment?: Shipment; error?: string } | null
-  if (!response.ok || !body?.shipment) throw new Error(body?.error ?? 'Shipment tidak dapat ditandai siap pabean.')
-  return body.shipment
 }

@@ -31,6 +31,14 @@ export {
   setEventStatus,
   updateEvent,
 } from './event-crud'
+export {
+  type EventGrantee,
+  deleteEventAccess,
+  hasEventAccess,
+  insertEventAccess,
+  isActiveWorkspaceMember,
+  listEventGrantees,
+} from './event-access'
 export { listLegacyEventRows, queryEventInsights, queryEventList } from './event-queries'
 export {
   insertEventOrganizer,

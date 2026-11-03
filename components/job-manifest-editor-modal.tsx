@@ -19,8 +19,15 @@ import {
   type MilestoneKind,
   type OperationalNoteKind,
 } from '@/domain/job/manifest'
-import { saveExhibitorLogistics, saveJobInward, saveJobKepulangan, type LocalJob } from '@/lib/data-client'
-import type { ManifestPeserta, MasterPeserta } from '@/lib/manifest-view'
+import {
+  ciplLineInputs,
+  saveJobCipl,
+  saveJobInward,
+  saveJobKepulangan,
+  saveJobOperationalDetails,
+  type Job,
+  type JobCiplLineInput,
+} from '@/lib/data-client'
 import type { ManifestBlockParse } from '@/lib/server/manifest-extraction'
 
 function toast(message: string, tone: 'success' | 'error') {
@@ -55,7 +62,7 @@ const emptyContainer = (): ContainerDraft => ({ containerNumber: '', size: 'K40'
 const emptyMilestone = (): MilestoneDraft => ({ kind: 'ETA', date: '', documentNumber: '' })
 const emptyNote = (): NoteDraft => ({ kind: 'LAINNYA', text: '' })
 
-function draftFromJob(job: LocalJob) {
+function draftFromJob(job: Job) {
   const inward = job.inward
   const kepulangan = job.kepulangan
   const initial: {
@@ -67,8 +74,8 @@ function draftFromJob(job: LocalJob) {
     notes: NoteDraft[]
     kepulangan: KepulanganDraft
   } = {
-    documentKind: inward?.transportDocument.kind ?? 'BL',
-    documentNumber: inward?.transportDocument.number ?? '',
+    documentKind: job.transportDocumentType ?? 'BL',
+    documentNumber: job.transportDocumentNumber ?? '',
     loadKind: inward?.loadConfiguration.kind ?? 'LCL',
     containers: inward?.loadConfiguration.kind === 'FCL'
       ? inward.loadConfiguration.containers.map((container) => ({
@@ -137,20 +144,45 @@ function buildKepulangan(draft: KepulanganDraft): JobReturn | null {
 const labelClass = 'label'
 const inputClass = 'input mt-1'
 
+/**
+ * Gabungkan koli exhibitor dari blok manifest ke baris CIPL job: baris yang namanya cocok diganti
+ * koli-nya (catatan digabung), exhibitor yang belum punya baris ditambahkan sebagai baris belum
+ * tertaut. Hall/booth tidak ditulis di sini — milik exhibitor, diisi lewat editor baris CIPL.
+ */
+function mergeManifestCargo(job: Job, block: ManifestBlockParse): JobCiplLineInput[] {
+  const lines = ciplLineInputs(job)
+  for (const entry of block.exhibitors) {
+    const index = job.ciplLines.findIndex((line) =>
+      namesOverlap(line.exhibitor?.name ?? line.nameOnDocument, entry.name) ||
+      namesOverlap(line.nameOnDocument, entry.name),
+    )
+    if (index >= 0) {
+      lines[index] = {
+        ...lines[index],
+        koli: entry.logistics.koli,
+        notes: [...lines[index].notes, ...entry.logistics.notes],
+      }
+    } else {
+      lines.push({
+        exhibitorId: null,
+        nameOnDocument: entry.name,
+        koli: entry.logistics.koli,
+        items: [],
+        notes: entry.logistics.notes,
+      })
+    }
+  }
+  return lines
+}
+
 export function JobManifestEditorModal({
   job,
-  eventId,
-  peserta,
   onClose,
   onSaved,
-  onPesertaLogisticsSaved,
 }: {
-  job: LocalJob
-  eventId: string | null
-  peserta: ManifestPeserta[]
+  job: Job
   onClose: () => void
-  onSaved: (job: LocalJob) => void
-  onPesertaLogisticsSaved: (exhibitorId: string, logistics: ExhibitorLogistics) => void
+  onSaved: (job: Job) => void
 }) {
   const [draft, setDraft] = useState(() => draftFromJob(job))
   const [saving, setSaving] = useState(false)
@@ -158,21 +190,17 @@ export function JobManifestEditorModal({
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState('')
   const [importResult, setImportResult] = useState<{ blocks: ManifestBlockParse[]; warnings: string[] } | null>(null)
-  const [appliedExhibitorIds, setAppliedExhibitorIds] = useState<Set<string>>(new Set())
-  const masterPeserta = peserta.filter((item): item is MasterPeserta => item.origin === 'MASTER')
+  const [applyCargo, setApplyCargo] = useState(true)
+  const partyName = job.party?.name ?? ''
   const usedMilestoneKinds = new Set(draft.milestones.map((milestone) => milestone.kind))
   const appliedBlock = importResult
-    ? (job.agent ? importResult.blocks.find((block) => namesOverlap(block.agentName, job.agent!)) : undefined) ??
+    ? (partyName ? importResult.blocks.find((block) => namesOverlap(block.agentName, partyName)) : undefined) ??
       importResult.blocks[0] ??
       null
     : null
 
   function buildInward(): InwardManifest {
     return {
-      transportDocument:
-        draft.documentKind === 'BL'
-          ? { kind: 'BL', number: draft.documentNumber.trim() }
-          : { kind: 'AWB', number: draft.documentNumber.trim() },
       loadConfiguration:
         draft.loadKind === 'LCL'
           ? { kind: 'LCL' }
@@ -204,8 +232,20 @@ export function JobManifestEditorModal({
       const inward = inwardManifestSchema.parse(buildInward())
       const kepulangan = buildKepulangan(draft.kepulangan)
       const kepulanganParsed = kepulangan === null ? null : jobReturnSchema.parse(kepulangan)
-      let saved = await saveJobInward(job.id, inward)
-      if (kepulanganParsed || job.kepulangan) saved = await saveJobKepulangan(job.id, kepulanganParsed)
+      const documentNumber = draft.documentNumber.trim() || null
+      // Beberapa tulis berurutan pada aggregate yang sama: tiap tulis memakai versi hasil sebelumnya.
+      let saved: Job = job
+      if (documentNumber !== job.transportDocumentNumber || draft.documentKind !== job.transportDocumentType) {
+        saved = await saveJobOperationalDetails(saved, {
+          transportDocumentType: draft.documentKind,
+          transportDocumentNumber: documentNumber,
+        })
+      }
+      if (job.kind === 'INTERNATIONAL') saved = await saveJobInward(saved, inward)
+      if (kepulanganParsed || job.kepulangan) saved = await saveJobKepulangan(saved, kepulanganParsed)
+      if (applyCargo && appliedBlock?.exhibitors.length) {
+        saved = await saveJobCipl(saved, saved.ciplDocument, mergeManifestCargo(saved, appliedBlock))
+      }
       toast('Blok manifest job tersimpan.', 'success')
       onSaved(saved)
     } catch (caught) {
@@ -220,8 +260,8 @@ export function JobManifestEditorModal({
   function applyBlockToDraft(block: ManifestBlockParse) {
     setDraft((current) => ({
       ...current,
-      documentKind: block.inward.transportDocument.kind,
-      documentNumber: block.inward.transportDocument.number,
+      documentKind: block.transportDocument.kind,
+      documentNumber: block.transportDocument.number,
       loadKind: block.inward.loadConfiguration.kind,
       containers:
         block.inward.loadConfiguration.kind === 'FCL'
@@ -260,7 +300,7 @@ export function JobManifestEditorModal({
         toast('Tidak ada blok manifest yang terbaca.', 'error')
         return
       }
-      const block = (job.agent ? result.blocks.find((item) => namesOverlap(item.agentName, job.agent!)) : undefined) ?? result.blocks[0]
+      const block = (partyName ? result.blocks.find((item) => namesOverlap(item.agentName, partyName)) : undefined) ?? result.blocks[0]
       applyBlockToDraft(block)
       toast(`Blok "${block.agentName}" diterapkan ke form — review lalu simpan.`, 'success')
     } catch (caught) {
@@ -269,18 +309,6 @@ export function JobManifestEditorModal({
       toast(message, 'error')
     } finally {
       setImporting(false)
-    }
-  }
-
-  async function applyExhibitorLogistics(target: MasterPeserta, logistics: ExhibitorLogistics) {
-    if (!eventId) return
-    try {
-      const saved = await saveExhibitorLogistics(eventId, target.exhibitor.id, logistics)
-      setAppliedExhibitorIds((current) => new Set(current).add(target.exhibitor.id))
-      onPesertaLogisticsSaved(target.exhibitor.id, saved)
-      toast(`Logistik ${target.exhibitor.name} terisi dari manifest.`, 'success')
-    } catch (caught) {
-      toast(caught instanceof Error ? caught.message : 'Logistik exhibitor tidak dapat disimpan.', 'error')
     }
   }
 
@@ -304,7 +332,7 @@ export function JobManifestEditorModal({
               Edit blok manifest
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              {job.jobNumber} · {job.agent || job.clientName}
+              {job.jobNumber ?? job.vssNumber} · {partyName || 'Pihak belum ditetapkan'}
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Tutup editor manifest" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-black">
@@ -313,7 +341,7 @@ export function JobManifestEditorModal({
         </div>
 
         <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
-          {eventId && (
+          {(
             <fieldset className="rounded-xl border border-dashed border-orange-300 bg-orange-50/50 p-4">
               <legend className="px-1 text-sm font-semibold text-slate-800">Import manifest (otomatis)</legend>
               <p className="text-sm text-slate-600">
@@ -339,8 +367,8 @@ export function JobManifestEditorModal({
                   ))}
                   {appliedBlock ? (
                     <p className="text-slate-700">
-                      Blok <strong>{appliedBlock.agentName}</strong> diterapkan ke form ({appliedBlock.inward.transportDocument.kind}{' '}
-                      {appliedBlock.inward.transportDocument.number}).
+                      Blok <strong>{appliedBlock.agentName}</strong> diterapkan ke form ({appliedBlock.transportDocument.kind}{' '}
+                      {appliedBlock.transportDocument.number}).
                     </p>
                   ) : (
                     <p className="text-slate-500">Tidak ada blok yang cocok untuk job ini.</p>
@@ -352,29 +380,27 @@ export function JobManifestEditorModal({
                       </p>
                       <ul className="divide-y divide-slate-100">
                         {appliedBlock.exhibitors.map((exhibitor) => {
-                          const target = masterPeserta.find((item) => namesOverlap(item.name, exhibitor.name))
-                          const applied = target && appliedExhibitorIds.has(target.exhibitor.id)
+                          const line = job.ciplLines.find(
+                            (item) =>
+                              namesOverlap(item.exhibitor?.name ?? item.nameOnDocument, exhibitor.name) ||
+                              namesOverlap(item.nameOnDocument, exhibitor.name),
+                          )
                           return (
                             <li key={exhibitor.name} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
                               <span className="min-w-0 truncate text-slate-700" title={exhibitor.name}>
                                 {exhibitor.name} · {exhibitor.logistics.koli.totalCount} koli
                               </span>
-                              {target ? (
-                                <button
-                                  type="button"
-                                  disabled={applied}
-                                  onClick={() => void applyExhibitorLogistics(target, exhibitor.logistics)}
-                                  className="text-xs font-semibold text-orange-700 hover:text-orange-800 disabled:text-emerald-700"
-                                >
-                                  {applied ? '✓ Diterapkan' : `Terapkan ke ${target.exhibitor.name}`}
-                                </button>
-                              ) : (
-                                <span className="text-xs text-slate-400">Tidak ada exhibitor yang cocok</span>
-                              )}
+                              <span className="text-xs text-slate-500">
+                                {line ? `mengganti koli baris ${line.exhibitor?.name ?? line.nameOnDocument}` : 'baris CIPL baru (belum tertaut)'}
+                              </span>
                             </li>
                           )
                         })}
                       </ul>
+                      <label className="flex items-center gap-2 border-t px-3 py-2 text-xs font-medium text-slate-700">
+                        <input type="checkbox" checked={applyCargo} onChange={(event) => setApplyCargo(event.target.checked)} />
+                        Terapkan koli ini ke baris CIPL job saat menyimpan
+                      </label>
                     </div>
                   )}
                 </div>

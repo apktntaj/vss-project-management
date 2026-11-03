@@ -69,15 +69,28 @@ type MemberOptionRow = { id: string; full_name: string }
  * email/klaim lain — pemanggil hanya butuh opsi nama.
  */
 export async function listWorkspaceMembers(): Promise<{ id: string; fullName: string }[]> {
+  return queryMemberOptions(null)
+}
+
+/**
+ * Calon PIC event: anggota workspace aktif berperan `CS` (PIC event hanya CS). Server tetap
+ * menegakkan invarian ini di `validateEventReferences`; daftar ini hanya menyaring pilihan UI.
+ */
+export async function listCandidatePics(): Promise<{ id: string; fullName: string }[]> {
+  return queryMemberOptions('CS')
+}
+
+async function queryMemberOptions(role: Role | null): Promise<{ id: string; fullName: string }[]> {
   const { client, workspaceId } = await withWorkspace()
 
-  const { data, error } = await client
+  let query = client
     .from('app_users')
     .select('id, full_name, workspace_members!inner(workspace_id)')
     .eq('workspace_members.workspace_id', workspaceId)
     .eq('is_active', true)
-    .order('full_name')
-    .returns<MemberOptionRow[]>()
+  if (role) query = query.eq('role', role)
+
+  const { data, error } = await query.order('full_name').returns<MemberOptionRow[]>()
 
   if (error) {
     throw new Error(`Daftar anggota tidak dapat dimuat: ${error.message}`)

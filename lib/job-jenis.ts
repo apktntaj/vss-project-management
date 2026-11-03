@@ -1,5 +1,5 @@
 import { internationalJobJenisLabels, type InternationalJobJenis } from '@/domain/job/types'
-import type { LocalJob } from '@/lib/data-client'
+import type { Job } from '@/lib/data-client'
 
 /** Grup jenis job pada satu event: sub-jenis international + Local + Job lama (taksonomi pra-2026-10-29). */
 export type JobJenisGroup = InternationalJobJenis | 'LOCAL' | 'LEGACY'
@@ -15,7 +15,7 @@ export const jobJenisOrder: ReadonlyArray<JobJenisGroup> = [
   'LEGACY',
 ]
 
-export function jobJenisKey(job: LocalJob): JobJenisGroup {
+export function jobJenisKey(job: Job): JobJenisGroup {
   if (job.kind === 'LOCAL') return 'LOCAL'
   // Nilai jenis yang tak dikenal (mis. TEMPORARY pra-taksonomi 2026-10-29) tetap tampil sebagai job lama.
   if (job.internationalJenis && job.internationalJenis in internationalJobJenisLabels)
@@ -30,8 +30,8 @@ export function jobJenisLabel(key: JobJenisGroup): string {
 }
 
 /** Kelompokkan job per jenis dalam urutan jobJenisOrder, grup terbanyak dulu (tie-break: urutan dasar). */
-export function groupJobsByJenis(jobs: LocalJob[]): Array<{ key: JobJenisGroup; jobs: LocalJob[] }> {
-  const byKey = new Map<JobJenisGroup, LocalJob[]>()
+export function groupJobsByJenis(jobs: Job[]): Array<{ key: JobJenisGroup; jobs: Job[] }> {
+  const byKey = new Map<JobJenisGroup, Job[]>()
   for (const job of jobs) {
     const key = jobJenisKey(job)
     const bucket = byKey.get(key)

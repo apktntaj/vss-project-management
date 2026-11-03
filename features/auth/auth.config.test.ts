@@ -262,14 +262,14 @@ describe('Bug Condition Exploration', () => {
   test('Semua Role harus lolos narrowing dengan principal lengkap', () => {
     // Property-based loop: untuk setiap role, pastikan principal lengkap
     // menghasilkan sesi yang lolos narrowing.
-    const ROLES: Role[] = ['STAFF', 'SUPERVISOR', 'CUSTOMER_SERVICE', 'DOCUMENT_ASSISTANT']
+    const ROLES: Role[] = ['CS', 'STAFF', 'OPERATIONS', 'DOCUMENT_ASSISTANT', 'FINANCE']
 
     for (const role of ROLES) {
       const user: JwtUser = {
         id: `user-${role.toLowerCase()}`,
         role,
         workspaceId: 'workspace-default',
-        isAdmin: role === 'SUPERVISOR',
+        isAdmin: false,
       }
 
       const token: JwtToken = {}
@@ -439,13 +439,25 @@ describe('Preservation Property Tests', () => {
   // Req 3.5: can(role, capability) konsisten dengan ROLE_CAPABILITIES
   // ---------------------------------------------------------------------------
   describe('Req 3.5: Peran tak berhak → 403 (can consistency)', () => {
-    test('CUSTOMER_SERVICE hanya memiliki event:read', () => {
-      expect(can('CUSTOMER_SERVICE', 'event:read')).toBe(true)
-      expect(can('CUSTOMER_SERVICE', 'event:create')).toBe(false)
-      expect(can('CUSTOMER_SERVICE', 'event:update')).toBe(false)
-      expect(can('CUSTOMER_SERVICE', 'event:cancel')).toBe(false)
-      expect(can('CUSTOMER_SERVICE', 'event:delete')).toBe(false)
-      expect(can('CUSTOMER_SERVICE', 'reference:create')).toBe(false)
+    test('CS dapat mengelola event dan akses event, tetapi bukan tagihan/job write', () => {
+      expect(can('CS', 'event:read')).toBe(true)
+      expect(can('CS', 'event:create')).toBe(true)
+      expect(can('CS', 'event:access:manage')).toBe(true)
+      expect(can('CS', 'job:invoice:write')).toBe(false)
+      expect(can('CS', 'job:update')).toBe(false)
+    })
+
+    test('FINANCE satu-satunya peran dengan kapabilitas tagihan', () => {
+      expect(can('FINANCE', 'job:invoice:write')).toBe(true)
+      expect(can('OPERATIONS', 'job:invoice:write')).toBe(false)
+      expect(can('STAFF', 'job:invoice:write')).toBe(false)
+    })
+
+    test('OPERATIONS tidak dapat membuat event maupun mengelola akses event', () => {
+      expect(can('OPERATIONS', 'event:read')).toBe(true)
+      expect(can('OPERATIONS', 'event:create')).toBe(false)
+      expect(can('OPERATIONS', 'event:access:manage')).toBe(false)
+      expect(can('OPERATIONS', 'job:update')).toBe(true)
     })
 
     test('DOCUMENT_ASSISTANT hanya memiliki event:read', () => {
@@ -457,36 +469,26 @@ describe('Preservation Property Tests', () => {
       expect(can('DOCUMENT_ASSISTANT', 'reference:create')).toBe(false)
     })
 
-    test('STAFF memiliki semua kapabilitas kecuali yang khusus SUPERVISOR', () => {
+    test('STAFF memiliki event + job tetapi bukan tagihan dan bukan pengelola akses', () => {
       expect(can('STAFF', 'event:read')).toBe(true)
       expect(can('STAFF', 'event:create')).toBe(true)
       expect(can('STAFF', 'event:update')).toBe(true)
       expect(can('STAFF', 'event:cancel')).toBe(true)
       expect(can('STAFF', 'event:delete')).toBe(true)
       expect(can('STAFF', 'reference:create')).toBe(true)
-    })
-
-    test('SUPERVISOR memiliki semua kapabilitas', () => {
-      expect(can('SUPERVISOR', 'event:read')).toBe(true)
-      expect(can('SUPERVISOR', 'event:create')).toBe(true)
-      expect(can('SUPERVISOR', 'event:update')).toBe(true)
-      expect(can('SUPERVISOR', 'event:cancel')).toBe(true)
-      expect(can('SUPERVISOR', 'event:delete')).toBe(true)
-      expect(can('SUPERVISOR', 'reference:create')).toBe(true)
+      expect(can('STAFF', 'event:access:manage')).toBe(false)
     })
 
     // Property-based loop: semua role × capability - tabel kapabilitas yang diharapkan
     test('can(role, capability) sesuai tabel kapabilitas untuk semua kombinasi', () => {
-      // Tabel kapabilitas yang diharapkan (Req 3.5, Req 7.3, Req 19.4)
-      // SUPERVISOR dan STAFF: semua kapabilitas
-      // CUSTOMER_SERVICE dan DOCUMENT_ASSISTANT: hanya event:read
       const expectedCapabilities: Record<Role, Set<Capability>> = {
-        SUPERVISOR: new Set([
+        CS: new Set([
           'event:read',
           'event:create',
           'event:update',
           'event:cancel',
           'event:delete',
+          'event:access:manage',
           'reference:create',
         ]),
         STAFF: new Set([
@@ -497,8 +499,9 @@ describe('Preservation Property Tests', () => {
           'event:delete',
           'reference:create',
         ]),
-        CUSTOMER_SERVICE: new Set(['event:read']),
+        OPERATIONS: new Set(['event:read']),
         DOCUMENT_ASSISTANT: new Set(['event:read']),
+        FINANCE: new Set(['event:read']),
       }
 
       const capabilities: Array<Capability> = [
@@ -507,6 +510,7 @@ describe('Preservation Property Tests', () => {
         'event:update',
         'event:cancel',
         'event:delete',
+        'event:access:manage',
         'reference:create',
       ]
 
@@ -527,7 +531,7 @@ describe('Preservation Property Tests', () => {
     test('isAdmin: true dipertahankan melalui jwt dan session callback', () => {
       const user: JwtUser = {
         id: 'user-admin',
-        role: 'SUPERVISOR',
+        role: 'CS',
         workspaceId: 'workspace-default',
         isAdmin: true,
       }

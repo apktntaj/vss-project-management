@@ -1,4 +1,4 @@
-import { getOperationalDetails, type LocalEvent, type LocalJob } from '@/lib/data-client'
+import { getOperationalDetails, type LocalEvent, type Job } from '@/lib/data-client'
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -49,7 +49,7 @@ function formatEventDateRange(startsAt: string, endsAt: string) {
   return `${fullDate(start)} - ${fullDate(end)}`
 }
 
-function getGanttRange(events: LocalEvent[], jobs: LocalJob[]) {
+function getGanttRange(events: LocalEvent[], jobs: Job[]) {
   if (!events.length) {
     const today = new Date()
     return { start: today, totalDays: 7, totalWeeks: 1 }
@@ -121,7 +121,7 @@ function getOverlaps(events: LocalEvent[]) {
   return overlaps
 }
 
-export function EventTimeline({ events, jobs }: { events: LocalEvent[]; jobs: LocalJob[] }) {
+export function EventTimeline({ events, jobs }: { events: LocalEvent[]; jobs: Job[] }) {
   const overlaps = getOverlaps(events)
   if (!events.length) {
     return (

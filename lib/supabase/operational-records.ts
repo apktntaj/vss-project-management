@@ -3,10 +3,11 @@ import 'server-only'
 import { getSupabaseAdmin } from '@/lib/supabase/admin'
 
 export const operationalTables = [
-  'operational_users', 'venues', 'event_organizers', 'events', 'exhibitors', 'agents',
-  'jobs', 'job_stages', 'job_documents', 'coordination_agents', 'cipls',
-  'cipl_versions', 'shipments', 'customs_jobs', 'preferences',
-  'migration_review_items',
+  // Job TIDAK lewat sini: aggregate Job punya route sendiri (`/api/jobs/**`) dengan validasi,
+  // otorisasi, dan guard versi.
+  // Exhibitor juga tidak: tabel relasional dengan route sendiri (`/api/events/[id]/exhibitors`).
+  'operational_users', 'venues', 'event_organizers', 'events', 'agents',
+  'preferences',
 ] as const
 
 export type OperationalTable = (typeof operationalTables)[number]

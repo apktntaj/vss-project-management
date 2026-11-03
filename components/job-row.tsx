@@ -15,11 +15,9 @@ import {
   Upload,
 } from 'lucide-react'
 
-import {
-  getOperationalDetails,
-  type LocalJob,
-  type LocalJobDocument,
-} from '@/lib/data-client'
+import { getOperationalDetails, type Job } from '@/lib/data-client'
+import { invoiceStatusLabels, transportModeLabels } from '@/domain/job/types'
+import { jobJenisLabel, jobJenisKey } from '@/lib/job-jenis'
 import type {
   JobInvoiceExtraction,
   JobTransportExtraction,
@@ -51,70 +49,12 @@ export type JobDocumentExtraction = {
   transport?: JobTransportExtraction | null
 }
 
-/** Terapkan hasil upload dokumen shipment ke satu job — documents bertambah dan operational diperbarui dari ekstraksi. */
-export function applyUploadedDocument(
-  job: LocalJob,
-  document: LocalJobDocument,
-  extraction?: JobDocumentExtraction,
-): LocalJob {
-  return {
-    ...job,
-    documents: [...job.documents, document],
-    ...(extraction?.transport
-      ? {
-          blNumber:
-            document.kind === 'BILL_OF_LADING' ? extraction.transport.documentNumber : job.blNumber,
-          awbNumber:
-            document.kind === 'AIR_WAYBILL' ? extraction.transport.documentNumber : job.awbNumber,
-          shippingLine: extraction.transport.carrier,
-          ...(extraction.transport.shipper?.name
-            ? { shipper: extraction.transport.shipper.name }
-            : {}),
-          ...(extraction.transport.consignee?.name
-            ? { consignee: extraction.transport.consignee.name }
-            : {}),
-          ...(extraction.transport.notifyParty?.name
-            ? { notifyParty: extraction.transport.notifyParty.name }
-            : {}),
-        }
-      : {}),
-    operational:
-      extraction?.invoice || extraction?.transport
-        ? {
-            ...getOperationalDetails(job),
-            inbound: extraction.transport
-              ? {
-                  ...getOperationalDetails(job).inbound,
-                  mode: document.kind === 'BILL_OF_LADING' ? 'SEA' : 'AIR',
-                  documentType: document.kind === 'BILL_OF_LADING' ? 'BL' : 'AWB',
-                  documentNumber: extraction.transport.documentNumber,
-                  carrier: extraction.transport.carrier,
-                  scheduleAt:
-                    extraction.transport.eta ?? getOperationalDetails(job).inbound.scheduleAt,
-                }
-              : getOperationalDetails(job).inbound,
-            ...(extraction.transport ? { inboundDocument: extraction.transport } : {}),
-            ...(extraction.invoice
-              ? {
-                  invoiceNumber:
-                    extraction.invoice.invoiceNumber ??
-                    getOperationalDetails(job).invoiceNumber ??
-                    null,
-                  invoiceItems: extraction.invoice.items,
-                  invoice: extraction.invoice,
-                }
-              : {}),
-          }
-        : job.operational,
-  }
-}
-
 /** Unduh workbook Excel untuk satu dokumen BC; melempar error bila API gagal. */
-export async function downloadCustomsWorkbook(job: LocalJob, documentType: BcDocumentKind) {
+export async function downloadCustomsWorkbook(job: Job, documentType: BcDocumentKind) {
   const response = await fetch('/api/export-customs-workbook', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ job, documentType }),
+    body: JSON.stringify({ jobId: job.id, documentType }),
   })
   if (!response.ok) {
     const payload = (await response.json()) as { error?: string }
@@ -124,7 +64,7 @@ export async function downloadCustomsWorkbook(job: LocalJob, documentType: BcDoc
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = `${documentType.replaceAll('_', '-')}-${job.jobNumber}.xlsx`
+  anchor.download = `${documentType.replaceAll('_', '-')}-${job.jobNumber ?? job.vssNumber}.xlsx`
   anchor.click()
   URL.revokeObjectURL(url)
 }
@@ -133,8 +73,8 @@ function CustomsProgress({
   job,
   onGenerate,
 }: {
-  job: LocalJob
-  onGenerate: (job: LocalJob, documentType: BcDocumentKind) => void
+  job: Job
+  onGenerate: (job: Job, documentType: BcDocumentKind) => void
 }) {
   const customs = getOperationalDetails(job).customs
   return (
@@ -179,48 +119,56 @@ function CustomsProgress({
 export function JobRow({
   job,
   nomor,
+  event,
   actions,
-  onDocumentUploaded,
+  onJobUpdated,
   onToast,
   onGenerate,
   onEditDocument,
 }: {
-  job: LocalJob
+  job: Job
   /** No Job yang diisi manual; kosong bila belum ditetapkan. */
   nomor?: string
+  /** Bila diisi, tampil kolom Event · Jenis · Jalur (tabel lintas event di /jobs). */
+  event?: { id: string; name: string } | null
   /** Bila diisi, kolom terakhir menampilkan menu titik tiga (Edit/Hapus) alih-alih PIC. */
   actions?: {
-    onEdit: (job: LocalJob) => void
-    onDelete: (job: LocalJob) => void
+    onEdit: (job: Job) => void
+    onDelete: (job: Job) => void
   }
-  onDocumentUploaded: (
-    jobId: string,
-    document: LocalJobDocument,
-    extraction?: JobDocumentExtraction,
-  ) => void
+  /** Dipanggil dengan job terbaru dari server sesudah unggahan dokumen mengubahnya. */
+  onJobUpdated: (job: Job) => void
   onToast: (message: string, tone?: 'info' | 'error') => void
-  onGenerate: (job: LocalJob, documentType: BcDocumentKind) => void
-  onEditDocument: (job: LocalJob, kind: EditableJobDocument) => void
+  onGenerate: (job: Job, documentType: BcDocumentKind) => void
+  onEditDocument: (job: Job, kind: EditableJobDocument) => void
 }) {
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
   const operational = getOperationalDetails(job)
   const inbound = operational.inbound
+  const transport = job.transportDocument
   const documentComparison =
-    operational.invoice && operational.inboundDocument
-      ? compareInvoiceWithTransport(operational.invoice, operational.inboundDocument)
+    operational.invoice && transport
+      ? compareInvoiceWithTransport(operational.invoice, transport)
       : null
   const comparisonDifferences =
     documentComparison?.filter((item) => item.status === 'DIFFERENT') ?? []
   const hasComparableDocumentValues =
     documentComparison?.some((item) => item.status !== 'UNAVAILABLE') ?? false
-  const exhibitorName = job.exhibitor?.legalName || job.clientName
-  const shipperName = operational.inboundDocument?.shipper?.name || job.shipper
+  const partyName = job.party?.name || 'Pihak belum ditetapkan'
+  const shipperName = transport?.shipper?.name ?? null
+  // Job yang dipegang exhibitor langsung: exhibitor itulah shipper pada B/L.
   const exhibitorDiffersFromShipper = Boolean(
-    job.exhibitor?.legalName &&
-    shipperName &&
-    normalizedName(job.exhibitor.legalName) !== normalizedName(shipperName),
+    job.party?.kind === 'EXHIBITOR' &&
+      shipperName &&
+      normalizedName(job.party.name) !== normalizedName(shipperName),
   )
+  const partyLine = job.party?.kind === 'EXHIBITOR'
+    ? job.ciplLines.find((line) => line.exhibitorId === job.party?.id)
+    : undefined
+  const exhibitorCount = job.ciplLines.length
+  const unlinkedCount = job.ciplLines.filter((line) => !line.exhibitorId).length
+  const invoice = job.invoice
   const TransportIcon = inbound.mode === 'AIR' ? Plane : inbound.mode === 'SEA' ? Ship : Truck
 
   return (
@@ -230,9 +178,9 @@ export function JobRow({
         <Link
           href={`/jobs/${job.id}`}
           className="font-semibold text-slate-900 hover:text-orange-700"
-          title={nomor && nomor !== job.jobNumber ? `No. internal: ${job.jobNumber}` : undefined}
+          title={`No. internal: ${job.vssNumber}`}
         >
-          {nomor || job.jobNumber || 'Belum diisi'}
+          {nomor || job.jobNumber || job.vssNumber}
         </Link>
         <p className="mt-1">
           <span className="inline-flex rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-inset ring-sky-200">
@@ -243,9 +191,28 @@ export function JobRow({
           <StatusBadge status={job.status} />
         </div>
       </td>
+      {event !== undefined && (
+        <td className="px-3 py-3 align-top">
+          {event ? (
+            <Link
+              href={`/events/${event.id}`}
+              className="line-clamp-2 font-medium text-slate-800 hover:text-orange-700"
+              title={event.name}
+            >
+              {event.name}
+            </Link>
+          ) : (
+            <span className="text-slate-400">—</span>
+          )}
+          <p className="mt-1 text-xs text-slate-500">
+            {jobJenisLabel(jobJenisKey(job))}
+            {job.transportMode ? ` · ${transportModeLabels[job.transportMode]}` : ''}
+          </p>
+        </td>
+      )}
       <td className="w-[145px] max-w-[145px] px-3 py-3 align-top">
-        <p className="truncate font-medium text-slate-800" title={exhibitorName}>
-          {exhibitorName}
+        <p className="truncate font-medium text-slate-800" title={partyName}>
+          {partyName}
         </p>
         {exhibitorDiffersFromShipper && (
           <p
@@ -255,23 +222,30 @@ export function JobRow({
             <CircleAlert aria-hidden="true" /> Berbeda dengan Shipper B/L
           </p>
         )}
-        <p className="mt-1 truncate" title={job.agent || 'Agent belum diisi'}>
+        <p className="mt-1 truncate">
           <span className="inline-flex max-w-full truncate rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700 ring-1 ring-inset ring-violet-200">
-            {job.agent || 'Agent belum diisi'}
+            {job.party?.kind === 'AGENT' ? 'Agent' : job.party?.kind === 'EXHIBITOR' ? 'Exhibitor' : 'Pihak?'}
           </span>
         </p>
-        <p className="mt-1.5 text-xs text-slate-500">
-          Hall: {job.exhibitor?.logistics?.hall || '—'}
-          <br />
-          Booth: {job.exhibitor?.logistics?.booth || '—'}
-        </p>
+        {partyLine?.exhibitor ? (
+          <p className="mt-1.5 text-xs text-slate-500">
+            Hall: {partyLine.exhibitor.hall || '—'}
+            <br />
+            Booth: {partyLine.exhibitor.booth || '—'}
+          </p>
+        ) : (
+          <p className="mt-1.5 text-xs text-slate-500">
+            {exhibitorCount ? `${exhibitorCount} exhibitor di CIPL` : 'CIPL belum di-scan'}
+            {unlinkedCount ? ` · ${unlinkedCount} belum ditautkan` : ''}
+          </p>
+        )}
       </td>
       <td className="px-3 py-3 align-top">
         <div className="flex items-start gap-2">
           <button
             type="button"
             onClick={() => setUploadOpen(true)}
-            aria-label={`Upload dokumen shipment untuk ${job.jobNumber}`}
+            aria-label={`Upload dokumen shipment untuk ${job.jobNumber ?? job.vssNumber}`}
             title="Upload dokumen: CIPL, B/L atau AWB, dokumen pendukung"
             className="mt-0.5 shrink-0 rounded p-0.5 text-slate-400 hover:bg-orange-100 hover:text-orange-700"
           >
@@ -284,7 +258,7 @@ export function JobRow({
               size="sm"
               onClick={() => onEditDocument(job, 'TRANSPORT')}
             >
-              {inbound.documentType || 'Masuk'} · {inbound.documentNumber || 'Belum ada dokumen'}
+              {job.transportDocumentType || 'Masuk'} · {job.transportDocumentNumber || 'Belum ada dokumen'}
             </Button>
             <p className="mt-1">
               <Button
@@ -346,18 +320,23 @@ export function JobRow({
         </div>
       </td>
       <td className="px-3 py-3 align-top">
-        <p className="truncate text-slate-600" title={job.billTo || undefined}>
-          {job.billTo || '—'}
+        <p className="truncate text-slate-600" title={invoice.number || undefined}>
+          {invoice.number || '—'}
         </p>
+        {invoice.amount !== null && (
+          <p className="mt-1 text-xs tabular-nums text-slate-500">
+            {invoice.currency ?? ''} {new Intl.NumberFormat('id-ID').format(invoice.amount)}
+          </p>
+        )}
       </td>
       <td className="px-3 py-3 align-top">
-        {job.invoiceSent ? (
+        {invoice.status === 'SENT' || invoice.status === 'PAID' ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
-            <CheckCircle2 size={12} aria-hidden="true" /> Terkirim
+            <CheckCircle2 size={12} aria-hidden="true" /> {invoiceStatusLabels[invoice.status]}
           </span>
         ) : (
           <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 ring-1 ring-inset ring-slate-200">
-            Belum
+            {invoiceStatusLabels[invoice.status]}
           </span>
         )}
       </td>
@@ -381,7 +360,7 @@ export function JobRow({
                   current ? null : { top: rect.bottom + 4, left: rect.right - 176 },
                 )
               }}
-              aria-label={`Menu aksi untuk ${nomor || job.jobNumber}`}
+              aria-label={`Menu aksi untuk ${nomor || job.jobNumber || job.vssNumber}`}
               aria-expanded={menuAnchor !== null}
               aria-haspopup="menu"
               title="Menu"
@@ -398,7 +377,7 @@ export function JobRow({
                 />
                 <div
                   role="menu"
-                  aria-label={`Aksi untuk ${nomor || job.jobNumber}`}
+                  aria-label={`Aksi untuk ${nomor || job.jobNumber || job.vssNumber}`}
                   className="fixed z-50 w-44 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg"
                   style={{ top: menuAnchor.top, left: menuAnchor.left }}
                 >
@@ -435,7 +414,7 @@ export function JobRow({
         job={job}
         open={uploadOpen}
         onOpenChange={setUploadOpen}
-        onDocumentUploaded={onDocumentUploaded}
+        onJobUpdated={onJobUpdated}
         onToast={onToast}
       />
     </>

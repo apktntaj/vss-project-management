@@ -15,7 +15,6 @@ import {
   type MilestoneKind,
 } from '@/domain/job/manifest'
 import { internationalJobJenisLabels } from '@/domain/job/types'
-import type { LocalExhibitor } from '@/lib/data-client'
 import type { ManifestBlockView, ManifestPeserta } from '@/lib/manifest-view'
 
 const milestoneOrder: MilestoneKind[] = [
@@ -56,14 +55,14 @@ function loadConfigurationLabel(view: ManifestBlockView) {
 
 /** Baris ringkas satu consignment: AGENT / No. B/L / konfigurasi / total PKG · KGM · CBM — meniru baris abu-abu manifest ALLPACK. */
 function consignmentLine(view: ManifestBlockView): string {
-  const parts = [view.agentName]
-  if (view.inward) {
+  const parts = [view.partyName]
+  if (view.transportDocument) {
     parts.push(
-      `${view.inward.transportDocument.kind === 'BL' ? 'B/L' : 'AWB'} ${view.inward.transportDocument.number}`,
+      `${view.transportDocument.type === 'BL' ? 'B/L' : 'AWB'} ${view.transportDocument.number}`,
     )
-    const configuration = loadConfigurationLabel(view)
-    if (configuration) parts.push(configuration)
   }
+  const configuration = loadConfigurationLabel(view)
+  if (configuration) parts.push(configuration)
   parts.push(
     `${view.totals.totalCount} PKG · ${numberID(view.totals.weightKg)} KGM · ${numberID(view.totals.volumeCbm)} CBM`,
   )
@@ -75,7 +74,7 @@ const thGroup = 'border border-slate-200 px-2 py-1.5 text-center align-middle'
 const td = 'border border-slate-200 px-2 py-1.5 align-top'
 const tdNum = 'border border-slate-200 px-2 py-1.5 text-right align-top tabular-nums'
 
-/** Sel "Exhibitor" — nama, badge sumber scan, catatan anomali peserta, dan afordans edit koli. */
+/** Sel "Exhibitor" — nama, status tautan, catatan anomali, dan afordans edit baris CIPL. */
 function ExhibitorCell({
   peserta,
   rowSpan,
@@ -83,31 +82,32 @@ function ExhibitorCell({
 }: {
   peserta: ManifestPeserta
   rowSpan: number
-  onEdit: (exhibitor: LocalExhibitor) => void
+  onEdit: (peserta: ManifestPeserta) => void
 }) {
-  const anomalyNotes = peserta.logistics?.notes.filter((note) => note.kind === 'ANOMALI_BARANG') ?? []
+  const anomalyNotes = peserta.logistics.notes.filter((note) => note.kind === 'ANOMALI_BARANG')
   return (
     <td className={`${td} min-w-[180px]`} rowSpan={rowSpan}>
       <p className="font-medium text-slate-800">{peserta.name}</p>
-      {peserta.origin === 'CIPL_SCAN' && (
-        <span className="mt-1 inline-flex rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700 ring-1 ring-inset ring-orange-200">
-          dari scan CIPL
+      {!peserta.linked && (
+        <span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-inset ring-amber-200">
+          belum ditautkan ke exhibitor
         </span>
+      )}
+      {peserta.linked && peserta.line.nameOnDocument !== peserta.name && (
+        <p className="mt-0.5 text-[11px] text-slate-500">CIPL: {peserta.line.nameOnDocument}</p>
       )}
       {anomalyNotes.map((note, index) => (
         <p key={index} className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-700">
           <TriangleAlert size={12} aria-hidden="true" /> {note.text}
         </p>
       ))}
-      {peserta.origin === 'MASTER' && (
-        <button
-          type="button"
-          onClick={() => onEdit(peserta.exhibitor)}
-          className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-orange-700 hover:text-orange-800"
-        >
-          <Pencil size={12} aria-hidden="true" /> Edit koli
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={() => onEdit(peserta)}
+        className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-orange-700 hover:text-orange-800"
+      >
+        <Pencil size={12} aria-hidden="true" /> {peserta.linked ? 'Edit koli' : 'Tautkan & edit'}
+      </button>
     </td>
   )
 }
@@ -119,7 +119,7 @@ export function JobManifestSection({
 }: {
   view: ManifestBlockView
   onEditManifest: () => void
-  onEditPeserta: (exhibitor: LocalExhibitor) => void
+  onEditPeserta: (peserta: ManifestPeserta) => void
 }) {
   const inward = view.inward
   const milestones = inward?.milestones ?? []
@@ -129,7 +129,7 @@ export function JobManifestSection({
 
   // rowSpan kolom tingkat-consignment (No & Remark): seluruh baris rincian + subtotal tiap peserta.
   const totalBodyRows = view.peserta.reduce((sum, peserta) => {
-    const detailCount = Math.max(peserta.logistics?.koli.details.length ?? 0, 1)
+    const detailCount = Math.max(peserta.logistics.koli.details.length, 1)
     return sum + detailCount + 1
   }, 0)
 
@@ -237,14 +237,17 @@ export function JobManifestSection({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="eyebrow">Blok manifest · {view.jobNumber}</p>
-          <h2 className="mt-1 text-xl font-bold text-slate-900">{view.agentName}</h2>
+          <h2 className="mt-1 text-xl font-bold text-slate-900">{view.partyName}</h2>
           {view.internationalJenis && (
             <span className={`${chip('violet')} mt-2`}>
               {internationalJobJenisLabels[view.internationalJenis] ?? 'Job lama'}
             </span>
           )}
+          {!view.transportDocument && (
+            <p className="mt-2 text-sm text-slate-500">Nomor B/L atau AWB belum diisi.</p>
+          )}
           {!inward && (
-            <p className="mt-2 text-sm text-slate-500">Dokumen angkut & konfigurasi muatan belum diisi.</p>
+            <p className="mt-1 text-sm text-slate-500">Konfigurasi muatan & milestone belum diisi.</p>
           )}
         </div>
         <button type="button" onClick={onEditManifest} className="btn-secondary shrink-0">
@@ -300,16 +303,17 @@ export function JobManifestSection({
             ) : (
               <tr>
                 <td className="border border-slate-200 px-3 py-6 text-center text-sm text-slate-500" colSpan={COLUMN_COUNT}>
-                  Belum ada exhibitor binaan pada agent ini.
+                  Belum ada baris CIPL. Scan CIPL saat membuat job, atau import dari manifest.
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
-      {view.peserta.length > 0 && !view.peserta.some((peserta) => peserta.logistics) && (
+      {view.peserta.some((peserta) => !peserta.linked) && (
         <p className="mt-2 text-xs text-slate-500">
-          Koli, hall, dan booth tiap exhibitor diinput lewat tombol “Edit koli”.
+          Baris yang belum ditautkan tidak terhitung sebagai barang exhibitor mana pun. Tautkan lewat
+          tombol “Tautkan &amp; edit”.
         </p>
       )}
 
@@ -341,7 +345,7 @@ export function JobManifestSection({
               ) : (
                 <p className="mt-1 text-sm text-slate-500">
                   Rencana pengembalian kontainer/LCL belum diisi. Total koli peserta:{' '}
-                  {summarizeKoliCollections(view.peserta.map((item) => item.logistics?.koli ?? null)).totalCount}.
+                  {view.totals.totalCount}.
                 </p>
               )}
             </div>

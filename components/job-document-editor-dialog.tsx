@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useState, type FormEvent } from 'react'
-import { FileText, PackageSearch, Plus, Trash2, UsersRound } from 'lucide-react'
+import { FileText, PackageSearch, Plus, Trash2, Upload, UsersRound } from 'lucide-react'
 import {
   getOperationalDetails,
   saveJobInvoiceExtraction,
+  saveJobDocument,
   saveJobTransportExtraction,
-  type LocalJob,
+  type Job,
 } from '@/lib/data-client'
 import type {
   JobDocumentParty,
@@ -26,6 +27,7 @@ import {
 } from '@/components/ui/dialog'
 import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { isAcceptedJobDocument, jobDocumentAccept } from '@/components/job-document-file'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -42,7 +44,7 @@ const emptyContainer = (): JobTransportContainer => ({ containerNumber: null, si
 const nullableText = (value: string) => value.trim() || null
 const nullableNumber = (value: string) => value === '' ? null : Number(value)
 
-function invoiceFrom(job: LocalJob): JobInvoiceExtraction {
+function invoiceFrom(job: Job): JobInvoiceExtraction {
   const operational = getOperationalDetails(job)
   const current = operational.invoice
   return current ?? {
@@ -64,18 +66,18 @@ function invoiceFrom(job: LocalJob): JobInvoiceExtraction {
   }
 }
 
-function transportFrom(job: LocalJob): JobTransportExtraction {
+function transportFrom(job: Job): JobTransportExtraction {
   const operational = getOperationalDetails(job)
-  return operational.inboundDocument ?? {
-    documentNumber: operational.inbound.documentNumber,
+  return job.transportDocument ?? {
+    documentNumber: job.transportDocumentNumber,
     documentDate: null,
     carrier: operational.inbound.carrier,
     vesselOrFlight: null,
     voyageOrFlightNumber: null,
     bookingNumber: null,
-    shipper: { ...emptyParty(), name: job.shipper },
-    consignee: { ...emptyParty(), name: job.consignee },
-    notifyParty: { ...emptyParty(), name: job.notifyParty },
+    shipper: emptyParty(),
+    consignee: emptyParty(),
+    notifyParty: emptyParty(),
     portOfLoading: null,
     portOfDischarge: null,
     placeOfReceipt: null,
@@ -204,25 +206,69 @@ export function TransportEditor({ value, onChange }: { value: JobTransportExtrac
     </TabsContent></Tabs></div>
 }
 
-export function JobDocumentEditorDialog({ job, kind, open, onOpenChange, onSaved, onToast }: { job: LocalJob | null; kind: EditableJobDocument; open: boolean; onOpenChange: (open: boolean) => void; onSaved: (job: LocalJob) => void; onToast: (message: string, tone?: 'info' | 'error') => void }) {
+export function JobDocumentEditorDialog({ job, kind, open, onOpenChange, onSaved, onToast }: { job: Job | null; kind: EditableJobDocument; open: boolean; onOpenChange: (open: boolean) => void; onSaved: (job: Job) => void; onToast: (message: string, tone?: 'info' | 'error') => void }) {
   const [invoice, setInvoice] = useState<JobInvoiceExtraction | null>(null)
   const [transport, setTransport] = useState<JobTransportExtraction | null>(null)
   const [saving, setSaving] = useState(false)
+  const [scanFile, setScanFile] = useState<File | null>(null)
+  const [docKind, setDocKind] = useState<'BL' | 'AWB'>('BL')
+  const [scanning, setScanning] = useState(false)
   useEffect(() => {
     if (!job || !open) return
     setInvoice(invoiceFrom(job))
     setTransport(transportFrom(job))
+    setScanFile(null)
+    setDocKind('BL')
   }, [job, open])
+  async function scanTransport(file: File) {
+    if (!isAcceptedJobDocument(file)) {
+      onToast('File harus berupa PDF atau Excel.', 'error')
+      return
+    }
+    setScanning(true)
+    try {
+      const body = new FormData()
+      body.set('file', file)
+      const response = await fetch('/api/classify-job-document', { method: 'POST', body })
+      const data = (await response.json().catch(() => null)) as {
+        classification?: { documentType?: string }
+        transport?: JobTransportExtraction | null
+        detail?: { documentType?: string } | null
+        error?: string
+      } | null
+      if (!response.ok || !data) throw new Error(data?.error || 'Dokumen tidak dapat dipindai.')
+      if (!data.transport) {
+        const detected = data.detail?.documentType ?? data.classification?.documentType ?? 'tidak dikenali'
+        throw new Error(`Dokumen terdeteksi sebagai ${detected.replace(/_/g, ' ').toLowerCase()} — bukan B/L atau AWB.`)
+      }
+      setTransport(data.transport)
+      setScanFile(file)
+      const detectedType = data.detail?.documentType ?? data.classification?.documentType
+      if (detectedType === 'AIR_WAYBILL') setDocKind('AWB')
+      else if (detectedType === 'BILL_OF_LADING') setDocKind('BL')
+      onToast('Data B/L atau AWB terisi dari dokumen — periksa lalu simpan.')
+    } catch (caught) {
+      onToast(caught instanceof Error ? caught.message : 'Dokumen tidak dapat dipindai.', 'error')
+    } finally {
+      setScanning(false)
+    }
+  }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!job) return
     setSaving(true)
     try {
-      const updated = kind === 'INVOICE' && invoice
-        ? await saveJobInvoiceExtraction(job.id, invoice)
-        : kind === 'TRANSPORT' && transport
-          ? await saveJobTransportExtraction(job.id, transport)
-          : null
+      let updated: Job | null = null
+      if (kind === 'INVOICE' && invoice) {
+        updated = await saveJobInvoiceExtraction(job, invoice)
+      } else if (kind === 'TRANSPORT' && transport) {
+        if (scanFile) {
+          const result = await saveJobDocument(job, scanFile, docKind === 'AWB' ? 'AIR_WAYBILL' : 'BILL_OF_LADING', null, transport)
+          updated = result.job ?? job
+        } else {
+          updated = await saveJobTransportExtraction(job, transport)
+        }
+      }
       if (!updated) throw new Error('Data dokumen belum tersedia.')
       onSaved(updated)
       onOpenChange(false)
@@ -234,8 +280,9 @@ export function JobDocumentEditorDialog({ job, kind, open, onOpenChange, onSaved
     }
   }
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="flex h-[min(90vh,900px)] max-h-[90vh] w-[calc(100%-1rem)] max-w-none flex-col overflow-hidden p-0 sm:w-[calc(100%-2rem)] sm:max-w-[min(92vw,860px)]"><form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
-    <DialogHeader className="border-b border-primary/20 bg-primary/10 px-5 py-5 pr-12 sm:px-6"><DialogTitle className="text-primary">Edit {kind === 'INVOICE' ? 'Invoice' : 'B/L atau AWB'}</DialogTitle><DialogDescription>Periksa dan koreksi data hasil ekstraksi dokumen untuk Job <span className="font-medium text-foreground">{job?.jobNumber ?? ''}</span>.</DialogDescription></DialogHeader>
+    <DialogHeader className="border-b border-primary/20 bg-primary/10 px-5 py-5 pr-12 sm:px-6"><DialogTitle className="text-primary">Edit {kind === 'INVOICE' ? 'Invoice' : 'B/L atau AWB'}</DialogTitle><DialogDescription>Periksa dan koreksi data hasil ekstraksi dokumen untuk Job <span className="font-medium text-foreground">{job?.jobNumber ?? job?.vssNumber ?? ''}</span>.</DialogDescription></DialogHeader>
+    {kind === 'TRANSPORT' ? <div className="grid shrink-0 gap-3 border-b px-4 py-3 sm:grid-cols-[200px_1fr] sm:px-6"><label className="text-sm font-medium">Jenis dokumen<select value={docKind} onChange={(selectEvent) => setDocKind(selectEvent.target.value as 'BL' | 'AWB')} disabled={scanning || saving} className="mt-1 block h-9 w-full rounded-md border bg-background px-2 text-sm"><option value="BL">B/L (laut)</option><option value="AWB">AWB (udara)</option></select></label><label className="flex cursor-pointer items-center justify-between gap-3 self-end rounded-xl border border-dashed border-black/20 bg-white px-4 py-2 text-sm text-slate-500 hover:border-orange-300 hover:bg-orange-50"><span className="min-w-0 truncate">{scanning ? 'Memeriksa dokumen dengan AI…' : scanFile ? `Terpindai: ${scanFile.name}` : 'Unggah B/L atau AWB untuk dipindai'}</span><Upload className="size-4 shrink-0 text-slate-400" aria-hidden="true" /><input type="file" accept={jobDocumentAccept} className="sr-only" disabled={scanning || saving} onChange={(inputEvent) => { const file = inputEvent.target.files?.[0]; if (file) void scanTransport(file); inputEvent.target.value = '' }} /></label></div> : null}
     {kind === 'INVOICE' && invoice ? <InvoiceEditor value={invoice} onChange={setInvoice} /> : transport ? <TransportEditor value={transport} onChange={setTransport} /> : null}
-    <DialogFooter className="mx-0 mb-0 shrink-0 rounded-none border-primary/15 bg-primary/5 px-5 py-4 sm:px-6"><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Batal</Button><Button type="submit" disabled={saving}>{saving ? 'Menyimpan…' : 'Simpan perubahan'}</Button></DialogFooter>
+    <DialogFooter className="mx-0 mb-0 shrink-0 rounded-none border-primary/15 bg-primary/5 px-5 py-4 sm:px-6"><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Batal</Button><Button type="submit" disabled={saving || scanning}>{saving ? 'Menyimpan…' : 'Simpan perubahan'}</Button></DialogFooter>
   </form></DialogContent></Dialog>
 }

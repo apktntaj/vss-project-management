@@ -5,7 +5,7 @@ import 'server-only'
 // daftar referensi dibatasi ke peran yang boleh membaca event (`event:read` — semua peran). Route
 // tetap tipis dan mendelegasi. `import 'server-only'` menjaga batas server/klien.
 
-import { authorize, listWorkspaceMembers } from '@/features/auth'
+import { authorize, listCandidatePics } from '@/features/auth'
 import { listEventOrganizers, listVenues } from '@/features/events/repository'
 import type { CurrentUser } from '@/domain/auth/types'
 import type { EventOrganizerRecord, VenueRecord } from '@/domain/event/types'
@@ -25,13 +25,12 @@ export async function listEventOrganizerReferences(
 }
 
 /**
- * Daftar anggota workspace aktif sebagai opsi PIC pada form event. Otorisasinya sama dengan
- * referensi lain (`event:read`): siapa pun yang boleh membaca event boleh melihat calon PIC-nya.
- * Data anggota tetap dimiliki slice auth (`listWorkspaceMembers`) — slice event hanya memanggil.
+ * Daftar calon PIC pada form event: anggota workspace aktif berperan CS. Otorisasinya sama dengan
+ * referensi lain (`event:read`). Data anggota tetap dimiliki slice auth (`listCandidatePics`).
  */
 export async function listUserReferences(
   currentUser: CurrentUser,
 ): Promise<{ id: string; fullName: string }[]> {
   await authorize(currentUser, 'event:read')
-  return listWorkspaceMembers()
+  return listCandidatePics()
 }

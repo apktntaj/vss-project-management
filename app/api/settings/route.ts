@@ -46,7 +46,7 @@ export async function GET() {
 
     const client = getSupabaseAdmin()
     const [{ data: users, error: usersError }, { data: workspace, error: workspaceError }] = await Promise.all([
-      client.from('app_users').select('id, full_name, email, job_role, access_level, is_active').order('full_name'),
+      client.from('app_users').select('id, full_name, email, role, access_level, is_active').order('full_name'),
       client.from('workspaces').select('id').eq('slug', 'default').single<{ id: string }>(),
     ])
     if (usersError) throw new Error(`Pengguna tidak dapat dimuat: ${usersError.message}`)
@@ -60,7 +60,7 @@ export async function GET() {
     if (venuesError) throw new Error(`Venue tidak dapat dimuat: ${venuesError.message}`)
     if (organizersError) throw new Error(`Event organizer tidak dapat dimuat: ${organizersError.message}`)
     return NextResponse.json({
-      users: (users ?? []).map((user) => ({ id: user.id, nama: user.full_name, email: user.email, jobRole: user.job_role, isAdmin: user.access_level === 'ADMIN', isActive: user.is_active })),
+      users: (users ?? []).map((user) => ({ id: user.id, nama: user.full_name, email: user.email, role: user.role, isAdmin: user.access_level === 'ADMIN', isActive: user.is_active })),
       venues: (venues ?? []).map((venue) => ({ id: venue.id, legalName: venue.legal_name, aliasName: venue.alias_name, city: venue.city })),
       organizers: (organizers ?? []).map((organizer) => ({ id: organizer.id, legalName: organizer.legal_name })),
     })
@@ -82,14 +82,14 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(result.user)
       }
       const { data, error } = await getSupabaseAdmin().from('app_users').insert({
-        email: input.email, full_name: input.nama, role: 'STAFF', job_role: 'STAFF', is_admin: input.isAdmin, access_level: input.isAdmin ? 'ADMIN' : 'MEMBER', password_hash: await hashPassword(input.password),
-      }).select('id, full_name, email, job_role, access_level, is_active').single()
+        email: input.email, full_name: input.nama, role: input.role, job_role: input.role, is_admin: input.isAdmin, access_level: input.isAdmin ? 'ADMIN' : 'MEMBER', password_hash: await hashPassword(input.password),
+      }).select('id, full_name, email, role, access_level, is_active').single()
       if (error) throw new Error(`Pengguna tidak dapat dibuat: ${error.message}`)
       const { data: workspace, error: workspaceError } = await getSupabaseAdmin().from('workspaces').select('id').eq('slug', 'default').single<{ id: string }>()
       if (workspaceError || !workspace) throw new Error('Workspace tidak dapat dimuat: user dibuat tanpa keanggotaan workspace.')
       const { error: memberError } = await getSupabaseAdmin().from('workspace_members').insert({ workspace_id: workspace.id, user_id: data.id, role: 'MEMBER' })
       if (memberError) throw new Error(`Keanggotaan workspace tidak dapat dibuat: ${memberError.message}`)
-      return NextResponse.json({ id: data.id, nama: data.full_name, email: data.email, jobRole: data.job_role, isAdmin: data.access_level === 'ADMIN', isActive: data.is_active })
+      return NextResponse.json({ id: data.id, nama: data.full_name, email: data.email, role: data.role, isAdmin: data.access_level === 'ADMIN', isActive: data.is_active })
     }
 
     if (!isSupabaseConfigured()) throw new Error('Supabase wajib dikonfigurasi untuk mengelola venue dan event organizer.')
@@ -128,10 +128,14 @@ export async function PATCH(request: NextRequest) {
         if (!result.ok) throw new Error(result.error)
         return NextResponse.json(result.user)
       }
-      const update = { email: input.email, full_name: input.nama, is_admin: input.isAdmin, access_level: input.isAdmin ? 'ADMIN' : 'MEMBER', ...(input.password ? { password_hash: await hashPassword(input.password) } : {}) }
-      const { data, error } = await getSupabaseAdmin().from('app_users').update(update).eq('id', id).select('id, full_name, email, job_role, access_level, is_active').single()
+      if (input.role !== 'CS') {
+        const { count } = await getSupabaseAdmin().from('events').select('id', { count: 'exact', head: true }).eq('pic_id', id)
+        if (count && count > 0) throw new Error(`User masih PIC dari ${count} event — PIC event harus berperan CS. Ganti PIC event tersebut terlebih dahulu.`)
+      }
+      const update = { email: input.email, full_name: input.nama, role: input.role, job_role: input.role, is_admin: input.isAdmin, access_level: input.isAdmin ? 'ADMIN' : 'MEMBER', ...(input.password ? { password_hash: await hashPassword(input.password) } : {}) }
+      const { data, error } = await getSupabaseAdmin().from('app_users').update(update).eq('id', id).select('id, full_name, email, role, access_level, is_active').single()
       if (error) throw new Error(`Pengguna tidak dapat diperbarui: ${error.message}`)
-      return NextResponse.json({ id: data.id, nama: data.full_name, email: data.email, jobRole: data.job_role, isAdmin: data.access_level === 'ADMIN', isActive: data.is_active })
+      return NextResponse.json({ id: data.id, nama: data.full_name, email: data.email, role: data.role, isAdmin: data.access_level === 'ADMIN', isActive: data.is_active })
     }
     if (!isSupabaseConfigured()) throw new Error('Supabase wajib dikonfigurasi untuk mengelola venue dan event organizer.')
     if (resource === 'venues') {

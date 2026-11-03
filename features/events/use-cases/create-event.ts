@@ -14,7 +14,7 @@ import type { EventInput } from '@/domain/event/types'
 
 /**
  * Buat event baru. Urutan WAJIB:
- * 1. Otorisasi `event:create` SEBELUM tulis apa pun (Req 7.1/7.7) — STAFF/SUPERVISOR; peran lain 403.
+ * 1. Otorisasi `event:create` SEBELUM tulis apa pun (Req 7.1/7.7) — CS/STAFF/admin; peran lain 403.
  * 2. Cek eksistensi referensi di repository (`checkReferences`) lalu putuskan valid/tidak dengan
  *    validator domain MURNI (`validateEventReferences`) (Req 10.6/12.4). Referensi tak valid → 400
  *    dengan pesan Indonesia. Validator mengumpulkan SEMUA issue; kita surface pesan issue pertama

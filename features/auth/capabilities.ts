@@ -18,29 +18,43 @@ export type Capability =
   | 'event:delete'
   | 'event:read'
   | 'reference:create'
+  | 'job:read'
+  | 'job:create'
+  | 'job:update'
+  | 'job:delete'
+  | 'exhibitor:write'
+  | 'job:invoice:write'
+  | 'event:access:manage'
 
 /**
  * Pemetaan peran → Capability: SATU tabel eksplisit, tanpa logika bercabang.
  *
- * Intent desain:
- * - `event:read` — semua peran boleh membaca.
- * - `event:create` / `event:update` — STAFF dan SUPERVISOR (operator utama pipeline).
- * - `event:cancel` / `event:delete` — digerbang di tingkat capability ke STAFF dan SUPERVISOR;
- *   pengecekan kepemilikan PIC-vs-SUPERVISOR adalah guard per-objek yang DISUPLAI use-case,
- *   bukan dibakar ke dalam `can`.
- * - `reference:create` — STAFF dan SUPERVISOR (pembuatan master data venue/EO inline).
+ * Admin (`is_admin`) adalah super-user yang melewati gerbang ini di `authorize`; ia tidak didaftar.
  *
- * SUPERVISOR memegang set capability terluas. CUSTOMER_SERVICE dan DOCUMENT_ASSISTANT saat ini
- * hanya boleh membaca event.
+ * Intent desain:
+ * - CS — PIC event: kelola event (buat/ubah/batal/hapus) + beri akses event (`event:access:manage`),
+ *   master data referensi, baca job, dan tulis exhibitor. Buat/ubah/hapus job TIDAK lewat tabel ini:
+ *   PIC event dan penerima akses event (dari PIC) boleh melakukannya di event itu saja, lewat guard
+ *   per-objek `authorizeJobWrite` (`features/jobs/use-cases/job-guards.ts`), apa pun perannya.
+ * - STAFF — operator luas: event + job + referensi, tanpa tagihan. Bukan PIC (PIC hanya CS).
+ * - OPERATIONS — pipeline job/shipment: job + exhibitor, baca event.
+ * - DOCUMENT_ASSISTANT — dokumen job: baca, ubah job, tulis exhibitor.
+ * - FINANCE — baca event/job dan SATU-SATUNYA yang boleh MENULIS tagihan job (`job:invoice:write`);
+ *   membaca tagihan terbuka untuk semua peran, jadi tidak digerbang capability.
+ * - `event:update|cancel|delete` selain capability juga butuh guard per-objek (PIC / penerima akses
+ *   / admin) yang DISUPLAI use-case, bukan dibakar ke dalam `can`.
  */
 const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
-  SUPERVISOR: new Set<Capability>([
+  CS: new Set<Capability>([
     'event:read',
     'event:create',
     'event:update',
     'event:cancel',
     'event:delete',
+    'event:access:manage',
     'reference:create',
+    'job:read',
+    'exhibitor:write',
   ]),
   STAFF: new Set<Capability>([
     'event:read',
@@ -49,9 +63,31 @@ const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     'event:cancel',
     'event:delete',
     'reference:create',
+    'job:read',
+    'job:create',
+    'job:update',
+    'job:delete',
+    'exhibitor:write',
   ]),
-  CUSTOMER_SERVICE: new Set<Capability>(['event:read']),
-  DOCUMENT_ASSISTANT: new Set<Capability>(['event:read']),
+  OPERATIONS: new Set<Capability>([
+    'event:read',
+    'job:read',
+    'job:create',
+    'job:update',
+    'job:delete',
+    'exhibitor:write',
+  ]),
+  DOCUMENT_ASSISTANT: new Set<Capability>([
+    'event:read',
+    'job:read',
+    'job:update',
+    'exhibitor:write',
+  ]),
+  FINANCE: new Set<Capability>([
+    'event:read',
+    'job:read',
+    'job:invoice:write',
+  ]),
 }
 
 /**

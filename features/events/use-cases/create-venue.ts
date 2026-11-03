@@ -12,7 +12,7 @@ import type { VenueInput, VenueRecord } from '@/domain/event/types'
 
 /**
  * Buat venue baru (create-inline). Urutan WAJIB:
- * 1. Otorisasi `reference:create` SEBELUM tulis apa pun (Req 7.1/7.7) — STAFF/SUPERVISOR; peran
+ * 1. Otorisasi `reference:create` SEBELUM tulis apa pun (Req 7.1/7.7) — CS/STAFF/admin; peran
  *    lain 403.
  * 2. Baru persist. Nama kosong/spasi sudah ditolak skema Zod di batas route (Req 12.4); use-case
  *    tetap menjadi titik penegakan otorisasi.

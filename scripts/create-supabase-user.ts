@@ -8,7 +8,7 @@ loadEnvConfig(process.cwd())
 const input = z.object({
   email: z.string().trim().toLowerCase().email(),
   name: z.string().trim().min(1).max(120),
-  role: z.enum(['STAFF', 'SUPERVISOR', 'CUSTOMER_SERVICE', 'DOCUMENT_ASSISTANT']).default('STAFF'),
+  role: z.enum(['CS', 'STAFF', 'OPERATIONS', 'DOCUMENT_ASSISTANT', 'FINANCE']).default('OPERATIONS'),
   admin: z.enum(['true', 'false']).default('false'),
 })
 
@@ -25,7 +25,7 @@ async function main() {
   const password = process.env.VSS_USER_PASSWORD
   if (!password || password.length < 12) throw new Error('Isi VSS_USER_PASSWORD (minimal 12 karakter); jangan taruh password di argumen CLI')
 
-  const parsed = input.parse({ email: process.argv[2], name: process.argv[3], role: process.argv[4] ?? 'STAFF', admin: process.argv[5] ?? 'false' })
+  const parsed = input.parse({ email: process.argv[2], name: process.argv[3], role: process.argv[4] ?? 'OPERATIONS', admin: process.argv[5] ?? 'false' })
 
   const client = createClient(url, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } })
 

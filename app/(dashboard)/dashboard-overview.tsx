@@ -15,7 +15,7 @@ import {
 import { EventTimeline } from '@/components/event-timeline'
 import { PageSkeleton } from '@/components/loading-skeletons'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { listEvents, listJobs, type LocalEvent, type LocalJob } from '@/lib/data-client'
+import { listEvents, listJobs, type LocalEvent, type Job } from '@/lib/data-client'
 
 /**
  * Konten overview dashboard (client): metrik, agenda terdekat, ruang kerja tim, dan timeline —
@@ -25,7 +25,7 @@ import { listEvents, listJobs, type LocalEvent, type LocalJob } from '@/lib/data
  */
 export function DashboardOverview({ insightsSlot }: { insightsSlot?: ReactNode }) {
   const [events, setEvents] = useState<LocalEvent[]>([])
-  const [jobs, setJobs] = useState<LocalJob[]>([])
+  const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [attempt, setAttempt] = useState(0)
