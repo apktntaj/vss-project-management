@@ -4,7 +4,7 @@ import 'server-only'
 // event harus ada; pihak (agent ATAU exhibitor) harus ada — agent otomatis terdaftar sebagai
 // peserta event, exhibitor harus dari event yang sama. Job Local selalu exhibitor.
 
-import { authorize } from '@/features/auth'
+import { authorizeJobWriteInEvent } from '@/features/jobs/use-cases/job-guards'
 import { findEventById } from '@/features/events/repository'
 import {
   ensureEventAgent,
@@ -20,7 +20,7 @@ import type { Job } from '@/domain/job/types'
 import type { JobCreateInput } from '@/domain/job/validation'
 
 export async function createJob(currentUser: CurrentUser, input: JobCreateInput): Promise<Job> {
-  await authorize(currentUser, 'job:create')
+  await authorizeJobWriteInEvent(currentUser, 'job:create', input.eventId)
 
   if (!(await findEventById(input.eventId))) throw new ApiError(400, 'Event tidak ditemukan.')
   if (input.agentId && (await findAgentName(input.agentId)) === null) {

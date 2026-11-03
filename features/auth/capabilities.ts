@@ -33,7 +33,9 @@ export type Capability =
  *
  * Intent desain:
  * - CS — PIC event: kelola event (buat/ubah/batal/hapus) + beri akses event (`event:access:manage`),
- *   master data referensi, baca job, dan tulis exhibitor.
+ *   master data referensi, baca job, dan tulis exhibitor. Buat/ubah/hapus job TIDAK lewat tabel ini:
+ *   PIC event dan penerima akses event (dari PIC) boleh melakukannya di event itu saja, lewat guard
+ *   per-objek `authorizeJobWrite` (`features/jobs/use-cases/job-guards.ts`), apa pun perannya.
  * - STAFF — operator luas: event + job + referensi, tanpa tagihan. Bukan PIC (PIC hanya CS).
  * - OPERATIONS — pipeline job/shipment: job + exhibitor, baca event.
  * - DOCUMENT_ASSISTANT — dokumen job: baca, ubah job, tulis exhibitor.

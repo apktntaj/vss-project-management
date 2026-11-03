@@ -19,6 +19,7 @@ import {
   translateConstraint,
   writeJob,
 } from '@/features/jobs/use-cases/errors'
+import { authorizeJobWrite } from '@/features/jobs/use-cases/job-guards'
 import { applyDocumentExtraction, normalizeOperationalDetails } from '@/domain/job/operational'
 import { suggestNextManifestSeq } from '@/domain/job/numbering'
 import { exhibitorOnlyJob } from '@/domain/job/validation'
@@ -39,7 +40,7 @@ export async function updateJobDetails(
   jobId: string,
   patch: JobDetailsPatch,
 ): Promise<Job> {
-  await authorize(currentUser, 'job:update')
+  await authorizeJobWrite(currentUser, 'job:update', jobId)
   const columns: JobWritableColumns = {}
 
   // Pihak & jalur butuh konteks job (jenis, event) untuk divalidasi.
@@ -115,7 +116,7 @@ export async function applyJobExtraction(
   jobId: string,
   input: JobExtractionInput,
 ): Promise<Job> {
-  await authorize(currentUser, 'job:update')
+  await authorizeJobWrite(currentUser, 'job:update', jobId)
   const job = await loadJobForWrite(jobId, input.version)
   const { operational, fields } = applyDocumentExtraction(job, input)
   const columns: JobWritableColumns = { operational }
@@ -139,7 +140,7 @@ export async function saveJobCipl(
   jobId: string,
   input: JobCiplPut,
 ): Promise<Job> {
-  await authorize(currentUser, 'job:update')
+  await authorizeJobWrite(currentUser, 'job:update', jobId)
   let saved: boolean
   try {
     saved = await saveJobCiplGuarded(jobId, input.version, input.ciplDocument, input.lines)
@@ -159,7 +160,7 @@ export async function saveJobInward(
   version: number,
   inward: InwardManifest,
 ): Promise<Job> {
-  await authorize(currentUser, 'job:update')
+  await authorizeJobWrite(currentUser, 'job:update', jobId)
   const job = await loadJobForWrite(jobId, version)
   if (job.kind === 'LOCAL') throw new ApiError(400, 'Job Local tidak memiliki dokumen kepabeanan.')
   return writeJob(jobId, version, { inward })
@@ -172,7 +173,7 @@ export async function saveJobKepulangan(
   version: number,
   kepulangan: JobReturn | null,
 ): Promise<Job> {
-  await authorize(currentUser, 'job:update')
+  await authorizeJobWrite(currentUser, 'job:update', jobId)
   return writeJob(jobId, version, { kepulangan })
 }
 

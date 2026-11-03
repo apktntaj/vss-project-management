@@ -1121,6 +1121,8 @@ export async function applyCiplAutofill(input: {
   ciplDocument: CiplDocument | null
   /** Exhibitor event yang sudah ada — untuk melengkapi hall/booth yang kosong. */
   eventExhibitors: Exhibitor[]
+  /** Baris CIPL job yang sudah ada — dipertahankan karena penyimpanan mengganti seluruh baris. */
+  keepLines?: JobCiplLineInput[]
 }): Promise<CiplAutofillOutcome> {
   const exhibitorKind: ExhibitorKind = input.job.kind === 'LOCAL' ? 'LOCAL' : 'INTERNATIONAL'
   const pending = input.rows.filter((row) => row.resolution === 'BARU' && !row.exhibitorId)
@@ -1160,7 +1162,7 @@ export async function applyCiplAutofill(input: {
     items: row.items,
     notes: row.logistics.notes,
   }))
-  const job = await saveJobCipl(input.job, input.ciplDocument, lines)
+  const job = await saveJobCipl(input.job, input.ciplDocument, [...(input.keepLines ?? []), ...lines])
   return {
     job,
     created,

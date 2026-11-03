@@ -2,7 +2,9 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
+  AlertTriangle,
   ArrowLeft,
   CalendarDays,
   CheckCircle2,
@@ -11,8 +13,10 @@ import {
   Pencil,
   ShieldCheck,
   ShipWheel,
+  Trash2,
 } from 'lucide-react'
 import {
+  deleteJob,
   getJob,
   getOperationalDetails,
   listEventExhibitors,
@@ -26,6 +30,8 @@ import { StatusBadge } from '@/components/status-badge'
 import { JobManifestSection } from '@/components/job-manifest-section'
 import { JobManifestEditorModal } from '@/components/job-manifest-editor-modal'
 import { CiplLineModal } from '@/components/cipl-line-modal'
+import { CiplEntryModal } from '@/components/cipl-entry-modal'
+import { JobDocumentEditorDialog } from '@/components/job-document-editor-dialog'
 import { JobPartyInvoiceCard } from '@/components/job-party-invoice-card'
 import { PageSkeleton } from '@/components/loading-skeletons'
 import { compareInvoiceWithTransport, type DocumentComparison } from '@/lib/document-comparison'
@@ -36,6 +42,10 @@ const date = (value: string | null) =>
     ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(new Date(value))
     : 'Belum diisi'
 const label = (value: string) => value.replaceAll('_', ' ')
+const toast = (message: string, tone: 'info' | 'error' = 'info') =>
+  window.dispatchEvent(
+    new CustomEvent('vss:toast', { detail: { message, tone: tone === 'error' ? 'error' : 'success' } }),
+  )
 
 function Info({ label: title, value }: { label: string; value: string | null | undefined }) {
   return (
@@ -122,6 +132,7 @@ function DocumentComparisonSummary({ comparison }: { comparison: DocumentCompari
 }
 
 export default function JobDetail({ params }: { params: { id: string } }) {
+  const router = useRouter()
   const [job, setJob] = useState<Job | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -147,6 +158,22 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   const [exhibitors, setExhibitors] = useState<Exhibitor[]>([])
   const [manifestModalOpen, setManifestModalOpen] = useState(false)
   const [lineTarget, setLineTarget] = useState<JobCiplLine | null>(null)
+  const [ciplEntryOpen, setCiplEntryOpen] = useState(false)
+  const [transportOpen, setTransportOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  async function handleDelete() {
+    if (!job) return
+    setDeleting(true)
+    try {
+      await deleteJob(job.id)
+      toast(`Job ${job.jobNumber || job.vssNumber} dihapus.`)
+      router.push('/jobs')
+    } catch (caught) {
+      toast(caught instanceof Error ? caught.message : 'Job tidak dapat dihapus.', 'error')
+      setDeleting(false)
+    }
+  }
   const jobEventId = job?.eventId ?? null
   // Exhibitor event: pilihan pihak & penautan baris CIPL. Dimuat ulang saat versi job berubah
   // karena menyimpan baris CIPL bisa mendaftarkan exhibitor baru.
@@ -224,6 +251,13 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           <Link href={`/jobs/${job.id}/edit`} className="btn-primary">
             <Pencil size={16} /> Edit Job
           </Link>
+          <button
+            type="button"
+            onClick={() => setDeleteOpen(true)}
+            className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50"
+          >
+            <Trash2 size={16} /> Hapus
+          </button>
         </div>
       </div>
       <section className="rounded-2xl border border-orange-200 bg-orange-50 p-5">
@@ -260,6 +294,9 @@ export default function JobDetail({ params }: { params: { id: string } }) {
                 <Info label="Notify party" value={transport?.notifyParty?.name} />
                 <Info label="PIC" value={job.assignedTo?.name} />
               </dl>
+              <button type="button" className="btn-secondary mt-4" onClick={() => setTransportOpen(true)}>
+                Scan / edit B/L atau AWB
+              </button>
             </section>
             <section className="card p-5">
               <div className="flex items-center gap-2">
@@ -348,6 +385,9 @@ export default function JobDetail({ params }: { params: { id: string } }) {
               <p className="mt-4 text-xs text-slate-500">
                 Diterima: {date(details.cipl.receivedAt)}
               </p>
+              <button type="button" className="btn-secondary mt-4" onClick={() => setCiplEntryOpen(true)}>
+                Tambah / scan CIPL
+              </button>
             </section>
             <section className="card p-5">
               <h2 className="font-semibold">Details Barang</h2>
@@ -417,6 +457,75 @@ export default function JobDetail({ params }: { params: { id: string } }) {
             setLineTarget(null)
           }}
         />
+      )}
+      {ciplEntryOpen && (
+        <CiplEntryModal
+          job={job}
+          eventExhibitors={exhibitors}
+          onSaved={(savedJob) => {
+            setJob(savedJob)
+            setCiplEntryOpen(false)
+          }}
+          onClose={() => setCiplEntryOpen(false)}
+        />
+      )}
+      <JobDocumentEditorDialog
+        job={job}
+        kind="TRANSPORT"
+        open={transportOpen}
+        onOpenChange={setTransportOpen}
+        onSaved={setJob}
+        onToast={toast}
+      />
+      {deleteOpen && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          role="presentation"
+          onMouseDown={(mouseEvent) => {
+            if (!deleting && mouseEvent.target === mouseEvent.currentTarget) setDeleteOpen(false)
+          }}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-job-title"
+            className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-6 shadow-2xl"
+          >
+            <div className="flex items-start gap-4">
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700">
+                <AlertTriangle size={22} />
+              </div>
+              <div>
+                <h2 id="delete-job-title" className="text-lg font-bold">
+                  Hapus job?
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  <span className="font-semibold">{job.jobNumber || job.vssNumber}</span> beserta
+                  seluruh lampiran dokumen, baris CIPL, dan tiket yang terikat padanya akan dihapus
+                  permanen. Tindakan ini tidak dapat dibatalkan.
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteOpen(false)}
+                disabled={deleting}
+                className="btn-secondary"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+              >
+                {deleting ? 'Menghapus...' : 'Hapus permanen'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

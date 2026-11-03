@@ -367,10 +367,7 @@ export default function EventDetailPage() {
         <JobCreateWizard
           events={[event]}
           presetEvent={event}
-          onCreated={() => {
-            setShowNewJob(false)
-            loadData()
-          }}
+          onCreated={(job) => router.push(`/jobs/${job.id}`)}
           onCancel={() => setShowNewJob(false)}
         />
       )}

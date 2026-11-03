@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Plus, Search } from 'lucide-react'
 
 import { listEvents, listJobs, type BcDocumentKind, type Job, type LocalEvent } from '@/lib/data-client'
@@ -48,6 +49,7 @@ function toListEvent(event: LocalEvent): JobListEvent {
  * Bentuk inward manifest klien tersedia sebagai export Excel di halaman event.
  */
 export default function JobsPage() {
+  const router = useRouter()
   const [jobs, setJobs] = useState<Job[]>([])
   const [events, setEvents] = useState<LocalEvent[]>([])
   const [segment, setSegment] = useState<JobSegment>('EVENT')
@@ -274,10 +276,7 @@ export default function JobsPage() {
       {wizardOpen && (
         <JobCreateWizard
           events={events}
-          onCreated={() => {
-            setWizardOpen(false)
-            load(true)
-          }}
+          onCreated={(job) => router.push(`/jobs/${job.id}`)}
           onCancel={() => setWizardOpen(false)}
         />
       )}
