@@ -11,7 +11,6 @@ import {
   CircleAlert,
   FileText,
   Pencil,
-  ShieldCheck,
   ShipWheel,
   Trash2,
 } from 'lucide-react'
@@ -20,6 +19,8 @@ import {
   getJob,
   getOperationalDetails,
   listEventExhibitors,
+  listEvents,
+  type LocalEvent,
   type Exhibitor,
   type Job,
   type JobCiplLine,
@@ -33,18 +34,27 @@ import { CiplLineModal } from '@/components/cipl-line-modal'
 import { CiplEntryModal } from '@/components/cipl-entry-modal'
 import { JobDocumentEditorDialog } from '@/components/job-document-editor-dialog'
 import { JobPartyInvoiceCard } from '@/components/job-party-invoice-card'
-import { PageSkeleton } from '@/components/loading-skeletons'
+import { JobDetailSkeleton, JobEventInfoSkeleton } from '@/components/loading-skeletons'
 import { compareInvoiceWithTransport, type DocumentComparison } from '@/lib/document-comparison'
 import { ContextTicketList } from '@/components/context-ticket-list'
+import { jobLabel } from '@/domain/job/numbering'
 
 const date = (value: string | null) =>
   value
     ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(new Date(value))
     : 'Belum diisi'
+const eventDates = (event: LocalEvent | null) => {
+  if (!event) return null
+  const from = event.startsOn && event.startsOn !== 'null' ? date(event.startsOn) : null
+  const to = event.endsOn && event.endsOn !== 'null' ? date(event.endsOn) : null
+  return from && to && from !== to ? `${from} – ${to}` : (from ?? to)
+}
 const label = (value: string) => value.replaceAll('_', ' ')
 const toast = (message: string, tone: 'info' | 'error' = 'info') =>
   window.dispatchEvent(
-    new CustomEvent('vss:toast', { detail: { message, tone: tone === 'error' ? 'error' : 'success' } }),
+    new CustomEvent('vss:toast', {
+      detail: { message, tone: tone === 'error' ? 'error' : 'success' },
+    }),
   )
 
 function Info({ label: title, value }: { label: string; value: string | null | undefined }) {
@@ -60,7 +70,7 @@ const jenisLabel = (job: Job) =>
   job.kind === 'LOCAL'
     ? 'Local'
     : job.internationalJenis
-      ? internationalJobJenisLabels[job.internationalJenis] ?? 'Job lama'
+      ? (internationalJobJenisLabels[job.internationalJenis] ?? 'Job lama')
       : 'Job lama'
 
 function comparisonValue(value: DocumentComparison['invoiceValue']) {
@@ -159,6 +169,8 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   const [manifestModalOpen, setManifestModalOpen] = useState(false)
   const [lineTarget, setLineTarget] = useState<JobCiplLine | null>(null)
   const [ciplEntryOpen, setCiplEntryOpen] = useState(false)
+  const [event, setEvent] = useState<LocalEvent | null>(null)
+  const [eventLoading, setEventLoading] = useState(true)
   const [transportOpen, setTransportOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -167,7 +179,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
     setDeleting(true)
     try {
       await deleteJob(job.id)
-      toast(`Job ${job.jobNumber || job.vssNumber} dihapus.`)
+      toast(`Job ${jobLabel(job)} dihapus.`)
       router.push('/jobs')
     } catch (caught) {
       toast(caught instanceof Error ? caught.message : 'Job tidak dapat dihapus.', 'error')
@@ -195,17 +207,42 @@ export default function JobDetail({ params }: { params: { id: string } }) {
       active = false
     }
   }, [jobEventId, jobVersion])
+  // Info event untuk header; gagal memuat tidak menghalangi halaman job.
+  useEffect(() => {
+    if (!jobEventId) {
+      setEvent(null)
+      return
+    }
+    let active = true
+    setEventLoading(true)
+    listEvents()
+      .then((rows) => {
+        if (active) setEvent(rows.find((row) => row.id === jobEventId) ?? null)
+      })
+      .catch(() => {
+        if (active) setEvent(null)
+      })
+      .finally(() => {
+        if (active) setEventLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [jobEventId])
   if (loading || !job) {
     if (loadError)
       return (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700" role="alert">
+        <div
+          className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700"
+          role="alert"
+        >
           <p>{loadError}</p>
           <Link href="/jobs" className="btn-secondary mt-3 inline-block">
             Kembali ke Jobs
           </Link>
         </div>
       )
-    return <PageSkeleton cards={2} rows={5} />
+    return <JobDetailSkeleton />
   }
   const details = getOperationalDetails(job)
   const transport = job.transportDocument
@@ -215,9 +252,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   const required = Object.values(details.customs).filter((item) => item.applicable).length
   const invoiceItems = details.invoiceItems ?? []
   const documentComparison =
-    details.invoice && transport
-      ? compareInvoiceWithTransport(details.invoice, transport)
-      : null
+    details.invoice && transport ? compareInvoiceWithTransport(details.invoice, transport) : null
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -228,26 +263,37 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           >
             <ArrowLeft size={16} /> Kembali ke Jobs
           </Link>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <h1 className="text-3xl font-bold tracking-tight">
-              {job.jobNumber || job.vssNumber}
-            </h1>
+          <h1
+            className={`mt-3 text-4xl font-bold tracking-tight ${job.jobNumber ? '' : 'text-slate-400'}`}
+          >
+            {job.jobNumber ?? (job.manifestPrefix ? `${job.manifestPrefix}.-` : 'No Job belum ada')}
+          </h1>
+          {eventLoading ? (
+            <JobEventInfoSkeleton />
+          ) : (
+            <>
+              <p className="mt-2 text-base font-semibold text-slate-800">
+                {event?.officialName ?? 'Event'}
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                {[event?.venue?.name, eventDates(event)].filter(Boolean).join(' · ') ||
+                  'Informasi event belum tersedia'}
+              </p>
+            </>
+          )}
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+            <span>
+              {job.party?.name || 'Pihak belum ditetapkan'}
+              {job.transportDocumentNumber
+                ? ` · ${job.transportDocumentType === 'AWB' ? 'AWB' : 'B/L'} ${job.transportDocumentNumber}`
+                : ''}
+            </span>
             <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700 ring-1 ring-inset ring-violet-200">
               {jenisLabel(job)}
             </span>
-            <StatusBadge status={job.status} />
           </div>
-          <p className="mt-2 text-sm text-slate-500">
-            {job.vssNumber} · {job.party?.name || 'Pihak belum ditetapkan'}
-            {job.transportDocumentNumber
-              ? ` · ${job.transportDocumentType === 'AWB' ? 'AWB' : 'B/L'} ${job.transportDocumentNumber}`
-              : ''}
-          </p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <Link href="/lartas" className="btn-secondary">
-            <ShieldCheck size={16} /> Cek LARTAS
-          </Link>
           <Link href={`/jobs/${job.id}/edit`} className="btn-primary">
             <Pencil size={16} /> Edit Job
           </Link>
@@ -260,6 +306,11 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           </button>
         </div>
       </div>
+      <JobManifestSection
+        view={buildManifestView(job)}
+        onEditManifest={() => setManifestModalOpen(true)}
+        onEditPeserta={(peserta) => setLineTarget(peserta.line)}
+      />
       <section className="rounded-2xl border border-orange-200 bg-orange-50 p-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -277,11 +328,6 @@ export default function JobDetail({ params }: { params: { id: string } }) {
         </div>
       </section>
       <JobPartyInvoiceCard job={job} exhibitors={exhibitors} onSaved={setJob} />
-      <JobManifestSection
-        view={buildManifestView(job)}
-        onEditManifest={() => setManifestModalOpen(true)}
-        onEditPeserta={(peserta) => setLineTarget(peserta.line)}
-      />
       {documentComparison && <DocumentComparisonSummary comparison={documentComparison} />}
       <>
         <div className="grid gap-6 xl:grid-cols-3">
@@ -294,7 +340,11 @@ export default function JobDetail({ params }: { params: { id: string } }) {
                 <Info label="Notify party" value={transport?.notifyParty?.name} />
                 <Info label="PIC" value={job.assignedTo?.name} />
               </dl>
-              <button type="button" className="btn-secondary mt-4" onClick={() => setTransportOpen(true)}>
+              <button
+                type="button"
+                className="btn-secondary mt-4"
+                onClick={() => setTransportOpen(true)}
+              >
                 Scan / edit B/L atau AWB
               </button>
             </section>
@@ -385,7 +435,11 @@ export default function JobDetail({ params }: { params: { id: string } }) {
               <p className="mt-4 text-xs text-slate-500">
                 Diterima: {date(details.cipl.receivedAt)}
               </p>
-              <button type="button" className="btn-secondary mt-4" onClick={() => setCiplEntryOpen(true)}>
+              <button
+                type="button"
+                className="btn-secondary mt-4"
+                onClick={() => setCiplEntryOpen(true)}
+              >
                 Tambah / scan CIPL
               </button>
             </section>
@@ -500,9 +554,9 @@ export default function JobDetail({ params }: { params: { id: string } }) {
                   Hapus job?
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  <span className="font-semibold">{job.jobNumber || job.vssNumber}</span> beserta
-                  seluruh lampiran dokumen, baris CIPL, dan tiket yang terikat padanya akan dihapus
-                  permanen. Tindakan ini tidak dapat dibatalkan.
+                  <span className="font-semibold">{jobLabel(job)}</span> beserta seluruh lampiran
+                  dokumen, baris CIPL, dan tiket yang terikat padanya akan dihapus permanen.
+                  Tindakan ini tidak dapat dibatalkan.
                 </p>
               </div>
             </div>

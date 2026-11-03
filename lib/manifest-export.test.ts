@@ -26,7 +26,6 @@ let counter = 0
 const job = (overrides: Partial<Job>): Job =>
   ({
     id: `job-${++counter}`,
-    vssNumber: `VSS-0000${counter}`,
     jobNumber: null,
     eventId: 'e1',
     kind: 'INTERNATIONAL',
@@ -96,11 +95,11 @@ const fcl = job({
 })
 assert.match(blockHeaderText(buildManifestView(fcl)), / \/ 1X20' \+ 1X40'$/)
 
-const road = job({ internationalJenis: 'ROAD_SHIPMENT', manifestPrefix: 'RS', transportMode: 'ROAD', party: { kind: 'AGENT', id: 'e', name: 'EASYGO' }, inward: null, transportDocumentNumber: null })
+const road = job({ internationalJenis: 'ROAD_SHIPMENT', manifestPrefix: 'R', transportMode: 'ROAD', party: { kind: 'AGENT', id: 'e', name: 'EASYGO' }, inward: null, transportDocumentNumber: null })
 const local = job({
   kind: 'LOCAL',
   internationalJenis: null,
-  manifestPrefix: 'LOC',
+  manifestPrefix: 'L',
   party: { kind: 'EXHIBITOR', id: 'x9', name: 'PT. Repassa' },
   inward: null,
   transportDocumentNumber: null,
@@ -180,7 +179,7 @@ assert.ok(!merges.some((m) => m.fromColumn === col('CASE')), 'kolom koli tidak d
 
 // Road shipment tanpa No Job: nomor VSS sebagai pengenal; baris "Belum ada baris CIPL".
 const roadStart = rows.findIndex((row) => String(row.cells[0]).startsWith('EASYGO')) + 1
-assert.equal(rows[roadStart].cells[col('Job No')], road.vssNumber)
+assert.equal(rows[roadStart].cells[col('Job No')], 'R.-')
 assert.equal(rows[roadStart].cells[col('Exhibitor Name')], 'Belum ada baris CIPL')
 
 // LOCAL: kepala blok nama pihak; PIC ikut di sel nama exhibitor.

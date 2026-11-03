@@ -4,6 +4,7 @@ import {
   type KoliSummary,
 } from '@/domain/job/manifest'
 import type { Job, JobCiplLine } from '@/domain/job/types'
+import { jobLabel } from '@/domain/job/numbering'
 
 /**
  * Satu peserta blok manifest = satu baris CIPL job. `logistics` menggabungkan dua pemilik data:
@@ -54,7 +55,7 @@ export function buildManifestView(job: Job): ManifestBlockView {
   const peserta = job.ciplLines.map(pesertaFromLine)
   return {
     jobId: job.id,
-    jobNumber: job.jobNumber ?? job.vssNumber,
+    jobNumber: jobLabel(job),
     eventId: job.eventId,
     partyName: job.party?.name || 'Pihak belum ditetapkan',
     kind: job.kind,

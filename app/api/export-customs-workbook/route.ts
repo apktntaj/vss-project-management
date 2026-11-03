@@ -8,6 +8,7 @@ import { requireCurrentUser } from '@/features/auth'
 import { getJob } from '@/features/jobs'
 import { ApiError, toErrorResponse } from '@/lib/server/errors'
 import type { Job } from '@/domain/job/types'
+import { jobFileName } from '@/domain/job/numbering'
 
 export const runtime = 'nodejs'
 
@@ -137,7 +138,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       throw new ApiError(400, error instanceof Error ? error.message : 'File BC tidak dapat dibuat.')
     }
-    const filename = `${documentType.replaceAll('_', '-')}-${job.jobNumber ?? job.vssNumber}.xlsx`
+    const filename = jobFileName(job, documentType.replaceAll('_', '-'), 'xlsx')
     return new NextResponse(workbook, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

@@ -22,8 +22,8 @@ const line = (overrides: Partial<JobCiplLine>): JobCiplLine => ({
 
 const job = {
   id: 'job-1',
-  vssNumber: 'VSS-00001',
   jobNumber: 'S.01/234YFN',
+  manifestPrefix: 'S',
   eventId: 'event-1',
   kind: 'INTERNATIONAL',
   internationalJenis: 'PERMANENT_IMPORT',
@@ -62,9 +62,9 @@ assert.deepEqual(
 assert.equal(view.totals.totalCount, 5)
 assert.equal(view.totals.weightKg, 1628)
 
-// Tanpa No Job, nomor internal VSS yang tampil; tanpa pihak & tanpa baris, view tetap sah.
+// Tanpa urutan No Job, awalan + strip yang tampil (S.-); tanpa pihak & tanpa baris, view tetap sah.
 const bare = buildManifestView({ ...job, jobNumber: null, party: null, ciplLines: [], transportDocumentNumber: null } as Job)
-assert.equal(bare.jobNumber, 'VSS-00001')
+assert.equal(bare.jobNumber, 'S.-')
 assert.equal(bare.partyName, 'Pihak belum ditetapkan')
 assert.equal(bare.transportDocument, null)
 assert.equal(bare.totals.totalCount, 0)

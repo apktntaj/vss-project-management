@@ -42,6 +42,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
+import { jobLabel } from '@/domain/job/numbering'
 
 function toast(message: string, tone: 'success' | 'error') {
   window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
@@ -457,7 +458,7 @@ export function CiplEntryModal({
           <DialogDescription>
             Job{' '}
             <span className="font-medium text-foreground">
-              {job.jobNumber ?? job.vssNumber ?? ''}
+              {jobLabel(job)}
             </span>{' '}
             — baris CIPL yang sudah ada tidak berubah.
           </DialogDescription>

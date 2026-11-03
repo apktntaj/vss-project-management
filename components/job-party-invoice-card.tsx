@@ -1,10 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Pencil, Receipt, Sparkles, UserRound } from 'lucide-react'
+import { Pencil, Receipt, UserRound } from 'lucide-react'
 
 import {
-  getNextManifestSeq,
   listAgents,
   saveJobInvoice,
   saveJobOperationalDetails,
@@ -12,11 +11,9 @@ import {
   type Exhibitor,
   type InvoiceStatus,
   type Job,
-  type TransportMode,
 } from '@/lib/data-client'
 import { useCanEditBilling } from '@/lib/use-billing-access'
-import { formatJobNumber, formatManifestSequence } from '@/domain/job/numbering'
-import { invoiceStatusLabels, invoiceStatuses, transportModeLabels, transportModes } from '@/domain/job/types'
+import { invoiceStatusLabels, invoiceStatuses } from '@/domain/job/types'
 
 function toast(message: string, tone: 'success' | 'error') {
   window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
@@ -121,133 +118,6 @@ function PartyEditor({
         </button>
         <button type="button" className="btn-primary" disabled={saving} onClick={submit}>
           {saving ? 'Menyimpan…' : 'Simpan pihak'}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-/** No Job manifest: jalur (penentu awalan), urutan (dengan saran), nomor commercial invoice. */
-function JobNumberEditor({
-  job,
-  onSaved,
-  onCancel,
-}: {
-  job: Job
-  onSaved: (job: Job) => void
-  onCancel: () => void
-}) {
-  const [transportMode, setTransportMode] = useState<TransportMode | ''>(job.transportMode ?? '')
-  const [seq, setSeq] = useState(job.manifestSeq ? String(job.manifestSeq) : '')
-  const [invoiceNumber, setInvoiceNumber] = useState(job.commercialInvoiceNumber ?? '')
-  const [suggestion, setSuggestion] = useState<number | null>(null)
-  const [saving, setSaving] = useState(false)
-  const modeChanged = (transportMode || null) !== job.transportMode
-
-  useEffect(() => {
-    // Saran dihitung dari awalan yang tersimpan; bila jalur baru diubah, simpan dulu lalu minta saran.
-    if (modeChanged) {
-      setSuggestion(null)
-      return
-    }
-    getNextManifestSeq(job.id)
-      .then((result) => setSuggestion(result.suggestedSeq))
-      .catch(() => setSuggestion(null))
-  }, [job.id, job.version, modeChanged])
-
-  async function submit() {
-    const parsedSeq = seq.trim() ? Number(seq.trim()) : null
-    if (parsedSeq !== null && (!Number.isInteger(parsedSeq) || parsedSeq < 1)) {
-      toast('Urutan No Job harus bilangan bulat ≥ 1.', 'error')
-      return
-    }
-    setSaving(true)
-    try {
-      const saved = await saveJobOperationalDetails(job, {
-        ...(modeChanged ? { transportMode: transportMode || null } : {}),
-        manifestSeq: parsedSeq,
-        commercialInvoiceNumber: invoiceNumber.trim() || null,
-      })
-      toast(saved.jobNumber ? `No Job ${saved.jobNumber} tersimpan.` : 'No Job tersimpan.', 'success')
-      onSaved(saved)
-    } catch (caught) {
-      toast(caught instanceof Error ? caught.message : 'No Job tidak dapat disimpan.', 'error')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const preview = formatJobNumber(
-    modeChanged ? null : job.manifestPrefix,
-    seq.trim() ? Number(seq.trim()) : null,
-    invoiceNumber.trim() || null,
-  )
-
-  return (
-    <div className="mt-3 space-y-3">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <label className="label">
-          Jalur
-          <select
-            className="input mt-1"
-            value={transportMode}
-            disabled={job.internationalJenis === 'ROAD_SHIPMENT'}
-            onChange={(event) => setTransportMode(event.target.value as TransportMode | '')}
-          >
-            <option value="">Belum diisi</option>
-            {transportModes.map((mode) => (
-              <option key={mode} value={mode}>
-                {transportModeLabels[mode]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="label">
-          Urutan
-          <div className="mt-1 flex gap-2">
-            <input
-              type="number"
-              min="1"
-              className="input"
-              value={seq}
-              disabled={modeChanged || !job.manifestPrefix}
-              onChange={(event) => setSeq(event.target.value)}
-            />
-            {suggestion !== null && !modeChanged && (
-              <button
-                type="button"
-                className="btn-secondary shrink-0"
-                title="Urutan berikutnya untuk awalan ini di event ini"
-                onClick={() => setSeq(String(suggestion))}
-              >
-                <Sparkles size={14} /> {job.manifestPrefix}.{formatManifestSequence(suggestion)}
-              </button>
-            )}
-          </div>
-        </label>
-        <label className="label">
-          No. commercial invoice
-          <input
-            className="input mt-1"
-            value={invoiceNumber}
-            placeholder="234YFN"
-            onChange={(event) => setInvoiceNumber(event.target.value)}
-          />
-        </label>
-      </div>
-      <p className="text-xs text-slate-500">
-        {modeChanged
-          ? 'Simpan jalur dulu — awalan No Job ditentukan jalur + jenis job.'
-          : !job.manifestPrefix
-            ? 'Isi jalur dulu untuk mendapatkan awalan No Job.'
-            : `Pratinjau: ${preview ?? `${job.manifestPrefix}.??`}. Urutan mengikuti barang yang datang lebih dulu.`}
-      </p>
-      <div className="flex justify-end gap-2">
-        <button type="button" className="btn-secondary" onClick={onCancel}>
-          Batal
-        </button>
-        <button type="button" className="btn-primary" disabled={saving} onClick={submit}>
-          {saving ? 'Menyimpan…' : modeChanged ? 'Simpan jalur' : 'Simpan No Job'}
         </button>
       </div>
     </div>
@@ -364,9 +234,9 @@ function InvoiceEditor({
   )
 }
 
-type Editing = 'party' | 'number' | 'invoice' | null
+type Editing = 'party' | 'invoice' | null
 
-/** Kartu Pihak · No Job · Tagihan di detail job. */
+/** Kartu Pihak · Tagihan di detail job. No Job diatur lewat `JobNumberEditor` di header. */
 export function JobPartyInvoiceCard({
   job,
   exhibitors,
@@ -395,7 +265,7 @@ export function JobPartyInvoiceCard({
 
   return (
     <section className="card p-5">
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-2">
         <div>
           <div className="flex items-center justify-between gap-2">
             <h2 className="flex items-center gap-2 font-semibold">
@@ -412,21 +282,6 @@ export function JobPartyInvoiceCard({
                 label="Jenis pihak"
                 value={job.party ? (job.party.kind === 'AGENT' ? 'Agent' : 'Exhibitor') : null}
               />
-            </dl>
-          )}
-        </div>
-        <div>
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="font-semibold">No Job</h2>
-            {editButton('number', 'Tetapkan')}
-          </div>
-          {editing === 'number' ? (
-            <JobNumberEditor job={job} onSaved={saved} onCancel={() => setEditing(null)} />
-          ) : (
-            <dl className="mt-3 space-y-3">
-              <Info label="No Job manifest" value={job.jobNumber || 'Belum ditetapkan'} />
-              <Info label="No. internal" value={job.vssNumber} />
-              <Info label="Jalur" value={job.transportMode ? transportModeLabels[job.transportMode] : null} />
             </dl>
           )}
         </div>

@@ -48,3 +48,38 @@ export function ListSkeleton({ rows = 4 }: { rows?: number }) {
     </div>
   )
 }
+
+/** Nama event serta venue · tanggal pameran, tepat di bawah nomor job. */
+export function JobEventInfoSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Memuat informasi event">
+      <Skeleton className="mt-2 h-6 w-64 max-w-full" />
+      <Skeleton className="mt-1.5 h-5 w-80 max-w-full" />
+    </div>
+  )
+}
+
+/** Kerangka halaman detail job: header (nomor, event, agent, jenis job), tombol aksi, blok manifest. */
+export function JobDetailSkeleton() {
+  return (
+    <div className="space-y-6" aria-busy="true" aria-label="Memuat job">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <Skeleton className="h-5 w-32" />
+          <Skeleton className="mt-3 h-10 w-52" />
+          <JobEventInfoSkeleton />
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Skeleton className="h-5 w-48" />
+            <Skeleton className="h-6 w-32 rounded-full" />
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <Skeleton className="h-10 w-28 rounded-lg" />
+          <Skeleton className="h-10 w-24 rounded-lg" />
+        </div>
+      </div>
+      <Skeleton className="h-72 w-full rounded-2xl" />
+      <Skeleton className="h-20 w-full rounded-2xl" />
+    </div>
+  )
+}

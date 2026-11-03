@@ -20,6 +20,7 @@ import { StatusBadge } from '@/components/status-badge'
 import type { EditableJobDocument } from '@/components/job-document-editor-dialog'
 import { JobUploadDialog } from '@/components/job-upload-dialog'
 import { date, label } from '@/components/job-row'
+import { jobLabel } from '@/domain/job/numbering'
 
 const INVOICE_BADGE: Record<Job['invoice']['status'], string> = {
   NOT_READY: 'bg-slate-100 text-slate-500',
@@ -142,10 +143,9 @@ function JobTableRow({
         <Link
           href={`/jobs/${job.id}`}
           className="block truncate font-semibold text-slate-600 hover:text-orange-700"
-          title={job.vssNumber}
-          aria-label={`Buka job ${job.jobNumber ?? job.vssNumber}`}
+          aria-label={`Buka job ${jobLabel(job)}`}
         >
-          {job.jobNumber ?? '-'}
+          {jobLabel(job)}
         </Link>
         <span className={`${badge} mt-1 bg-slate-100 text-slate-600`}>{jobJenisLabel(jobJenisKey(job))}</span>
       </td>
@@ -244,7 +244,7 @@ function JobRowMenu({
   const applicableBc = (Object.keys(customs) as BcDocumentKind[]).filter(
     (key) => customs[key].applicable,
   )
-  const name = job.jobNumber ?? job.vssNumber
+  const name = jobLabel(job)
 
   const item =
     'flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50'

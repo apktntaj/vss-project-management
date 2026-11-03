@@ -15,7 +15,6 @@ let counter = 0
 const job = (overrides: Partial<Job>): Job =>
   ({
     id: `job-${++counter}`,
-    vssNumber: `VSS-${String(counter).padStart(5, '0')}`,
     eventId: 'new',
     kind: 'INTERNATIONAL',
     internationalJenis: 'TPPB_BC_23',
@@ -37,10 +36,10 @@ const s2 = job({ manifestSeq: 2, jobNumber: 'S.02/X' })
 const a1 = job({ manifestPrefix: 'A', transportMode: 'AIR', manifestSeq: 1, jobNumber: 'A.01/Y' })
 const s1 = job({ manifestSeq: 1, jobNumber: 'S.01/Z', transportDocumentNumber: 'HLCU123' })
 const sNone = job({})
-const loc = job({ kind: 'LOCAL', internationalJenis: null, manifestPrefix: 'LOC', manifestSeq: 1, status: 'IN_PROGRESS' })
+const loc = job({ kind: 'LOCAL', internationalJenis: null, manifestPrefix: 'L', manifestSeq: 1, status: 'IN_PROGRESS' })
 const oldJob = job({ eventId: 'old', manifestSeq: 1 })
 
-// Urutan meniru manifest: event terbaru dulu, lalu S → A → … → LOC, lalu urutan, tanpa urutan di akhir.
+// Urutan meniru manifest: event terbaru dulu, lalu S → A → … → L, lalu urutan, tanpa urutan di akhir.
 assert.deepEqual(
   sortJobsForTable([oldJob, loc, sNone, a1, s2, s1], events).map((item) => item.id),
   [s1.id, s2.id, sNone.id, a1.id, loc.id, oldJob.id],

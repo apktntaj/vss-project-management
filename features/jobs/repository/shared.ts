@@ -22,7 +22,7 @@ const PARTY_EMBEDS = [
 ]
 
 export const JOB_COLUMNS = [
-  'id, version, vss_number, event_id, kind, international_jenis, transport_mode, status',
+  'id, version, event_id, kind, international_jenis, transport_mode, status',
   'agent_id, exhibitor_id, manifest_prefix, manifest_seq, commercial_invoice_number',
   'transport_document, transport_document_type, transport_document_number, cipl_document',
   'invoice_number, invoice_amount, invoice_currency, invoice_status, invoice_sent_at, invoice_paid_at',
@@ -34,7 +34,7 @@ export const JOB_COLUMNS = [
 ].join(', ')
 
 export const JOB_SUMMARY_COLUMNS = [
-  'id, vss_number, event_id, kind, international_jenis, status, assigned_to_id',
+  'id, event_id, kind, international_jenis, status, assigned_to_id',
   'agent_id, exhibitor_id, manifest_prefix, manifest_seq, commercial_invoice_number',
   ...PARTY_EMBEDS,
 ].join(', ')
@@ -69,7 +69,6 @@ export type JobRow = PartyEmbeds &
   NumberColumns & {
     id: string
     version: number
-    vss_number: string
     event_id: string
     kind: Job['kind']
     international_jenis: Job['internationalJenis']
@@ -103,7 +102,7 @@ export type JobSummaryRow = PartyEmbeds &
   NumberColumns &
   Pick<
     JobRow,
-    'id' | 'vss_number' | 'event_id' | 'kind' | 'international_jenis' | 'status' | 'assigned_to_id'
+    'id' | 'event_id' | 'kind' | 'international_jenis' | 'status' | 'assigned_to_id'
   >
 
 /** Kolom yang boleh ditulis use-case (snake_case, persis nama kolom). */
@@ -170,7 +169,6 @@ export function toJob(row: JobRow): Job {
   return {
     id: row.id,
     version: row.version,
-    vssNumber: row.vss_number,
     eventId: row.event_id,
     kind: row.kind,
     internationalJenis: row.international_jenis,
@@ -216,7 +214,7 @@ export function toJob(row: JobRow): Job {
 export function toJobSummary(row: JobSummaryRow): JobSummary {
   return {
     id: row.id,
-    vssNumber: row.vss_number,
+    manifestPrefix: row.manifest_prefix,
     eventId: row.event_id,
     jobNumber: toJobNumber(row),
     status: row.status,

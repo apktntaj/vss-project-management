@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Textarea } from '@/components/ui/textarea'
 import { TicketEditDialog } from '@/components/ticket-edit-dialog'
+import { jobLabel } from '@/domain/job/numbering'
 
 const notify = (message: string, tone: 'success' | 'error') => window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
 const displayTime = (value: string) => new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
@@ -34,7 +35,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
 
   const names = useMemo(() => new Map(users.map((user) => [user.id, user.name])), [users])
   const eventNames = useMemo(() => new Map(events.map((event) => [event.id, event.officialName])), [events])
-  const jobNames = useMemo(() => new Map(jobs.map((job) => [job.id, `${job.jobNumber ?? job.vssNumber} · ${job.partyName ?? "Pihak belum ditetapkan"}`])), [jobs])
+  const jobNames = useMemo(() => new Map(jobs.map((job) => [job.id, `${jobLabel(job)} · ${job.partyName ?? "Pihak belum ditetapkan"}`])), [jobs])
   if (error) return <div className="card mx-auto max-w-xl p-8"><h1 className="text-xl font-semibold">Ticket tidak tersedia</h1><p className="mt-2 text-sm text-muted-foreground">{error}</p><Link href="/kanban" className="mt-5 inline-flex">Kembali ke tickets</Link></div>
   if (!detail) return <div className="card p-8 text-sm text-muted-foreground">Memuat ticket…</div>
 

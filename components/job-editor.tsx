@@ -2,9 +2,11 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Save } from 'lucide-react'
+import { ArrowLeft, Save, Sparkles } from 'lucide-react'
 import {
   getJob,
+  getNextManifestSeq,
+  type TransportMode,
   getOperationalDetails,
   saveJobOperationalDetails,
   type BcDocumentKind,
@@ -13,6 +15,8 @@ import {
   type Job,
 } from '@/lib/data-client'
 import { FormSkeleton } from '@/components/loading-skeletons'
+import { formatJobNumber, formatManifestSequence, jobLabel } from '@/domain/job/numbering'
+import { transportModeLabels, transportModes } from '@/domain/job/types'
 
 const text = (form: FormData, key: string) => String(form.get(key) || '').trim() || null
 function notify(message: string, tone: 'success' | 'error') {
@@ -178,6 +182,97 @@ function CustomsCard({ kind, detail }: { kind: BcDocumentKind; detail: JobCustom
   )
 }
 
+/** No Job: jalur (penentu awalan), urutan (dengan saran), nomor commercial invoice. Dibaca lewat FormData saat simpan. */
+function JobNumberFields({ job }: { job: Job }) {
+  const [transportMode, setTransportMode] = useState<TransportMode | ''>(job.transportMode ?? '')
+  const [seq, setSeq] = useState(job.manifestSeq ? String(job.manifestSeq) : '')
+  const [invoiceNumber, setInvoiceNumber] = useState(job.commercialInvoiceNumber ?? '')
+  const [suggestion, setSuggestion] = useState<number | null>(null)
+  const modeChanged = (transportMode || null) !== job.transportMode
+
+  useEffect(() => {
+    // Saran dihitung dari awalan yang tersimpan; bila jalur baru diubah, simpan dulu lalu minta saran.
+    if (modeChanged) {
+      setSuggestion(null)
+      return
+    }
+    getNextManifestSeq(job.id)
+      .then((result) => setSuggestion(result.suggestedSeq))
+      .catch(() => setSuggestion(null))
+  }, [job.id, job.version, modeChanged])
+
+  const preview = formatJobNumber(
+    modeChanged ? null : job.manifestPrefix,
+    seq.trim() ? Number(seq.trim()) : null,
+    invoiceNumber.trim() || null,
+  )
+  return (
+    <div className="space-y-2 sm:col-span-2">
+      <p className="text-sm font-medium text-slate-700">No Job</p>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <label className="label">
+          Jalur
+          <select
+            name="transportMode"
+            className="input mt-1"
+            value={transportMode}
+            disabled={job.internationalJenis === 'ROAD_SHIPMENT'}
+            onChange={(event) => setTransportMode(event.target.value as TransportMode | '')}
+          >
+            <option value="">Belum diisi</option>
+            {transportModes.map((mode) => (
+              <option key={mode} value={mode}>
+                {transportModeLabels[mode]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="label">
+          Urutan
+          <div className="mt-1 flex gap-2">
+            <input
+              name="manifestSeq"
+              type="number"
+              min="1"
+              className="input"
+              value={seq}
+              disabled={modeChanged || !job.manifestPrefix}
+              onChange={(event) => setSeq(event.target.value)}
+            />
+            {suggestion !== null && !modeChanged && (
+              <button
+                type="button"
+                className="btn-secondary shrink-0"
+                title="Urutan berikutnya untuk awalan ini di event ini"
+                onClick={() => setSeq(String(suggestion))}
+              >
+                <Sparkles size={14} /> {job.manifestPrefix}.{formatManifestSequence(suggestion)}
+              </button>
+            )}
+          </div>
+        </label>
+        <label className="label">
+          No. commercial invoice
+          <input
+            name="commercialInvoiceNumber"
+            className="input mt-1"
+            value={invoiceNumber}
+            placeholder="234YFN"
+            onChange={(event) => setInvoiceNumber(event.target.value)}
+          />
+        </label>
+      </div>
+      <p className="text-xs text-slate-500">
+        {modeChanged
+          ? 'Simpan jalur dulu — awalan No Job ditentukan jalur + jenis job. Urutan bisa diisi setelah itu.'
+          : !job.manifestPrefix
+            ? 'Isi jalur dulu untuk mendapatkan awalan No Job.'
+            : `Pratinjau: ${preview ?? `${job.manifestPrefix}.-`}. Urutan mengikuti barang yang datang lebih dulu.`}
+      </p>
+    </div>
+  )
+}
+
 export function JobEditor({ jobId }: { jobId: string }) {
   const router = useRouter()
   const [job, setJob] = useState<Job | null>(null)
@@ -216,6 +311,22 @@ export function JobEditor({ jobId }: { jobId: string }) {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
+    const modeValue = form.get('transportMode')
+    const nextMode = modeValue === null ? undefined : ((modeValue || null) as Job['transportMode'])
+    const seqRaw = form.get('manifestSeq')
+    const seqText = seqRaw === null ? undefined : String(seqRaw).trim()
+    const manifestSeq = seqText === undefined ? undefined : seqText ? Number(seqText) : null
+    if (typeof manifestSeq === 'number' && (!Number.isInteger(manifestSeq) || manifestSeq < 1)) {
+      const message = 'Urutan No Job harus bilangan bulat ≥ 1.'
+      setError(message)
+      notify(message, 'error')
+      return
+    }
+    const numberPatch = {
+      ...(nextMode !== undefined && nextMode !== loadedJob.transportMode ? { transportMode: nextMode } : {}),
+      ...(manifestSeq !== undefined ? { manifestSeq } : {}),
+      commercialInvoiceNumber: text(form, 'commercialInvoiceNumber'),
+    }
     setSaving(true)
     setError('')
     const transport = (prefix: 'inbound' | 'outbound') => ({
@@ -249,6 +360,7 @@ export function JobEditor({ jobId }: { jobId: string }) {
         loadedJob,
         {
           status: String(form.get('status')) as Job['status'],
+          ...numberPatch,
           transportDocumentType: (form.get('transportDocument.type') || null) as Job['transportDocumentType'],
           transportDocumentNumber: text(form, 'transportDocument.number'),
           notes: text(form, 'notes'),
@@ -289,7 +401,7 @@ export function JobEditor({ jobId }: { jobId: string }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="eyebrow">Edit Job</p>
-          <h1 className="mt-1 text-2xl font-bold">{job.jobNumber || 'No Job belum diisi'}</h1>
+          <h1 className="mt-1 text-2xl font-bold">{jobLabel(job)}</h1>
         </div>
         <button type="button" onClick={() => router.back()} className="btn-secondary">
           <ArrowLeft size={16} /> Kembali
@@ -299,17 +411,7 @@ export function JobEditor({ jobId }: { jobId: string }) {
       <section className="card p-5">
         <h2 className="font-semibold">Identitas dan pihak terkait</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="label">
-            No Job
-            <input
-              readOnly
-              value={`${job.jobNumber ?? 'Belum ditetapkan'} · ${job.vssNumber}`}
-              className="input bg-slate-50 text-slate-500"
-            />
-            <span className="mt-1 block text-xs font-normal text-slate-500">
-              Ditetapkan di kartu “No Job” pada detail job.
-            </span>
-          </label>
+          <JobNumberFields job={job} />
           <label className="label">
             Pihak yang ditagih
             <input

@@ -27,7 +27,7 @@ function searchPattern(search: string): string | null {
 function searchFilter(filter: ListFilter): string | null {
   const pattern = filter.search ? searchPattern(filter.search) : null
   return pattern
-    ? `vss_number.ilike.${pattern},transport_document_number.ilike.${pattern},commercial_invoice_number.ilike.${pattern}`
+    ? `transport_document_number.ilike.${pattern},commercial_invoice_number.ilike.${pattern}`
     : null
 }
 

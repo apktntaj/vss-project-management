@@ -1,7 +1,7 @@
 // Model export inward manifest satu event. Menangkap MAKSUD dokumen klien (contoh "INWARD MANIFEST
 // ALLPACK": satu blok per kiriman — pengirim, dokumen, isi per exhibitor s.d. koli, status, posisi
 // di venue) dengan perbaikan kolom yang disetujui pengguna 2026-11-02:
-//   - kolom "No" dibuang; Job No (S.01, LOC.01, …) kolom pertama,
+//   - kolom "No" dibuang; Job No (S.01, L.01, …) kolom pertama,
 //   - data milik JOB (Job No, Empty Storage, Re-export, Remark) = satu sel digabung per blok,
 //     data milik EXHIBITOR (nama, Total Package, Bare Case, Hall, Booth) = satu sel per exhibitor,
 //     sehingga milestone tidak lagi tampak seolah milik koli tertentu,
@@ -28,6 +28,7 @@ import { formatJobNumber } from '@/domain/job/numbering'
 import type { InternationalJobJenis, Job } from '@/domain/job/types'
 import { buildManifestView, type ManifestBlockView } from '@/lib/manifest-view'
 import { sortJobsForTable } from '@/lib/job-list'
+import { jobLabel } from '@/domain/job/numbering'
 
 export type ManifestCellValue = string | number | { formula: string } | null
 
@@ -316,7 +317,7 @@ function inwardSheet(
       // Data milik job: satu sel per blok, digabung sepanjang baris kolinya.
       const first = rows[blockStart]
       first.cells[COL.jobNo] =
-        formatJobNumber(job.manifestPrefix, job.manifestSeq, null) ?? job.vssNumber
+        formatJobNumber(job.manifestPrefix, job.manifestSeq, null) ?? jobLabel(job)
       first.cells[COL.emptyStorage] = job.emptyStorage
       first.cells[COL.reExport] = job.reExport
       const remarks = remarkLines(view)

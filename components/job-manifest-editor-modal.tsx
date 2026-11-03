@@ -29,6 +29,7 @@ import {
   type JobCiplLineInput,
 } from '@/lib/data-client'
 import type { ManifestBlockParse } from '@/lib/server/manifest-extraction'
+import { jobLabel } from '@/domain/job/numbering'
 
 function toast(message: string, tone: 'success' | 'error') {
   window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
@@ -332,7 +333,7 @@ export function JobManifestEditorModal({
               Edit blok manifest
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              {job.jobNumber ?? job.vssNumber} · {partyName || 'Pihak belum ditetapkan'}
+              {jobLabel(job)} · {partyName || 'Pihak belum ditetapkan'}
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Tutup editor manifest" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-black">

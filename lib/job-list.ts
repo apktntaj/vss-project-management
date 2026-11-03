@@ -1,10 +1,10 @@
 // Logika murni tabel /jobs: filter dan urutan bawaan. Urutan meniru manifest — per event, lalu
-// per awalan No Job (S, A, ATA, TI, PI, RS, LOC), lalu per urutan — sehingga tabel datar tetap
+// per awalan No Job (S, A, ATA, T, P, R, L), lalu per urutan — sehingga tabel datar tetap
 // terbaca seperti dokumen klien, sementara pencarian dilakukan lewat filter.
 
 import type { InternationalJobJenis, InvoiceStatus, Job, JobStatus, TransportMode } from '@/domain/job/types'
 
-const PREFIX_ORDER = ['S', 'A', 'ATA', 'TI', 'PI', 'RS', 'LOC']
+const PREFIX_ORDER = ['S', 'A', 'ATA', 'T', 'P', 'R', 'L']
 
 export type JobListEvent = {
   id: string
@@ -46,7 +46,6 @@ export function isEventActive(event: JobListEvent | undefined, today = new Date(
 function searchText(job: Job): string {
   return [
     job.jobNumber,
-    job.vssNumber,
     job.transportDocumentNumber,
     job.commercialInvoiceNumber,
     job.invoice.number,

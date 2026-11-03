@@ -31,6 +31,7 @@ import { isAcceptedJobDocument, jobDocumentAccept } from '@/components/job-docum
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { jobLabel } from '@/domain/job/numbering'
 
 export type EditableJobDocument = 'TRANSPORT' | 'INVOICE'
 
@@ -280,7 +281,7 @@ export function JobDocumentEditorDialog({ job, kind, open, onOpenChange, onSaved
     }
   }
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="flex h-[min(90vh,900px)] max-h-[90vh] w-[calc(100%-1rem)] max-w-none flex-col overflow-hidden p-0 sm:w-[calc(100%-2rem)] sm:max-w-[min(92vw,860px)]"><form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
-    <DialogHeader className="border-b border-primary/20 bg-primary/10 px-5 py-5 pr-12 sm:px-6"><DialogTitle className="text-primary">Edit {kind === 'INVOICE' ? 'Invoice' : 'B/L atau AWB'}</DialogTitle><DialogDescription>Periksa dan koreksi data hasil ekstraksi dokumen untuk Job <span className="font-medium text-foreground">{job?.jobNumber ?? job?.vssNumber ?? ''}</span>.</DialogDescription></DialogHeader>
+    <DialogHeader className="border-b border-primary/20 bg-primary/10 px-5 py-5 pr-12 sm:px-6"><DialogTitle className="text-primary">Edit {kind === 'INVOICE' ? 'Invoice' : 'B/L atau AWB'}</DialogTitle><DialogDescription>Periksa dan koreksi data hasil ekstraksi dokumen untuk Job <span className="font-medium text-foreground">{job ? jobLabel(job) : ''}</span>.</DialogDescription></DialogHeader>
     {kind === 'TRANSPORT' ? <div className="grid shrink-0 gap-3 border-b px-4 py-3 sm:grid-cols-[200px_1fr] sm:px-6"><label className="text-sm font-medium">Jenis dokumen<select value={docKind} onChange={(selectEvent) => setDocKind(selectEvent.target.value as 'BL' | 'AWB')} disabled={scanning || saving} className="mt-1 block h-9 w-full rounded-md border bg-background px-2 text-sm"><option value="BL">B/L (laut)</option><option value="AWB">AWB (udara)</option></select></label><label className="flex cursor-pointer items-center justify-between gap-3 self-end rounded-xl border border-dashed border-black/20 bg-white px-4 py-2 text-sm text-slate-500 hover:border-orange-300 hover:bg-orange-50"><span className="min-w-0 truncate">{scanning ? 'Memeriksa dokumen dengan AI…' : scanFile ? `Terpindai: ${scanFile.name}` : 'Unggah B/L atau AWB untuk dipindai'}</span><Upload className="size-4 shrink-0 text-slate-400" aria-hidden="true" /><input type="file" accept={jobDocumentAccept} className="sr-only" disabled={scanning || saving} onChange={(inputEvent) => { const file = inputEvent.target.files?.[0]; if (file) void scanTransport(file); inputEvent.target.value = '' }} /></label></div> : null}
     {kind === 'INVOICE' && invoice ? <InvoiceEditor value={invoice} onChange={setInvoice} /> : transport ? <TransportEditor value={transport} onChange={setTransport} /> : null}
     <DialogFooter className="mx-0 mb-0 shrink-0 rounded-none border-primary/15 bg-primary/5 px-5 py-4 sm:px-6"><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Batal</Button><Button type="submit" disabled={saving || scanning}>{saving ? 'Menyimpan…' : 'Simpan perubahan'}</Button></DialogFooter>

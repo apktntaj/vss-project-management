@@ -185,8 +185,6 @@ export type Job = {
   id: string
   /** Versi optimistic-concurrency; wajib dikirim balik pada setiap tulis. */
   version: number
-  /** Nomor internal lintas event, dibuat otomatis (VSS-00001). */
-  vssNumber: string
   eventId: string
   kind: JobKind
   internationalJenis: InternationalJobJenis | null
@@ -198,7 +196,7 @@ export type Job = {
   /** Pihak yang ditagih; null bila belum ditetapkan. */
   party: JobParty | null
 
-  /** Awalan No Job dari jalur + jenis (S, A, ATA, TI, PI, RS, LOC); null bila jalur belum diisi. */
+  /** Awalan No Job dari jalur + jenis (S, A, ATA, T, P, R, L); null bila jalur belum diisi. */
   manifestPrefix: string | null
   /** Urutan No Job per event per awalan, ditetapkan operator. */
   manifestSeq: number | null
@@ -235,7 +233,7 @@ export type Job = {
 export type JobSummary = Pick<
   Job,
   | 'id'
-  | 'vssNumber'
+  | 'manifestPrefix'
   | 'eventId'
   | 'jobNumber'
   | 'status'

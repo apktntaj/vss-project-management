@@ -28,6 +28,7 @@ import { Button } from '@/components/ui/button'
 import type { EditableJobDocument } from '@/components/job-document-editor-dialog'
 import { JobUploadDialog } from '@/components/job-upload-dialog'
 import { compareInvoiceWithTransport } from '@/lib/document-comparison'
+import { jobFileName, jobLabel } from '@/domain/job/numbering'
 
 export type DocumentClassification = {
   documentType: 'BILL_OF_LADING' | 'AIR_WAYBILL' | 'COMMERCIAL_INVOICE' | 'OTHER' | 'UNREADABLE'
@@ -64,7 +65,7 @@ export async function downloadCustomsWorkbook(job: Job, documentType: BcDocument
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = `${documentType.replaceAll('_', '-')}-${job.jobNumber ?? job.vssNumber}.xlsx`
+  anchor.download = jobFileName(job, documentType.replaceAll('_', '-'), 'xlsx')
   anchor.click()
   URL.revokeObjectURL(url)
 }
@@ -178,9 +179,8 @@ export function JobRow({
         <Link
           href={`/jobs/${job.id}`}
           className="font-semibold text-slate-900 hover:text-orange-700"
-          title={`No. internal: ${job.vssNumber}`}
         >
-          {nomor || job.jobNumber || job.vssNumber}
+          {nomor || jobLabel(job)}
         </Link>
         <p className="mt-1">
           <span className="inline-flex rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-inset ring-sky-200">
@@ -245,7 +245,7 @@ export function JobRow({
           <button
             type="button"
             onClick={() => setUploadOpen(true)}
-            aria-label={`Upload dokumen shipment untuk ${job.jobNumber ?? job.vssNumber}`}
+            aria-label={`Upload dokumen shipment untuk ${jobLabel(job)}`}
             title="Upload dokumen: CIPL, B/L atau AWB, dokumen pendukung"
             className="mt-0.5 shrink-0 rounded p-0.5 text-slate-400 hover:bg-orange-100 hover:text-orange-700"
           >
@@ -360,7 +360,7 @@ export function JobRow({
                   current ? null : { top: rect.bottom + 4, left: rect.right - 176 },
                 )
               }}
-              aria-label={`Menu aksi untuk ${nomor || job.jobNumber || job.vssNumber}`}
+              aria-label={`Menu aksi untuk ${nomor || jobLabel(job)}`}
               aria-expanded={menuAnchor !== null}
               aria-haspopup="menu"
               title="Menu"
@@ -377,7 +377,7 @@ export function JobRow({
                 />
                 <div
                   role="menu"
-                  aria-label={`Aksi untuk ${nomor || job.jobNumber || job.vssNumber}`}
+                  aria-label={`Aksi untuk ${nomor || jobLabel(job)}`}
                   className="fixed z-50 w-44 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg"
                   style={{ top: menuAnchor.top, left: menuAnchor.left }}
                 >
