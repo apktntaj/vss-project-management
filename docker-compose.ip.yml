@@ -1,0 +1,18 @@
+# Mode IP polos (HTTP) — tanpa domain/TLS, sesuai permintaan klien (sistem lain juga HTTP/IP).
+# Dipakai BERLAPIS di atas docker-compose.yml:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.ip.yml up -d --build
+#
+# Efeknya:
+#   - `web` langsung terbuka di port 80 host  → http://<IP-VPS>
+#   - `caddy` dinonaktifkan lewat profile `tls` (tidak ikut start, tidak rebutan port 80).
+#
+# Saat nanti pindah ke domain + HTTPS: jalankan tanpa file ini (compose.yml saja).
+
+services:
+  web:
+    ports:
+      - '80:3000'
+
+  caddy:
+    profiles: ['tls']
