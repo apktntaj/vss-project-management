@@ -3,17 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  AlertTriangle,
-  ArrowLeft,
-  CalendarDays,
-  CheckCircle2,
-  CircleAlert,
-  FileText,
-  Pencil,
-  ShipWheel,
-  Trash2,
-} from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, CircleAlert, Trash2 } from 'lucide-react'
 import {
   deleteJob,
   getJob,
@@ -27,7 +17,14 @@ import {
 } from '@/lib/data-client'
 import { internationalJobJenisLabels } from '@/domain/job/types'
 import { buildManifestView } from '@/lib/manifest-view'
-import { StatusBadge } from '@/components/status-badge'
+import {
+  JobIdentityCard,
+  JobJourneyCard,
+  JobLogisticsCard,
+  JobCustomsCard,
+  JobRemarkCard,
+  JobCiplStatusCard,
+} from '@/components/job-detail-cards'
 import { JobManifestSection } from '@/components/job-manifest-section'
 import { JobManifestEditorModal } from '@/components/job-manifest-editor-modal'
 import { CiplLineModal } from '@/components/cipl-line-modal'
@@ -293,9 +290,6 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
-          <Link href={`/jobs/${job.id}/edit`} className="btn-primary">
-            <Pencil size={16} /> Edit Job
-          </Link>
           <button
             type="button"
             onClick={() => setDeleteOpen(true)}
@@ -305,6 +299,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           </button>
         </div>
       </div>
+      <JobIdentityCard job={job} onSaved={setJob} />
       <JobManifestSection
         view={buildManifestView(job)}
         onEditManifest={() => setManifestModalOpen(true)}
@@ -347,101 +342,16 @@ export default function JobDetail({ params }: { params: { id: string } }) {
                 Scan / edit B/L atau AWB
               </button>
             </section>
-            <section className="card p-5">
-              <div className="flex items-center gap-2">
-                <ShipWheel size={20} className="text-orange-600" />
-                <h2 className="font-semibold">Perjalanan</h2>
-              </div>
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                {(
-                  [
-                    ['Masuk', details.inbound],
-                    ['Keluar', details.outbound],
-                  ] as const
-                ).map(([title, leg]) => (
-                  <div key={title} className="rounded-xl border border-slate-200 p-4">
-                    <p className="font-semibold text-slate-800">{title}</p>
-                    <p className="mt-2 text-sm text-slate-600">
-                      {leg.mode ?? 'Belum direncanakan'}
-                    </p>
-                    {title === 'Masuk' && (
-                      <p className="mt-1 text-sm font-medium">
-                        {job.transportDocumentNumber
-                          ? `${job.transportDocumentType ?? 'Dokumen'} ${job.transportDocumentNumber}`
-                          : 'Nomor B/L/AWB belum diisi'}
-                      </p>
-                    )}
-                    <p className="mt-1 text-sm text-slate-600">Vessel: {leg.carrier || '—'}</p>
-                    <p className="mt-3 text-xs text-slate-500">
-                      Jadwal: {date(leg.scheduleAt)} · Aktual: {date(leg.actualAt)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </section>
-            <section className="card p-5">
-              <h2 className="font-semibold">Logistik</h2>
-              <dl className="mt-4 grid gap-5 sm:grid-cols-2">
-                <Info label="Empty storage" value={job.emptyStorage} />
-                <Info label="Re-export" value={job.reExport} />
-              </dl>
-            </section>
-            <section className="card p-5">
-              <div className="flex items-center gap-2">
-                <FileText size={20} className="text-orange-600" />
-                <h2 className="font-semibold">Dokumen kepabeanan</h2>
-              </div>
-              <div className="mt-4 grid gap-4 md:grid-cols-3">
-                {(
-                  Object.entries(details.customs) as Array<
-                    [keyof typeof details.customs, typeof details.customs.BC_2_3]
-                  >
-                ).map(([kind, document]) => (
-                  <div key={kind} className="rounded-xl border border-slate-200 p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-semibold">{label(kind)}</p>
-                      <span
-                        className={`rounded-full px-2 py-1 text-[11px] font-semibold ${!document.applicable ? 'bg-slate-100 text-slate-500' : document.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'}`}
-                      >
-                        {document.applicable ? label(document.status) : 'Tidak diperlukan'}
-                      </span>
-                    </div>
-                    {document.applicable && (
-                      <dl className="mt-4 space-y-3">
-                        <Info label="Nomor aju" value={document.ajuNumber} />
-                        <Info label="Nopen" value={document.registrationNumber} />
-                        <Info label="Tanggal Nopen" value={date(document.registrationDate)} />
-                        <Info label="Gudang" value={document.warehouseName} />
-                      </dl>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </section>
+            <JobJourneyCard job={job} onSaved={setJob} />
+            <JobLogisticsCard job={job} onSaved={setJob} />
+            <JobCustomsCard job={job} onSaved={setJob} />
           </div>
           <aside className="space-y-6">
-            <section className="card p-5">
-              <div className="flex items-center gap-2">
-                <CalendarDays size={20} className="text-orange-600" />
-                <h2 className="font-semibold">CIPL</h2>
-              </div>
-              <p className="mt-4 text-sm font-medium text-slate-800">
-                {label(details.cipl.status)}
-              </p>
-              <p className="mt-1 text-sm text-slate-500">
-                {details.cipl.referenceNumber || 'Referensi belum diisi'}
-              </p>
-              <p className="mt-4 text-xs text-slate-500">
-                Diterima: {date(details.cipl.receivedAt)}
-              </p>
-              <button
-                type="button"
-                className="btn-secondary mt-4"
-                onClick={() => setCiplEntryOpen(true)}
-              >
-                Tambah / scan CIPL
-              </button>
-            </section>
+            <JobCiplStatusCard
+              job={job}
+              onSaved={setJob}
+              onScan={() => setCiplEntryOpen(true)}
+            />
             <section className="card p-5">
               <h2 className="font-semibold">Details Barang</h2>
               <p className="mt-1 text-xs text-slate-500">
@@ -479,12 +389,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
                 </p>
               )}
             </section>
-            <section className="card p-5">
-              <h2 className="font-semibold">Remark</h2>
-              <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600">
-                {job.notes || 'Belum ada remark operasional.'}
-              </p>
-            </section>
+            <JobRemarkCard job={job} onSaved={setJob} />
           </aside>
         </div>
       </>

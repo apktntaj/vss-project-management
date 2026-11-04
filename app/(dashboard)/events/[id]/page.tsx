@@ -277,7 +277,7 @@ export default function EventDetailPage() {
                               job={job}
                               nomor={nomorByJobId.get(job.id)}
                               actions={{
-                                onEdit: (editedJob) => router.push(`/jobs/${editedJob.id}/edit`),
+                                onEdit: (editedJob) => router.push(`/jobs/${editedJob.id}`),
                                 onDelete: (deletedJob) => setDeletingJob(deletedJob),
                               }}
                               onJobUpdated={handleJobUpdated}
