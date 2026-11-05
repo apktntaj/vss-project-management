@@ -133,6 +133,21 @@ export const jobDocumentKinds = [
 ] as const
 export type JobDocumentKind = (typeof jobDocumentKinds)[number]
 
+export const jobDocumentKindLabels: Record<JobDocumentKind, string> = {
+  SOURCE: 'Dokumen sumber',
+  INBOUND_TRANSPORT: 'Angkut masuk',
+  OUTBOUND_TRANSPORT: 'Angkut keluar',
+  BILL_OF_LADING: 'Bill of Lading',
+  AIR_WAYBILL: 'Air Waybill',
+  COMMERCIAL_INVOICE: 'Commercial invoice',
+  CIPL: 'CIPL',
+  BC_2_3: 'BC 2.3',
+  BC_2_5: 'BC 2.5',
+  BC_3_0: 'BC 3.0',
+  BC_2_7: 'BC 2.7',
+  OTHER: 'Lainnya',
+}
+
 // --- Tagihan ---------------------------------------------------------------------------------
 
 export const invoiceStatuses = ['NOT_READY', 'READY', 'SENT', 'PAID'] as const

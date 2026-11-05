@@ -86,6 +86,42 @@ export async function removeAttachmentsOfOwner(ownerType: AttachmentOwner, owner
   if (deleteError) throw new Error(`Metadata lampiran tidak dapat dihapus: ${deleteError.message}`)
 }
 
+export type AttachmentMeta = {
+  id: string
+  kind: string | null
+  fileName: string
+  mimeType: string
+  fileSize: number
+  createdAt: string
+}
+
+/** Metadata lampiran milik satu pemilik (terbaru dulu); isi file lewat `downloadAttachment`. */
+export async function listAttachmentsByOwner(
+  ownerType: AttachmentOwner,
+  ownerId: string,
+): Promise<AttachmentMeta[]> {
+  const workspace_id = await workspaceId()
+  const { data, error } = await getSupabaseAdmin()
+    .from('attachments')
+    .select('id, kind, file_name, mime_type, file_size, created_at')
+    .eq('workspace_id', workspace_id)
+    .eq('owner_type', ownerType)
+    .eq('owner_id', ownerId)
+    .order('created_at', { ascending: false })
+    .returns<
+      Array<Pick<AttachmentRow, 'id' | 'kind' | 'file_name' | 'mime_type' | 'file_size' | 'created_at'>>
+    >()
+  if (error) throw new Error(`Lampiran tidak dapat dimuat: ${error.message}`)
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    fileName: row.file_name,
+    mimeType: row.mime_type,
+    fileSize: row.file_size,
+    createdAt: row.created_at,
+  }))
+}
+
 export async function downloadAttachment(id: string) {
   const workspace_id = await workspaceId()
   const { data, error } = await getSupabaseAdmin()

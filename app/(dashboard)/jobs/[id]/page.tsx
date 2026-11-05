@@ -3,26 +3,30 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, ArrowLeft, CheckCircle2, CircleAlert, Trash2 } from 'lucide-react'
 import {
-  deleteJob,
+  ArrowLeft,
+  CheckCircle2,
+  CircleAlert,
+  FileSpreadsheet,
+  MoreVertical,
+  Pencil,
+  Trash2,
+} from 'lucide-react'
+import {
   getJob,
   getOperationalDetails,
   listEventExhibitors,
-  listEvents,
-  type LocalEvent,
   type Exhibitor,
   type Job,
   type JobCiplLine,
 } from '@/lib/data-client'
-import { internationalJobJenisLabels } from '@/domain/job/types'
+import { bcDocumentLabels, transportModeLabels, type BcDocumentKind } from '@/domain/job/types'
 import { buildManifestView } from '@/lib/manifest-view'
 import {
-  JobIdentityCard,
+  JobHeaderDialog,
   JobJourneyCard,
   JobLogisticsCard,
   JobCustomsCard,
-  JobRemarkCard,
   JobCiplStatusCard,
 } from '@/components/job-detail-cards'
 import { JobManifestSection } from '@/components/job-manifest-section'
@@ -31,21 +35,19 @@ import { CiplLineModal } from '@/components/cipl-line-modal'
 import { CiplEntryModal } from '@/components/cipl-entry-modal'
 import { JobDocumentEditorDialog } from '@/components/job-document-editor-dialog'
 import { JobPartyInvoiceCard } from '@/components/job-party-invoice-card'
-import { JobDetailSkeleton, JobEventInfoSkeleton } from '@/components/loading-skeletons'
+import { JobContextSummary } from '@/components/job-context-summary'
+import { JobDetailSkeleton } from '@/components/loading-skeletons'
+import { JobReadinessBar } from '@/components/job-readiness-bar'
+import { JobAttachmentsCard } from '@/components/job-attachments-card'
+import { DeleteJobDialog } from '@/components/delete-job-dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { downloadCustomsWorkbook, label } from '@/components/job-row'
+import { jobContext } from '@/lib/job-context'
 import { compareInvoiceWithTransport, type DocumentComparison } from '@/lib/document-comparison'
 import { jobLabel } from '@/domain/job/numbering'
+import type { JobDetailTab, JobReadinessTarget } from '@/lib/job-readiness'
+import { StatusBadge } from '@/components/status-badge'
 
-const date = (value: string | null) =>
-  value
-    ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(new Date(value))
-    : 'Belum diisi'
-const eventDates = (event: LocalEvent | null) => {
-  if (!event) return null
-  const from = event.startsOn && event.startsOn !== 'null' ? date(event.startsOn) : null
-  const to = event.endsOn && event.endsOn !== 'null' ? date(event.endsOn) : null
-  return from && to && from !== to ? `${from} – ${to}` : (from ?? to)
-}
-const label = (value: string) => value.replaceAll('_', ' ')
 const toast = (message: string, tone: 'info' | 'error' = 'info') =>
   window.dispatchEvent(
     new CustomEvent('vss:toast', {
@@ -61,13 +63,6 @@ function Info({ label: title, value }: { label: string; value: string | null | u
     </div>
   )
 }
-
-const jenisLabel = (job: Job) =>
-  job.kind === 'LOCAL'
-    ? 'Local'
-    : job.internationalJenis
-      ? (internationalJobJenisLabels[job.internationalJenis] ?? 'Job lama')
-      : 'Job lama'
 
 function comparisonValue(value: DocumentComparison['invoiceValue']) {
   return value === null ? 'Tidak tersedia' : String(value)
@@ -165,34 +160,54 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   const [manifestModalOpen, setManifestModalOpen] = useState(false)
   const [lineTarget, setLineTarget] = useState<JobCiplLine | null>(null)
   const [ciplEntryOpen, setCiplEntryOpen] = useState(false)
-  const [event, setEvent] = useState<LocalEvent | null>(null)
-  const [eventLoading, setEventLoading] = useState(true)
   const [transportOpen, setTransportOpen] = useState(false)
+  const [headerOpen, setHeaderOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  async function handleDelete() {
+  const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null)
+
+  // Tab area kerja aktif disimpan di URL (?tab=muatan|transport|billing) agar bisa dibagikan dan
+  // bertahan refresh; dibaca sekali saat mount (pola ?newJob=1 di halaman event).
+  const [tab, setTab] = useState<JobDetailTab>('muatan')
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get('tab')
+    if (fromUrl === 'muatan' || fromUrl === 'transport' || fromUrl === 'billing') setTab(fromUrl)
+  }, [])
+  function selectTab(next: JobDetailTab) {
+    setTab(next)
+    window.history.replaceState(
+      null,
+      '',
+      next === 'muatan' ? `/jobs/${params.id}` : `/jobs/${params.id}?tab=${next}`,
+    )
+  }
+  // Header job bukan tab: langkah kesiapan "No Job" membuka dialog ubah header.
+  function navigateReadiness(target: JobReadinessTarget) {
+    if (target === 'header') setHeaderOpen(true)
+    else selectTab(target)
+  }
+
+  async function exportWorkbook(kind: BcDocumentKind) {
     if (!job) return
-    setDeleting(true)
     try {
-      await deleteJob(job.id)
-      toast(`Job ${jobLabel(job)} dihapus.`)
-      router.push('/jobs')
+      await downloadCustomsWorkbook(job, kind)
+      toast(`${label(kind)} berhasil diunduh.`)
     } catch (caught) {
-      toast(caught instanceof Error ? caught.message : 'Job tidak dapat dihapus.', 'error')
-      setDeleting(false)
+      toast(caught instanceof Error ? caught.message : 'File BC tidak dapat dibuat.', 'error')
     }
   }
-  const jobEventId = job?.eventId ?? null
+
+  const context = job ? jobContext(job) : null
+  const eventId = context?.kind === 'EVENT' ? context.eventId : null
   // Exhibitor event: pilihan pihak & penautan baris CIPL. Dimuat ulang saat versi job berubah
-  // karena menyimpan baris CIPL bisa mendaftarkan exhibitor baru.
+  // karena menyimpan baris CIPL bisa mendaftarkan exhibitor baru. Hanya untuk konteks EVENT.
   const jobVersion = job?.version ?? 0
   useEffect(() => {
-    if (!jobEventId) {
+    if (!eventId) {
       setExhibitors([])
       return
     }
     let active = true
-    listEventExhibitors(jobEventId)
+    listEventExhibitors(eventId)
       .then((rows) => {
         if (active) setExhibitors(rows)
       })
@@ -202,29 +217,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
     return () => {
       active = false
     }
-  }, [jobEventId, jobVersion])
-  // Info event untuk header; gagal memuat tidak menghalangi halaman job.
-  useEffect(() => {
-    if (!jobEventId) {
-      setEvent(null)
-      return
-    }
-    let active = true
-    setEventLoading(true)
-    listEvents()
-      .then((rows) => {
-        if (active) setEvent(rows.find((row) => row.id === jobEventId) ?? null)
-      })
-      .catch(() => {
-        if (active) setEvent(null)
-      })
-      .finally(() => {
-        if (active) setEventLoading(false)
-      })
-    return () => {
-      active = false
-    }
-  }, [jobEventId])
+  }, [eventId, jobVersion])
   if (loading || !job) {
     if (loadError)
       return (
@@ -240,12 +233,9 @@ export default function JobDetail({ params }: { params: { id: string } }) {
       )
     return <JobDetailSkeleton />
   }
+  const isEvent = context?.kind === 'EVENT'
   const details = getOperationalDetails(job)
   const transport = job.transportDocument
-  const completed = Object.values(details.customs).filter(
-    (item) => item.applicable && item.status === 'COMPLETED',
-  ).length
-  const required = Object.values(details.customs).filter((item) => item.applicable).length
   const invoiceItems = details.invoiceItems ?? []
   const documentComparison =
     details.invoice && transport ? compareInvoiceWithTransport(details.invoice, transport) : null
@@ -259,140 +249,203 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           >
             <ArrowLeft size={16} /> Kembali ke Jobs
           </Link>
-          <h1
-            className={`mt-3 text-4xl font-bold tracking-tight ${job.jobNumber ? '' : 'text-slate-400'}`}
-          >
-            {job.jobNumber ?? (job.manifestPrefix ? `${job.manifestPrefix}.-` : 'No Job belum ada')}
-          </h1>
-          {eventLoading ? (
-            <JobEventInfoSkeleton />
-          ) : (
-            <>
-              <p className="mt-2 text-base font-semibold text-slate-800">
-                {event?.officialName ?? 'Event'}
-              </p>
-              <p className="mt-1 text-sm text-slate-500">
-                {[event?.venue?.name, eventDates(event)].filter(Boolean).join(' · ') ||
-                  'Informasi event belum tersedia'}
-              </p>
-            </>
-          )}
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-            <span>
-              {job.party?.name || 'Pihak belum ditetapkan'}
-              {job.transportDocumentNumber
-                ? ` · ${job.transportDocumentType === 'AWB' ? 'AWB' : 'B/L'} ${job.transportDocumentNumber}`
-                : ''}
-            </span>
-            <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700 ring-1 ring-inset ring-violet-200">
-              {jenisLabel(job)}
-            </span>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <h1
+              className={`text-4xl font-bold tracking-tight ${job.jobNumber ? '' : 'text-slate-400'}`}
+            >
+              {job.jobNumber ??
+                (job.manifestPrefix ? `${job.manifestPrefix}.-` : 'No Job belum ada')}
+            </h1>
+            <StatusBadge status={job.status} />
           </div>
+          {context && <JobContextSummary context={context} />}
+          <dl className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+            <div className="flex items-center gap-1.5">
+              <dt className="text-slate-400">Jalur</dt>
+              <dd className="font-medium text-slate-800">
+                {job.transportMode ? transportModeLabels[job.transportMode] : '—'}
+              </dd>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <dt className="text-slate-400">No. commercial invoice</dt>
+              <dd className="font-medium text-slate-800">{job.commercialInvoiceNumber || '—'}</dd>
+            </div>
+          </dl>
+          {job.notes && (
+            <p className="mt-2 line-clamp-2 max-w-3xl whitespace-pre-wrap text-sm text-slate-500">
+              {job.notes}
+            </p>
+          )}
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="relative flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setDeleteOpen(true)}
-            className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50"
+            onClick={() => setHeaderOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-orange-50 hover:text-orange-700"
           >
-            <Trash2 size={16} /> Hapus
+            <Pencil size={14} aria-hidden="true" /> Ubah header
           </button>
+          <button
+            type="button"
+            onClick={(clickEvent) => {
+              const rect = clickEvent.currentTarget.getBoundingClientRect()
+              setMenuAnchor((current) =>
+                current ? null : { top: rect.bottom + 4, left: rect.right - 208 },
+              )
+            }}
+            aria-label="Menu aksi job"
+            aria-expanded={menuAnchor !== null}
+            aria-haspopup="menu"
+            title="Menu aksi"
+            className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 hover:bg-orange-50 hover:text-orange-700"
+          >
+            <MoreVertical size={18} />
+          </button>
+          {menuAnchor && (
+            <>
+              <div
+                className="fixed inset-0 z-40"
+                role="presentation"
+                onClick={() => setMenuAnchor(null)}
+              />
+              <div
+                role="menu"
+                aria-label="Aksi job"
+                className="fixed z-50 w-52 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg"
+                style={{ top: menuAnchor.top, left: menuAnchor.left }}
+              >
+                {job.kind === 'INTERNATIONAL' && (
+                  <>
+                    {(['BC_2_3', 'BC_2_5', 'BC_3_0', 'BC_2_7'] as const).map((kind) => (
+                      <button
+                        key={kind}
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          setMenuAnchor(null)
+                          void exportWorkbook(kind)
+                        }}
+                        className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                      >
+                        <FileSpreadsheet size={15} /> Export workbook {bcDocumentLabels[kind]}
+                      </button>
+                    ))}
+                    <div className="my-1 border-t border-black/10" />
+                  </>
+                )}
+                <button
+                  role="menuitem"
+                  type="button"
+                  onClick={() => {
+                    setMenuAnchor(null)
+                    setDeleteOpen(true)
+                  }}
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
+                >
+                  <Trash2 size={15} /> Hapus job
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
-      <JobIdentityCard job={job} onSaved={setJob} />
-      <JobManifestSection
-        view={buildManifestView(job)}
-        onEditManifest={() => setManifestModalOpen(true)}
-        onEditPeserta={(peserta) => setLineTarget(peserta.line)}
-      />
-      <section className="rounded-2xl border border-orange-200 bg-orange-50 p-5">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold text-orange-900">Kesiapan Job</p>
-            <p className="mt-1 text-sm text-orange-800">
-              CIPL: {label(details.cipl.status)} · Dokumen BC selesai: {completed}/{required}
-            </p>
-          </div>
-          <div className="h-2 w-full max-w-xs overflow-hidden rounded-full bg-orange-100">
-            <div
-              className="h-full rounded-full bg-orange-600"
-              style={{ width: `${required ? Math.round((completed / required) * 100) : 0}%` }}
-            />
-          </div>
-        </div>
-      </section>
-      <JobPartyInvoiceCard job={job} exhibitors={exhibitors} onSaved={setJob} />
-      {documentComparison && <DocumentComparisonSummary comparison={documentComparison} />}
-      <>
-        <div className="grid gap-6 xl:grid-cols-3">
-          <div className="space-y-6 xl:col-span-2">
-            <section className="card p-5">
-              <h2 className="font-semibold">Pihak pada dokumen angkut</h2>
-              <dl className="mt-4 grid gap-5 sm:grid-cols-2">
-                <Info label="Shipper" value={transport?.shipper?.name} />
-                <Info label="Consignee" value={transport?.consignee?.name} />
-                <Info label="Notify party" value={transport?.notifyParty?.name} />
-                <Info label="PIC" value={job.assignedTo?.name} />
-              </dl>
-              <button
-                type="button"
-                className="btn-secondary mt-4"
-                onClick={() => setTransportOpen(true)}
+      <JobReadinessBar job={job} activeTab={tab} onNavigate={navigateReadiness} />
+      <Tabs value={tab} onValueChange={(value) => selectTab(value as JobDetailTab)}>
+        <div className="sticky top-0 z-30 -mx-1 border-b bg-white/95 px-1 py-2 backdrop-blur">
+          <TabsList className="h-auto gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+            {(
+              [
+                ['muatan', 'Muatan'],
+                ['transport', 'Transport'],
+                ['billing', 'Billing'],
+              ] as const
+            ).map(([value, text]) => (
+              <TabsTrigger
+                key={value}
+                value={value}
+                className="h-auto rounded-lg px-4 py-1.5 text-slate-500 hover:bg-orange-50 hover:text-orange-700 data-active:bg-orange-600 data-active:text-white data-active:shadow-sm"
               >
-                Scan / edit B/L atau AWB
-              </button>
-            </section>
+                {text}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+        <TabsContent value="muatan" className="space-y-6">
+          <JobCiplStatusCard job={job} onSaved={setJob} onScan={() => setCiplEntryOpen(true)} />
+          {isEvent && (
+            <JobManifestSection
+              view={buildManifestView(job)}
+              onEditManifest={() => setManifestModalOpen(true)}
+              onEditPeserta={(peserta) => setLineTarget(peserta.line)}
+            />
+          )}
+          <section className="card p-5">
+            <h2 className="font-semibold">Details Barang</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Diekstrak dari invoice; nanti bersumber dari CIPL.
+            </p>
+            <p className="mt-3 text-sm font-medium text-slate-800">
+              No. Invoice: {details.invoiceNumber || '-'}
+            </p>
+            {invoiceItems.length ? (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="text-slate-500">
+                    <tr>
+                      <th className="pb-2 pr-3">Barang</th>
+                      <th className="pb-2 pr-3">HS</th>
+                      <th className="pb-2 text-right">Harga</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoiceItems.map((item, index) => (
+                      <tr key={`${item.description}-${index}`} className="border-t">
+                        <td className="py-2 pr-3 text-slate-700">{item.description}</td>
+                        <td className="py-2 pr-3 text-slate-600">{item.hsCode || '-'}</td>
+                        <td className="py-2 text-right text-slate-700">
+                          {item.currency || ''} {item.lineTotal ?? item.unitPrice ?? '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-slate-500">
+                Belum ada baris barang yang berhasil diekstrak.
+              </p>
+            )}
+          </section>
+        </TabsContent>
+        <TabsContent value="transport" className="space-y-6">
+          <div className="grid gap-6 xl:grid-cols-2">
             <JobJourneyCard job={job} onSaved={setJob} />
             <JobLogisticsCard job={job} onSaved={setJob} />
-            <JobCustomsCard job={job} onSaved={setJob} />
           </div>
-          <aside className="space-y-6">
-            <JobCiplStatusCard
-              job={job}
-              onSaved={setJob}
-              onScan={() => setCiplEntryOpen(true)}
-            />
-            <section className="card p-5">
-              <h2 className="font-semibold">Details Barang</h2>
-              <p className="mt-1 text-xs text-slate-500">
-                Diekstrak dari invoice; nanti bersumber dari CIPL.
-              </p>
-              <p className="mt-3 text-sm font-medium text-slate-800">
-                No. Invoice: {details.invoiceNumber || '-'}
-              </p>
-              {invoiceItems.length ? (
-                <div className="mt-4 overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="text-slate-500">
-                      <tr>
-                        <th className="pb-2 pr-3">Barang</th>
-                        <th className="pb-2 pr-3">HS</th>
-                        <th className="pb-2 text-right">Harga</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {invoiceItems.map((item, index) => (
-                        <tr key={`${item.description}-${index}`} className="border-t">
-                          <td className="py-2 pr-3 text-slate-700">{item.description}</td>
-                          <td className="py-2 pr-3 text-slate-600">{item.hsCode || '-'}</td>
-                          <td className="py-2 text-right text-slate-700">
-                            {item.currency || ''} {item.lineTotal ?? item.unitPrice ?? '-'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="mt-2 text-sm text-slate-500">
-                  Belum ada baris barang yang berhasil diekstrak.
-                </p>
-              )}
-            </section>
-            <JobRemarkCard job={job} onSaved={setJob} />
-          </aside>
-        </div>
-      </>
+          <section className="card p-5">
+            <h2 className="font-semibold">Pihak pada dokumen angkut</h2>
+            <dl className="mt-4 grid gap-5 sm:grid-cols-2">
+              <Info label="Shipper" value={transport?.shipper?.name} />
+              <Info label="Consignee" value={transport?.consignee?.name} />
+              <Info label="Notify party" value={transport?.notifyParty?.name} />
+              <Info label="PIC" value={job.assignedTo?.name} />
+            </dl>
+            <button
+              type="button"
+              className="btn-secondary mt-4"
+              onClick={() => setTransportOpen(true)}
+            >
+              Scan / edit B/L atau AWB
+            </button>
+          </section>
+          {documentComparison && <DocumentComparisonSummary comparison={documentComparison} />}
+          <JobCustomsCard job={job} onSaved={setJob} />
+          <JobAttachmentsCard job={job} />
+        </TabsContent>
+        <TabsContent value="billing">
+          <JobPartyInvoiceCard job={job} exhibitors={isEvent ? exhibitors : null} onSaved={setJob} />
+        </TabsContent>
+      </Tabs>
       {manifestModalOpen && (
         <JobManifestEditorModal
           job={job}
@@ -434,56 +487,21 @@ export default function JobDetail({ params }: { params: { id: string } }) {
         onSaved={setJob}
         onToast={toast}
       />
-      {deleteOpen && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-          role="presentation"
-          onMouseDown={(mouseEvent) => {
-            if (!deleting && mouseEvent.target === mouseEvent.currentTarget) setDeleteOpen(false)
-          }}
-        >
-          <div
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="delete-job-title"
-            className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-6 shadow-2xl"
-          >
-            <div className="flex items-start gap-4">
-              <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700">
-                <AlertTriangle size={22} />
-              </div>
-              <div>
-                <h2 id="delete-job-title" className="text-lg font-bold">
-                  Hapus job?
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  <span className="font-semibold">{jobLabel(job)}</span> beserta seluruh lampiran
-                  dokumen, baris CIPL, dan tiket yang terikat padanya akan dihapus permanen.
-                  Tindakan ini tidak dapat dibatalkan.
-                </p>
-              </div>
-            </div>
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setDeleteOpen(false)}
-                disabled={deleting}
-                className="btn-secondary"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={deleting}
-                className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
-              >
-                {deleting ? 'Menghapus...' : 'Hapus permanen'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <JobHeaderDialog
+        job={job}
+        open={headerOpen}
+        onClose={() => setHeaderOpen(false)}
+        onSaved={setJob}
+      />
+      <DeleteJobDialog
+        job={job}
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onDeleted={() => {
+          toast(`Job ${jobLabel(job)} dihapus.`)
+          router.push('/jobs')
+        }}
+      />
     </div>
   )
 }

@@ -38,7 +38,7 @@ function Info({ label, value }: { label: string; value: string | null | undefine
   )
 }
 
-/** Pihak yang ditagih: agent ATAU exhibitor event. */
+/** Pihak yang ditagih: agent, atau exhibitor bila job berkonteks event (`exhibitors` null = tanpa exhibitor). */
 function PartyEditor({
   job,
   exhibitors,
@@ -46,7 +46,7 @@ function PartyEditor({
   onCancel,
 }: {
   job: Job
-  exhibitors: Exhibitor[]
+  exhibitors: Exhibitor[] | null
   onSaved: (job: Job) => void
   onCancel: () => void
 }) {
@@ -98,13 +98,15 @@ function PartyEditor({
               ))}
             </optgroup>
           )}
-          <optgroup label="Exhibitor event ini">
-            {exhibitors.map((exhibitor) => (
-              <option key={exhibitor.id} value={`exhibitor:${exhibitor.id}`}>
-                {exhibitor.name}
-              </option>
-            ))}
-          </optgroup>
+          {exhibitors && (
+            <optgroup label="Exhibitor event ini">
+              {exhibitors.map((exhibitor) => (
+                <option key={exhibitor.id} value={`exhibitor:${exhibitor.id}`}>
+                  {exhibitor.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
         </select>
         {onlyExhibitor && (
           <span className="mt-1 block text-xs font-normal text-slate-500">
@@ -243,7 +245,7 @@ export function JobPartyInvoiceCard({
   onSaved,
 }: {
   job: Job
-  exhibitors: Exhibitor[]
+  exhibitors: Exhibitor[] | null
   onSaved: (job: Job) => void
 }) {
   const canEditBilling = useCanEditBilling()

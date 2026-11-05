@@ -26,7 +26,6 @@ import {
   type TransportMode,
 } from '@/domain/job/types'
 import { formatJobNumber, formatManifestSequence } from '@/domain/job/numbering'
-import { StatusBadge } from '@/components/status-badge'
 
 // Editor per-area di halaman detail job: tiap kartu menampilkan ringkasan read-only dan, saat
 // "Ubah" ditekan, menyuntik form di tempat yang sama (pola kartu Pihak · Tagihan). Simpan selalu
@@ -151,15 +150,17 @@ function CardHeader({
 }
 
 // --------------------------------------------------------------------------------------------
-// Identitas Job: No Job (jalur → awalan, urutan dengan saran, No. commercial invoice) + status.
+// Header job: No Job (jalur → awalan, urutan dengan saran, No. commercial invoice), status, dan
+// remark dalam satu form; dibuka sebagai dialog dari header halaman detail (bukan tab).
 // --------------------------------------------------------------------------------------------
 
-function IdentityForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job) => void; onCancel: () => void }) {
+function HeaderForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job) => void; onCancel: () => void }) {
   const { saving, save } = useJobSave(job, onSaved, onCancel)
   const [transportMode, setTransportMode] = useState<TransportMode | ''>(job.transportMode ?? '')
   const [seq, setSeq] = useState(job.manifestSeq ? String(job.manifestSeq) : '')
   const [invoiceNumber, setInvoiceNumber] = useState(job.commercialInvoiceNumber ?? '')
   const [status, setStatus] = useState<JobStatus>(job.status)
+  const [notes, setNotes] = useState(job.notes ?? '')
   const [suggestion, setSuggestion] = useState<number | null>(null)
   const modeChanged = (transportMode || null) !== job.transportMode
 
@@ -190,6 +191,7 @@ function IdentityForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job
     }
     const patch: JobDetailsInput = {
       status,
+      notes: notes.trim() || null,
       commercialInvoiceNumber: invoiceNumber.trim() || null,
       ...(modeChanged ? { transportMode: transportMode || null } : {}),
       ...(modeChanged ? {} : { manifestSeq }),
@@ -262,6 +264,15 @@ function IdentityForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job
             ))}
           </select>
         </label>
+        <label className="label sm:col-span-2">
+          Remark
+          <textarea
+            className="input mt-1 min-h-24"
+            value={notes}
+            placeholder="Catatan operasional job"
+            onChange={(event) => setNotes(event.target.value)}
+          />
+        </label>
       </div>
       <p className="mt-2 text-xs text-slate-500">
         {modeChanged
@@ -275,28 +286,46 @@ function IdentityForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job
   )
 }
 
-export function JobIdentityCard({ job, onSaved }: { job: Job; onSaved: (job: Job) => void }) {
-  const [editing, setEditing] = useState(false)
+export function JobHeaderDialog({
+  job,
+  open,
+  onClose,
+  onSaved,
+}: {
+  job: Job
+  open: boolean
+  onClose: () => void
+  onSaved: (job: Job) => void
+}) {
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (keyEvent: KeyboardEvent) => {
+      if (keyEvent.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open, onClose])
+  if (!open) return null
   return (
-    <section className="card p-5">
-      <CardHeader title="Identitas Job" editing={editing} onEdit={() => setEditing(true)} />
-      {editing ? (
-        <IdentityForm job={job} onSaved={onSaved} onCancel={() => setEditing(false)} />
-      ) : (
-        <dl className="mt-4 grid gap-5 sm:grid-cols-4">
-          <Info
-            label="No Job"
-            value={job.jobNumber ?? (job.manifestPrefix ? `${job.manifestPrefix}.-` : 'Belum ada')}
-          />
-          <Info
-            label="Jalur"
-            value={job.transportMode ? transportModeLabels[job.transportMode] : '—'}
-          />
-          <Info label="No. commercial invoice" value={job.commercialInvoiceNumber || '—'} />
-          <Info label="Status" value={<StatusBadge status={job.status} />} />
-        </dl>
-      )}
-    </section>
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      role="presentation"
+      onMouseDown={(mouseEvent) => {
+        if (mouseEvent.target === mouseEvent.currentTarget) onClose()
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="job-header-title"
+        className="max-h-full w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
+      >
+        <h2 id="job-header-title" className="text-lg font-bold">
+          Ubah header job
+        </h2>
+        <HeaderForm job={job} onSaved={onSaved} onCancel={onClose} />
+      </div>
+    </div>
   )
 }
 
@@ -619,41 +648,6 @@ export function JobCustomsCard({ job, onSaved }: { job: Job; onSaved: (job: Job)
             )
           })}
         </div>
-      )}
-    </section>
-  )
-}
-
-// --------------------------------------------------------------------------------------------
-// Remark operasional.
-// --------------------------------------------------------------------------------------------
-
-function RemarkForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job) => void; onCancel: () => void }) {
-  const { saving, save } = useJobSave(job, onSaved, onCancel)
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    void save({ notes: text(form, 'notes') })
-  }
-  return (
-    <form onSubmit={submit} className="mt-3">
-      <textarea name="notes" defaultValue={job.notes || ''} className="input min-h-28" />
-      <FormActions saving={saving} onCancel={onCancel} />
-    </form>
-  )
-}
-
-export function JobRemarkCard({ job, onSaved }: { job: Job; onSaved: (job: Job) => void }) {
-  const [editing, setEditing] = useState(false)
-  return (
-    <section className="card p-5">
-      <CardHeader title="Remark" editing={editing} onEdit={() => setEditing(true)} />
-      {editing ? (
-        <RemarkForm job={job} onSaved={onSaved} onCancel={() => setEditing(false)} />
-      ) : (
-        <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600">
-          {job.notes || 'Belum ada remark operasional.'}
-        </p>
       )}
     </section>
   )

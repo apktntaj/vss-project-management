@@ -4,6 +4,7 @@ import { auth } from '@/auth'
 import {
   attachmentOwners,
   downloadAttachment,
+  listAttachmentsByOwner,
   uploadAttachment,
   type AttachmentOwner,
 } from '@/lib/supabase/attachments'
@@ -34,12 +35,27 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   if (!(await auth())?.user) return NextResponse.json({ error: 'Autentikasi diperlukan.' }, { status: 401 })
   const id = request.nextUrl.searchParams.get('id')
-  if (!id) return NextResponse.json({ error: 'ID lampiran wajib diisi.' }, { status: 400 })
-  try {
-    const result = await downloadAttachment(id)
-    if (!result) return new NextResponse(null, { status: 404 })
-    return new NextResponse(result.file.stream(), { headers: { 'Content-Type': result.mimeType, 'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(result.fileName)}`, 'Cache-Control': 'private, no-store' } })
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Lampiran tidak dapat dimuat.' }, { status: 503 })
+  if (id) {
+    try {
+      const result = await downloadAttachment(id)
+      if (!result) return new NextResponse(null, { status: 404 })
+      return new NextResponse(result.file.stream(), { headers: { 'Content-Type': result.mimeType, 'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(result.fileName)}`, 'Cache-Control': 'private, no-store' } })
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Lampiran tidak dapat dimuat.' }, { status: 503 })
+    }
   }
+  const ownerType = request.nextUrl.searchParams.get('ownerType')
+  const ownerId = request.nextUrl.searchParams.get('ownerId')
+  if (ownerType && ownerId) {
+    if (!owners.has(ownerType))
+      return NextResponse.json({ error: 'Owner lampiran tidak valid.' }, { status: 400 })
+    try {
+      return NextResponse.json(await listAttachmentsByOwner(ownerType as AttachmentOwner, ownerId), {
+        headers: { 'Cache-Control': 'no-store' },
+      })
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Lampiran tidak dapat dimuat.' }, { status: 503 })
+    }
+  }
+  return NextResponse.json({ error: 'ID lampiran atau owner wajib diisi.' }, { status: 400 })
 }

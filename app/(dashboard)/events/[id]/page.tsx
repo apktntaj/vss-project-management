@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
-  AlertTriangle,
   Building2,
   CalendarDays,
   ChevronDown,
@@ -15,7 +14,6 @@ import {
 } from 'lucide-react'
 import { useParams } from 'next/navigation'
 import {
-  deleteJob,
   downloadEventManifest,
   listEventJobs,
   listEventsWithExhibitors,
@@ -28,6 +26,8 @@ import { PageSkeleton } from '@/components/loading-skeletons'
 import { ContextTicketList } from '@/components/context-ticket-list'
 import { JobCreateWizard } from '@/components/job-create-wizard'
 import { JobRow } from '@/components/job-row'
+import { DeleteJobDialog } from '@/components/delete-job-dialog'
+import { jobLabel } from '@/domain/job/numbering'
 
 function formatDateRange(startsAt: string, endsAt: string) {
   const formatter = new Intl.DateTimeFormat('id-ID', {
@@ -47,7 +47,6 @@ export default function EventDetailPage() {
   const [showNewJob, setShowNewJob] = useState(false)
   const [openJenis, setOpenJenis] = useState<Record<string, boolean>>({})
   const [deletingJob, setDeletingJob] = useState<Job | null>(null)
-  const [deleting, setDeleting] = useState(false)
 
   const nomorByJobId = useMemo(() => buildJobNomor(jobs), [jobs])
 
@@ -99,20 +98,6 @@ export default function EventDetailPage() {
       )
     } finally {
       setExporting(false)
-    }
-  }
-  async function handleDeleteJob() {
-    if (!deletingJob) return
-    setDeleting(true)
-    try {
-      await deleteJob(deletingJob.id)
-      showToast(`${deletingJob.jobNumber || 'Job'} dihapus.`)
-      setDeletingJob(null)
-      loadData()
-    } catch (caught) {
-      showToast(caught instanceof Error ? caught.message : 'Job tidak dapat dihapus.', 'error')
-    } finally {
-      setDeleting(false)
     }
   }
 
@@ -281,54 +266,16 @@ export default function EventDetailPage() {
       </section>
       {/* <ContextTicketList contextKind="EVENT" contextId={event.id} /> */}
       {deletingJob && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-          role="presentation"
-          onMouseDown={(mouseEvent) => {
-            if (!deleting && mouseEvent.target === mouseEvent.currentTarget) setDeletingJob(null)
+        <DeleteJobDialog
+          job={deletingJob}
+          open
+          onClose={() => setDeletingJob(null)}
+          onDeleted={(deleted) => {
+            showToast(`${jobLabel(deleted)} dihapus.`)
+            setDeletingJob(null)
+            loadData()
           }}
-        >
-          <div
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="delete-job-title"
-            className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-6 shadow-2xl"
-          >
-            <div className="flex items-start gap-4">
-              <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700">
-                <AlertTriangle size={22} />
-              </div>
-              <div>
-                <h2 id="delete-job-title" className="text-lg font-bold">
-                  Hapus job?
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  <span className="font-semibold">{deletingJob.jobNumber}</span> beserta dokumen
-                  shipment, stage, shipment, customs job, dan ticket yang terikat padanya akan
-                  dihapus permanen. Tindakan ini tidak dapat dibatalkan.
-                </p>
-              </div>
-            </div>
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setDeletingJob(null)}
-                disabled={deleting}
-                className="btn-secondary"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteJob}
-                disabled={deleting}
-                className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
-              >
-                {deleting ? 'Menghapus...' : 'Hapus permanen'}
-              </button>
-            </div>
-          </div>
-        </div>
+        />
       )}
       {showNewJob && (
         <JobCreateWizard

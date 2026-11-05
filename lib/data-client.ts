@@ -287,6 +287,25 @@ export async function getAttachmentContent(attachmentId: string): Promise<Blob |
   return response.ok ? response.blob() : null
 }
 
+export type JobAttachmentMeta = {
+  id: string
+  kind: string | null
+  fileName: string
+  mimeType: string
+  fileSize: number
+  createdAt: string
+}
+
+/** Metadata lampiran milik satu job (terbaru dulu); isi file lewat `getAttachmentContent`. */
+export async function listJobAttachments(jobId: string): Promise<JobAttachmentMeta[]> {
+  const response = await fetch(
+    `/api/attachments?ownerType=JOB&ownerId=${encodeURIComponent(jobId)}`,
+    { cache: 'no-store' },
+  )
+  if (!response.ok) throw new Error('Lampiran tidak dapat dimuat.')
+  return (await response.json()) as JobAttachmentMeta[]
+}
+
 async function ensureSeeded() {
   return readAll<LocalUser>('users')
 }
