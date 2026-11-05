@@ -12,8 +12,8 @@ import {
   invoiceStatusLabels,
   transportModeLabels,
   type BcDocumentKind,
-  type JobCiplInfo,
 } from '@/domain/job/types'
+import { ciplStatusText, deriveCiplStatus, type CiplStatus } from '@/domain/job/cipl-status'
 import { jobJenisKey, jobJenisLabel } from '@/lib/job-jenis'
 import type { JobListEvent } from '@/lib/job-list'
 import { StatusBadge } from '@/components/status-badge'
@@ -29,11 +29,10 @@ const INVOICE_BADGE: Record<Job['invoice']['status'], string> = {
   PAID: 'bg-emerald-100 text-emerald-800',
 }
 
-const CIPL_BADGE: Record<JobCiplInfo['status'], { text: string; className: string }> = {
+const CIPL_BADGE: Record<CiplStatus, { text: string; className: string }> = {
   MISSING: { text: 'Menunggu', className: 'bg-slate-100 text-slate-500' },
-  REQUESTED: { text: 'Diminta', className: 'bg-amber-100 text-amber-800' },
-  RECEIVED: { text: 'Diterima', className: 'bg-blue-100 text-blue-800' },
-  VERIFIED: { text: 'Terverifikasi', className: 'bg-emerald-100 text-emerald-800' },
+  PARTIAL: { text: 'Sebagian', className: 'bg-amber-100 text-amber-800' },
+  RECEIVED: { text: 'Diterima', className: 'bg-emerald-100 text-emerald-800' },
 }
 
 // Badge penanda konteks di bawah teks utama sel: jenis job, event, dan agent.
@@ -125,9 +124,9 @@ function JobTableRow({
   event: JobListEvent | undefined
 }) {
   const operational = getOperationalDetails(job)
+  const cipl = deriveCiplStatus(job)
   const exhibitors = exhibitorNames(job)
   const agentName = job.party?.kind === 'AGENT' ? job.party.name : null
-  const cipl = operational.cipl
   const ciplBadge = CIPL_BADGE[cipl.status]
   const documentLine = [
     job.transportDocumentType === 'AWB' ? 'AWB' : job.transportDocumentType ? 'B/L' : null,
@@ -185,12 +184,9 @@ function JobTableRow({
         ) : null}
       </td>
       <td className="px-2 py-2 align-top">
-        <span className={`${badge} ${ciplBadge.className}`}>{ciplBadge.text}</span>
-        {cipl.referenceNumber ? (
-          <p className="mt-1 truncate text-xs text-slate-400" title={cipl.referenceNumber}>
-            {cipl.referenceNumber}
-          </p>
-        ) : null}
+        <span className={`${badge} ${ciplBadge.className}`} title={ciplStatusText(cipl)}>
+          {ciplBadge.text}
+        </span>
       </td>
       <td className="px-2 py-2 align-top">
         {job.transportDocumentNumber ? (

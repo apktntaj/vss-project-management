@@ -3,11 +3,11 @@
 // `@/lib/data-client` (modul itu `'use client'`).
 
 import { normalizeOperationalDetails } from '@/domain/job/operational'
+import { deriveCiplStatus, type CiplStatus, type CiplStatusSummary } from '@/domain/job/cipl-status'
 import {
   invoiceStatusLabels,
   type InvoiceStatus,
   type Job,
-  type JobCiplInfo,
 } from '@/domain/job/types'
 import { jobLabel } from '@/domain/job/numbering'
 
@@ -29,18 +29,16 @@ export type JobReadinessStep = {
 
 export type JobReadiness = { steps: JobReadinessStep[]; doneCount: number }
 
-const ciplStepStates: Record<JobCiplInfo['status'], JobReadinessStepState> = {
+const ciplStepStates: Record<CiplStatus, JobReadinessStepState> = {
   MISSING: 'todo',
-  REQUESTED: 'doing',
-  RECEIVED: 'doing',
-  VERIFIED: 'done',
+  PARTIAL: 'doing',
+  RECEIVED: 'done',
 }
 
-const ciplStepDetails: Record<JobCiplInfo['status'], string> = {
-  MISSING: 'Belum ada',
-  REQUESTED: 'Diminta',
-  RECEIVED: 'Diterima',
-  VERIFIED: 'Terverifikasi',
+function ciplStepDetail(cipl: CiplStatusSummary): string {
+  if (cipl.status === 'MISSING') return 'Belum ada'
+  if (cipl.status === 'RECEIVED') return 'Diterima'
+  return cipl.hasInvoice ? 'PL belum ada' : 'CI belum ada'
 }
 
 const invoiceStepStates: Record<InvoiceStatus, JobReadinessStepState> = {
@@ -77,7 +75,7 @@ function customsStep(job: Job): JobReadinessStep {
 
 /** Lima langkah kesiapan job: nomor, dokumen angkut, CIPL, dokumen BC, tagihan. */
 export function buildJobReadiness(job: Job): JobReadiness {
-  const cipl = normalizeOperationalDetails(job.operational).cipl
+  const cipl = deriveCiplStatus(job)
   const steps: JobReadinessStep[] = [
     {
       key: 'number',
@@ -98,7 +96,7 @@ export function buildJobReadiness(job: Job): JobReadiness {
     {
       key: 'cipl',
       label: 'CIPL',
-      detail: ciplStepDetails[cipl.status],
+      detail: ciplStepDetail(cipl),
       state: ciplStepStates[cipl.status],
       tab: 'muatan',
     },

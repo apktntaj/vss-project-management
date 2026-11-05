@@ -371,7 +371,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           </TabsList>
         </div>
         <TabsContent value="muatan" className="space-y-6">
-          <JobCiplStatusCard job={job} onSaved={setJob} onScan={() => setCiplEntryOpen(true)} />
+          <JobCiplStatusCard job={job} onScan={() => setCiplEntryOpen(true)} />
           {isEvent && (
             <JobManifestSection
               view={buildManifestView(job)}

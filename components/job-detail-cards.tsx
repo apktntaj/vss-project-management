@@ -19,12 +19,13 @@ import {
   transportModeLabels,
   transportModes,
   type BcDocumentKind,
-  type JobCiplInfo,
+  type JobCiplSourceKind,
   type JobCustomsDocument,
   type JobStatus,
   type JobTransportLeg,
   type TransportMode,
 } from '@/domain/job/types'
+import { ciplStatusText, deriveCiplStatus } from '@/domain/job/cipl-status'
 import { formatJobNumber, formatManifestSequence } from '@/domain/job/numbering'
 
 // Editor per-area di halaman detail job: tiap kartu menampilkan ringkasan read-only dan, saat
@@ -59,13 +60,6 @@ const jobStatusLabels: Record<JobStatus, string> = {
   ON_HOLD: 'Ditunda',
   COMPLETED: 'Selesai',
   CANCELLED: 'Dibatalkan',
-}
-
-const ciplStatusLabels: Record<JobCiplInfo['status'], string> = {
-  MISSING: 'Menunggu CIPL',
-  REQUESTED: 'Diminta',
-  RECEIVED: 'Diterima',
-  VERIFIED: 'Terverifikasi',
 }
 
 const legModeLabels: Record<NonNullable<JobTransportLeg['mode']>, string> = {
@@ -654,104 +648,42 @@ export function JobCustomsCard({ job, onSaved }: { job: Job; onSaved: (job: Job)
 }
 
 // --------------------------------------------------------------------------------------------
-// CIPL: status/referensi/tanggal diterima + No. Invoice. Entri & scan massal lewat CiplEntryModal
-// (tombol "Tambah / scan CIPL"); editor ini hanya menyetel field status yang tidak disentuh scan.
+// CIPL: status DITURUNKAN dari berkas lampiran + data job (`deriveCiplStatus`); tidak ada field
+// manual. Entri & scan lewat CiplEntryModal (tombol "Tambah / scan CIPL"); nomor invoice
+// diubah lewat header job.
 // --------------------------------------------------------------------------------------------
 
-function CiplForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job) => void; onCancel: () => void }) {
-  const { saving, save } = useJobSave(job, onSaved, onCancel)
-  const operational = getOperationalDetails(job)
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    void save({
-      operational: {
-        ...operational,
-        invoiceNumber: text(form, 'invoiceNumber'),
-        cipl: {
-          status: String(form.get('cipl.status')) as JobCiplInfo['status'],
-          referenceNumber: text(form, 'cipl.referenceNumber'),
-          receivedAt: text(form, 'cipl.receivedAt'),
-        },
-      },
-    })
-  }
-  return (
-    <form onSubmit={submit} className="mt-4">
-      <div className="grid gap-4">
-        <label className="label">
-          Status CIPL
-          <select name="cipl.status" defaultValue={operational.cipl.status} className="input mt-1">
-            {(Object.keys(ciplStatusLabels) as Array<JobCiplInfo['status']>).map((value) => (
-              <option key={value} value={value}>
-                {ciplStatusLabels[value]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="label">
-          Referensi CIPL
-          <input
-            name="cipl.referenceNumber"
-            defaultValue={operational.cipl.referenceNumber || ''}
-            className="input mt-1"
-          />
-        </label>
-        <label className="label">
-          Tanggal diterima
-          <input
-            name="cipl.receivedAt"
-            type="date"
-            defaultValue={operational.cipl.receivedAt?.slice(0, 10) || ''}
-            className="input mt-1"
-          />
-        </label>
-        <label className="label">
-          No. Invoice
-          <input name="invoiceNumber" defaultValue={operational.invoiceNumber || ''} className="input mt-1" />
-        </label>
-      </div>
-      <FormActions saving={saving} onCancel={onCancel} />
-    </form>
-  )
+const ciplSourceLabels: Record<JobCiplSourceKind, string> = {
+  CIPL: 'CIPL gabungan',
+  COMMERCIAL_INVOICE: 'Commercial invoice',
+  PACKING_LIST: 'Packing list',
 }
 
-export function JobCiplStatusCard({
-  job,
-  onSaved,
-  onScan,
-}: {
-  job: Job
-  onSaved: (job: Job) => void
-  onScan: () => void
-}) {
-  const [editing, setEditing] = useState(false)
-  const operational = getOperationalDetails(job)
+export function JobCiplStatusCard({ job, onScan }: { job: Job; onScan: () => void }) {
+  const summary = deriveCiplStatus(job)
+  const invoiceNumber = job.commercialInvoiceNumber || job.ciplDocument?.nomor || null
   return (
     <section className="card p-5">
-      <CardHeader
-        title="CIPL"
-        icon={<CalendarDays size={20} className="text-orange-600" aria-hidden="true" />}
-        editing={editing}
-        onEdit={() => setEditing(true)}
-      />
-      {editing ? (
-        <CiplForm job={job} onSaved={onSaved} onCancel={() => setEditing(false)} />
+      <h2 className="flex items-center gap-2 font-semibold">
+        <CalendarDays size={20} className="text-orange-600" aria-hidden="true" />
+        CIPL
+      </h2>
+      <p className="mt-4 text-sm font-medium text-slate-800">{ciplStatusText(summary)}</p>
+      {job.ciplSources.length > 0 ? (
+        <ul className="mt-2 space-y-1 text-sm text-slate-600">
+          {job.ciplSources.map((source, index) => (
+            <li key={`${source.kind}-${source.receivedAt}-${index}`}>
+              {ciplSourceLabels[source.kind]} · {fmtDate(source.receivedAt)}
+            </li>
+          ))}
+        </ul>
       ) : (
-        <>
-          <p className="mt-4 text-sm font-medium text-slate-800">
-            {ciplStatusLabels[operational.cipl.status]}
-          </p>
-          <p className="mt-1 text-sm text-slate-500">
-            {operational.cipl.referenceNumber || 'Referensi belum diisi'}
-          </p>
-          <p className="mt-3 text-sm text-slate-600">No. Invoice: {operational.invoiceNumber || '—'}</p>
-          <p className="mt-2 text-xs text-slate-500">Diterima: {fmtDate(operational.cipl.receivedAt)}</p>
-          <button type="button" className="btn-secondary mt-4" onClick={onScan}>
-            Tambah / scan CIPL
-          </button>
-        </>
+        <p className="mt-2 text-sm text-slate-500">Belum ada berkas CIPL.</p>
       )}
+      <p className="mt-3 text-sm text-slate-600">No. Invoice: {invoiceNumber || '—'}</p>
+      <button type="button" className="btn-secondary mt-4" onClick={onScan}>
+        Tambah / scan CIPL
+      </button>
     </section>
   )
 }

@@ -7,6 +7,8 @@ export const documentTypes = [
   'BILL_OF_LADING',
   'AIR_WAYBILL',
   'COMMERCIAL_INVOICE',
+  'CIPL',
+  'PACKING_LIST',
   'OTHER',
   'UNREADABLE',
 ] as const

@@ -44,6 +44,8 @@ const DOCUMENT_TYPE_LABEL: Record<string, string> = {
   BILL_OF_LADING: 'Bill of Lading',
   AIR_WAYBILL: 'Air Waybill',
   COMMERCIAL_INVOICE: 'Commercial Invoice',
+  CIPL: 'CIPL',
+  PACKING_LIST: 'Packing List',
   OTHER: 'dokumen lain',
   UNREADABLE: 'tidak terbaca',
 }
@@ -153,9 +155,12 @@ export function JobUploadDialog({
             const payload = await classifyFile(file)
             const documentType = payload.classification.documentType
             const kind = documentType === 'UNREADABLE' ? 'OTHER' : documentType
-            await upload(file, kind, { invoice: payload.invoice, transport: payload.transport })
+            // Hanya invoice yang menjadi data barang job; packing list tidak boleh menimpanya.
+            const invoiceSource = kind === 'COMMERCIAL_INVOICE' || kind === 'CIPL'
+            const extractedInvoice = invoiceSource ? payload.invoice : null
+            await upload(file, kind, { invoice: extractedInvoice, transport: payload.transport })
             uploaded += 1
-            if (payload.invoice) invoice = payload.invoice
+            if (extractedInvoice) invoice = extractedInvoice
             if (payload.transport) transport = payload.transport
             const mismatch = mismatchMessage(zone.key, documentType)
             if (mismatch) warnings.push(`${file.name} ${mismatch}`)

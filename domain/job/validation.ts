@@ -148,11 +148,6 @@ export const operationalDetailsSchema = z.object({
   invoiceNumber: optionalText(100).optional(),
   invoiceItems: z.array(invoiceItemSchema).optional(),
   invoice: invoiceExtractionSchema.nullable().optional(),
-  cipl: z.object({
-    status: z.enum(['MISSING', 'REQUESTED', 'RECEIVED', 'VERIFIED']),
-    referenceNumber: optionalText(100),
-    receivedAt: optionalText(40),
-  }),
   customs: customsSchema,
 })
 

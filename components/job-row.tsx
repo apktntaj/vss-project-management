@@ -16,7 +16,14 @@ import type { BcDocumentKind } from '@/domain/job/types'
 import { jobFileName, jobLabel } from '@/domain/job/numbering'
 
 export type DocumentClassification = {
-  documentType: 'BILL_OF_LADING' | 'AIR_WAYBILL' | 'COMMERCIAL_INVOICE' | 'OTHER' | 'UNREADABLE'
+  documentType:
+    | 'BILL_OF_LADING'
+    | 'AIR_WAYBILL'
+    | 'COMMERCIAL_INVOICE'
+    | 'CIPL'
+    | 'PACKING_LIST'
+    | 'OTHER'
+    | 'UNREADABLE'
   confidence: number
   rationale: string | null
 }

@@ -16,6 +16,9 @@ const draft = {
   transportDocumentNumber: null,
   invoice: { number: null, amount: null, currency: null, status: 'NOT_READY', sentAt: null, paidAt: null },
   operational: {},
+  ciplSources: [],
+  ciplDocument: null,
+  ciplLines: [],
 } as unknown as Job
 
 const byKey = (job: Job) =>
@@ -47,8 +50,8 @@ const completeJob = {
   transportDocumentType: 'BL',
   transportDocumentNumber: 'SHFPSJKT26026454',
   invoice: { ...draft.invoice, status: 'PAID' },
+  ciplSources: [{ kind: 'CIPL', receivedAt: '2026-11-01T00:00:00Z' }],
   operational: {
-    cipl: { status: 'VERIFIED', referenceNumber: 'CIPL-1', receivedAt: null },
     customs: {
       BC_2_3: { applicable: true, status: 'COMPLETED', ajuNumber: null, registrationNumber: null, registrationDate: null, warehouseName: null },
       BC_3_0: { applicable: true, status: 'COMPLETED', ajuNumber: null, registrationNumber: null, registrationDate: null, warehouseName: null },
@@ -75,8 +78,8 @@ assert.deepEqual(
 // Transisi tengah: sebagian BC selesai → doing; CIPL diterima & tagihan terkirim → doing.
 const partial = byKey({
   ...draft,
+  ciplSources: [{ kind: 'COMMERCIAL_INVOICE', receivedAt: '2026-11-01T00:00:00Z' }],
   operational: {
-    cipl: { status: 'RECEIVED', referenceNumber: null, receivedAt: null },
     customs: {
       BC_2_3: { applicable: true, status: 'COMPLETED', ajuNumber: null, registrationNumber: null, registrationDate: null, warehouseName: null },
     },
@@ -87,7 +90,7 @@ const partialCustoms = partial.customs
 assert.equal(partialCustoms.state, 'doing')
 assert.equal(partialCustoms.detail, '1/2 selesai')
 assert.equal(partial.cipl.state, 'doing')
-assert.equal(partial.cipl.detail, 'Diterima')
+assert.equal(partial.cipl.detail, 'PL belum ada')
 assert.equal(partial.invoice.state, 'doing')
 assert.equal(partial.invoice.detail, 'Terkirim')
 

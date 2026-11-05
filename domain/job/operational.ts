@@ -43,7 +43,6 @@ export function emptyOperationalDetails(): JobOperationalDetails {
     inbound: emptyLeg(),
     outbound: emptyLeg(),
     invoiceNumber: null,
-    cipl: { status: 'MISSING', referenceNumber: null, receivedAt: null },
     customs: {
       BC_2_3: emptyCustomsDocument(DEFAULT_APPLICABLE.BC_2_3),
       BC_2_5: emptyCustomsDocument(DEFAULT_APPLICABLE.BC_2_5),
@@ -68,7 +67,6 @@ export function normalizeOperationalDetails(
     ...stored,
     inbound: { ...base.inbound, ...stored.inbound },
     outbound: { ...base.outbound, ...stored.outbound },
-    cipl: stored.cipl ?? base.cipl,
     customs: {
       BC_2_3: customs.BC_2_3 ?? base.customs.BC_2_3,
       BC_2_5: customs.BC_2_5 ?? base.customs.BC_2_5,

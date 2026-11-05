@@ -11,7 +11,6 @@ import type { JobOperationalDetails } from './types'
 // Operational tanpa key BC_2_7 tetap aman dibaca: dilengkapi default (tidak applicable).
 const partial = {
   inbound: { mode: 'SEA', carrier: 'KMTC', scheduleAt: null, actualAt: null },
-  cipl: { status: 'RECEIVED', referenceNumber: null, receivedAt: null },
   customs: {
     BC_3_0: { applicable: true, status: 'RELEASED', ajuNumber: 'AJU-1', registrationNumber: 'NOPEN-1', registrationDate: '2026-09-02', warehouseName: null },
   },

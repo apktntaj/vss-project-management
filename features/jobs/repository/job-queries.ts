@@ -9,7 +9,7 @@ import {
   JOB_COLUMNS,
   JOB_SUMMARY_COLUMNS,
   raise,
-  toJob,
+  toJobs,
   toJobSummary,
   type JobRow,
   type JobSummaryRow,
@@ -32,7 +32,8 @@ function searchFilter(filter: ListFilter): string | null {
 }
 
 export async function listJobs(filter: ListFilter): Promise<Job[]> {
-  const { client, workspaceId } = await withWorkspace()
+  const context = await withWorkspace()
+  const { client, workspaceId } = context
   let query = client.from('jobs').select(JOB_COLUMNS).eq('workspace_id', workspaceId)
   if (filter.eventId) query = query.eq('event_id', filter.eventId)
   if (filter.status) query = query.eq('status', filter.status)
@@ -42,7 +43,7 @@ export async function listJobs(filter: ListFilter): Promise<Job[]> {
     .order('updated_at', { ascending: false })
     .returns<JobRow[]>()
   if (error) raise('Gagal memuat daftar job', error)
-  return (data ?? []).map(toJob)
+  return toJobs(context, data ?? [])
 }
 
 export async function listJobSummaries(filter: ListFilter): Promise<JobSummary[]> {

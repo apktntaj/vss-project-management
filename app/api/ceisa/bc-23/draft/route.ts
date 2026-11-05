@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     ])
     const invoiceKind = toLegacyDocumentKind(invoiceDocument.classification.documentType)
     const transportKind = toLegacyDocumentKind(transportDocument.classification.documentType)
-    if (!invoiceDocument.invoice || invoiceKind !== 'COMMERCIAL_INVOICE') {
+    if (!invoiceDocument.invoice || !['COMMERCIAL_INVOICE', 'CIPL'].includes(invoiceKind)) {
       return NextResponse.json({ error: 'File invoice tidak teridentifikasi sebagai Commercial Invoice.' }, { status: 400 })
     }
     if (!transportDocument.transport || !['BILL_OF_LADING', 'AIR_WAYBILL'].includes(transportKind)) {

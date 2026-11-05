@@ -7,10 +7,10 @@ import { DocumentExtractionError } from './errors'
 import { assertSupportedDocumentFile } from './file-guard'
 import { resolveLlmProvider } from './llm/provider'
 
-/** Jenis klasifikasi baru dipetakan ke 5 jenis legacy yang dikonsumsi UI job. */
+/** Jenis klasifikasi baru dipetakan ke jenis lampiran job yang dikonsumsi UI job. */
 const LEGACY_TYPES: Record<string, DocumentType> = {
-  CIPL_COMBINED: 'COMMERCIAL_INVOICE',
-  PACKING_LIST: 'OTHER',
+  CIPL_COMBINED: 'CIPL',
+  PACKING_LIST: 'PACKING_LIST',
   SUPPORTING_DOCUMENT: 'OTHER',
   COMMERCIAL_INVOICE: 'COMMERCIAL_INVOICE',
   BILL_OF_LADING: 'BILL_OF_LADING',

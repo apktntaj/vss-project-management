@@ -10,14 +10,15 @@ import {
   JOB_COLUMNS,
   isUuid,
   raise,
-  toJob,
+  toJobs,
   type JobRow,
   type JobWritableColumns,
 } from './shared'
 
 export async function findJobById(jobId: string): Promise<Job | null> {
   if (!isUuid(jobId)) return null
-  const { client, workspaceId } = await withWorkspace()
+  const context = await withWorkspace()
+  const { client, workspaceId } = context
   const { data, error } = await client
     .from('jobs')
     .select(JOB_COLUMNS)
@@ -25,7 +26,7 @@ export async function findJobById(jobId: string): Promise<Job | null> {
     .eq('id', jobId)
     .maybeSingle<JobRow>()
   if (error) raise('Gagal memuat job', error)
-  return data ? toJob(data) : null
+  return data ? (await toJobs(context, [data]))[0] : null
 }
 
 export type NewJobRow = {
@@ -40,14 +41,15 @@ export type NewJobRow = {
 }
 
 export async function insertJob(row: NewJobRow): Promise<Job> {
-  const { client, workspaceId } = await withWorkspace()
+  const context = await withWorkspace()
+  const { client, workspaceId } = context
   const { data, error } = await client
     .from('jobs')
     .insert({ ...row, workspace_id: workspaceId })
     .select(JOB_COLUMNS)
     .single<JobRow>()
   if (error) raise('Gagal membuat job', error)
-  return toJob(data)
+  return (await toJobs(context, [data]))[0]
 }
 
 /**
@@ -61,7 +63,8 @@ export async function updateJobGuarded(
   columns: JobWritableColumns,
 ): Promise<Job | null> {
   if (!isUuid(jobId)) return null
-  const { client, workspaceId } = await withWorkspace()
+  const context = await withWorkspace()
+  const { client, workspaceId } = context
   const { data, error } = await client
     .from('jobs')
     .update({ ...columns, version: expectedVersion + 1, updated_at: new Date().toISOString() })
@@ -71,7 +74,7 @@ export async function updateJobGuarded(
     .select(JOB_COLUMNS)
     .maybeSingle<JobRow>()
   if (error) raise('Gagal menyimpan job', error)
-  return data ? toJob(data) : null
+  return data ? (await toJobs(context, [data]))[0] : null
 }
 
 /**

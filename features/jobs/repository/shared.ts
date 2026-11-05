@@ -5,14 +5,17 @@ import 'server-only'
 import { normalizeOperationalDetails } from '@/domain/job/operational'
 import { formatJobNumber } from '@/domain/job/numbering'
 import type { JobTransportExtraction } from '@/domain/exhibition/source-documents'
-import type {
-  Job,
-  JobCiplLine,
-  JobInvoice,
-  JobOperationalDetails,
-  JobParty,
-  JobSummary,
+import {
+  jobCiplSourceKinds,
+  type Job,
+  type JobCiplLine,
+  type JobCiplSource,
+  type JobInvoice,
+  type JobOperationalDetails,
+  type JobParty,
+  type JobSummary,
 } from '@/domain/job/types'
+import type { WorkspaceContext } from '@/lib/server/db'
 
 // Embed aggregate lain HANYA untuk tampilan. Hint FK wajib: `jobs` punya dua FK ke app_users
 // (assigned_to_id + created_by_id) dan dua jalur ke exhibitors (pihak langsung + lewat baris CIPL).
@@ -164,7 +167,7 @@ function toCiplLine(row: CiplLineRow): JobCiplLine {
   }
 }
 
-export function toJob(row: JobRow): Job {
+export function toJob(row: JobRow, ciplSources: JobCiplSource[]): Job {
   const assignedTo = first(row.assigned_to)
   return {
     id: row.id,
@@ -188,6 +191,7 @@ export function toJob(row: JobRow): Job {
     ciplLines: [...(row.cipl_lines ?? [])]
       .sort((left, right) => left.position - right.position)
       .map(toCiplLine),
+    ciplSources,
     invoice: {
       number: row.invoice_number,
       // `numeric` dikirim PostgREST sebagai number atau string tergantung presisi.
@@ -209,6 +213,44 @@ export function toJob(row: JobRow): Job {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
+}
+
+// `attachments.owner_id` berupa teks tanpa FK, jadi tidak bisa di-embed pada select `jobs`.
+// Daftar id dipotong agar URL query PostgREST tetap pendek.
+const CIPL_SOURCE_CHUNK = 100
+
+type CiplSourceRow = { owner_id: string; kind: JobCiplSource['kind']; created_at: string }
+
+/** Lampiran CIPL / commercial invoice / packing list per job (terbaru dulu). */
+async function loadCiplSources(
+  { client, workspaceId }: WorkspaceContext,
+  jobIds: string[],
+): Promise<Map<string, JobCiplSource[]>> {
+  const sources = new Map<string, JobCiplSource[]>()
+  for (let start = 0; start < jobIds.length; start += CIPL_SOURCE_CHUNK) {
+    const { data, error } = await client
+      .from('attachments')
+      .select('owner_id, kind, created_at')
+      .eq('workspace_id', workspaceId)
+      .eq('owner_type', 'JOB')
+      .in('kind', [...jobCiplSourceKinds])
+      .in('owner_id', jobIds.slice(start, start + CIPL_SOURCE_CHUNK))
+      .order('created_at', { ascending: false })
+      .returns<CiplSourceRow[]>()
+    if (error) raise('Gagal memuat lampiran CIPL job', error)
+    for (const row of data ?? []) {
+      const list = sources.get(row.owner_id) ?? []
+      list.push({ kind: row.kind, receivedAt: row.created_at })
+      sources.set(row.owner_id, list)
+    }
+  }
+  return sources
+}
+
+/** Petakan baris job ke aggregate, dengan satu query tambahan untuk lampiran CIPL. */
+export async function toJobs(context: WorkspaceContext, rows: JobRow[]): Promise<Job[]> {
+  const sources = await loadCiplSources(context, rows.map((row) => row.id))
+  return rows.map((row) => toJob(row, sources.get(row.id) ?? []))
 }
 
 export function toJobSummary(row: JobSummaryRow): JobSummary {

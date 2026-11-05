@@ -60,7 +60,6 @@ export type {
   InternationalJobJenis,
   InvoiceStatus,
   Job,
-  JobCiplInfo,
   JobCiplLine,
   JobCiplLineInput,
   JobCustomsDocument,

@@ -79,12 +79,6 @@ export type JobTransportLeg = {
   actualAt: string | null
 }
 
-export type JobCiplInfo = {
-  status: 'MISSING' | 'REQUESTED' | 'RECEIVED' | 'VERIFIED'
-  referenceNumber: string | null
-  receivedAt: string | null
-}
-
 export const jobCustomsStatuses = [
   'NOT_STARTED',
   'PREPARING',
@@ -113,7 +107,6 @@ export type JobOperationalDetails = {
   invoiceItems?: JobInvoiceItem[]
   /** Hasil ekstraksi commercial invoice lengkap; sumber BC 2.3 dan pembanding B/L. */
   invoice?: JobInvoiceExtraction | null
-  cipl: JobCiplInfo
   customs: Record<BcDocumentKind, JobCustomsDocument>
 }
 
@@ -125,6 +118,7 @@ export const jobDocumentKinds = [
   'AIR_WAYBILL',
   'COMMERCIAL_INVOICE',
   'CIPL',
+  'PACKING_LIST',
   'BC_2_3',
   'BC_2_5',
   'BC_3_0',
@@ -141,6 +135,7 @@ export const jobDocumentKindLabels: Record<JobDocumentKind, string> = {
   AIR_WAYBILL: 'Air Waybill',
   COMMERCIAL_INVOICE: 'Commercial invoice',
   CIPL: 'CIPL',
+  PACKING_LIST: 'Packing list',
   BC_2_3: 'BC 2.3',
   BC_2_5: 'BC 2.5',
   BC_3_0: 'BC 3.0',
@@ -192,6 +187,12 @@ export type JobCiplLine = {
 /** Masukan simpan baris CIPL (tanpa id/join). */
 export type JobCiplLineInput = Pick<JobCiplLine, 'exhibitorId' | 'nameOnDocument' | 'koli' | 'items' | 'notes'>
 
+export const jobCiplSourceKinds = ['CIPL', 'COMMERCIAL_INVOICE', 'PACKING_LIST'] as const
+export type JobCiplSourceKind = (typeof jobCiplSourceKinds)[number]
+
+/** Satu berkas lampiran job yang menjadi sumber CIPL; `receivedAt` = waktu unggah. */
+export type JobCiplSource = { kind: JobCiplSourceKind; receivedAt: string }
+
 export type JobUserRef = { id: string; name: string }
 
 // --- Aggregate root ----------------------------------------------------------------------------
@@ -227,6 +228,8 @@ export type Job = {
   /** CIPL mentah hasil scan (header + entri). */
   ciplDocument: CiplDocument | null
   ciplLines: JobCiplLine[]
+  /** Lampiran job berjenis CIPL/CI/PL (baca-saja, dimuat repository); sumber status CIPL turunan. */
+  ciplSources: JobCiplSource[]
 
   invoice: JobInvoice
 
