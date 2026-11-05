@@ -44,6 +44,7 @@ import {
 } from '@/domain/job/manifest'
 import type { CiplAutofillRow } from '@/domain/exhibition/cipl-autofill'
 import type { CiplDocument } from '@/domain/exhibition/cipl-document'
+import type { LartasResponse } from '@/domain/lartas/types'
 
 export type {
   Ticket,
@@ -424,6 +425,14 @@ async function jobsRequest<T>(path: string, init?: RequestInit): Promise<T> {
     )
   }
   return data as T
+}
+
+/** Cek LARTAS/tarif INSW untuk HS code 8 digit (maks 20 per panggilan). */
+export async function checkLartas(hsCodes: string[]): Promise<LartasResponse> {
+  return jobsRequest<LartasResponse>('/api/lartas', {
+    method: 'POST',
+    body: JSON.stringify({ hsCodes }),
+  })
 }
 
 function jobPath(jobId: string, suffix = '') {

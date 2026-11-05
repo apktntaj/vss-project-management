@@ -36,7 +36,7 @@ Di production, login demo dinonaktifkan otomatis jika kredensial Supabase belum 
 
 ## Cek LARTAS INSW
 
-Menu **Cek LARTAS** memeriksa maksimal 20 HS code 8 digit melalui route server-side `/api/lartas`. Isi `LARTAS_TOKEN` (atau `LARTAS_TOKEN_FILE_PATH`) di `.env` untuk hasil CMS dengan status LARTAS terverifikasi; contoh konfigurasi tersedia di `.env.example`. Tanpa token, aplikasi hanya mencoba sumber publik untuk tarif dan hasil `unverified` tidak boleh diartikan sebagai LARTAS tidak ada.
+Menu **Cek LARTAS** memeriksa maksimal 20 HS code 8 digit melalui route server-side `/api/lartas`. Isi `LARTAS_TOKEN` (atau `LARTAS_TOKEN_FILE_PATH`) di `.env` untuk hasil CMS dengan status LARTAS terverifikasi; contoh konfigurasi tersedia di `.env.example`. Tanpa token (atau bila token kedaluwarsa), hasil menjadi "Sumber gagal" dengan pesan penyebabnya; endpoint publik tarif INSW (`/api-prod/ref/hscode`) per 2026-11 sudah mengembalikan 404 sehingga tidak bisa diandalkan, dan hasil `unverified` tidak boleh diartikan sebagai LARTAS tidak ada.
 
 ## Deploy (Docker + VPS)
 

@@ -34,6 +34,7 @@ import { JobManifestEditorModal } from '@/components/job-manifest-editor-modal'
 import { CiplLineModal } from '@/components/cipl-line-modal'
 import { CiplEntryModal } from '@/components/cipl-entry-modal'
 import { JobDocumentEditorDialog } from '@/components/job-document-editor-dialog'
+import { JobLartasCard } from '@/components/job-lartas-card'
 import { JobPartyInvoiceCard } from '@/components/job-party-invoice-card'
 import { JobContextSummary } from '@/components/job-context-summary'
 import { JobDetailSkeleton } from '@/components/loading-skeletons'
@@ -379,6 +380,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
               onEditPeserta={(peserta) => setLineTarget(peserta.line)}
             />
           )}
+          {job.kind !== 'LOCAL' && <JobLartasCard job={job} onToast={toast} />}
           <section className="card p-5">
             <h2 className="font-semibold">Details Barang</h2>
             <p className="mt-1 text-xs text-slate-500">

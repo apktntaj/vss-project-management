@@ -54,6 +54,12 @@ export interface LookupConfig {
 
 type JsonRecord = Record<string, unknown>
 
+class InswHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`INSW tidak tersedia (HTTP ${status}).`)
+  }
+}
+
 const HEADERS = {
   accept: 'application/json, text/plain, */*',
   'accept-language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -71,7 +77,8 @@ export async function lookupHsCode(
   if (!/^\d{8}$/.test(hsCode)) return emptyResult(hsCode, 'invalid')
 
   const baseUrl = config.baseUrl.replace(/\/+$/, '')
-  const token = await resolveCmsToken(config, signal)
+  const { token, problem: tokenProblem } = await resolveCmsToken(config, signal)
+  let cmsProblem: string | null = tokenProblem
 
   if (token) {
     try {
@@ -79,6 +86,7 @@ export async function lookupHsCode(
       if (cmsResult) return cmsResult
     } catch (error) {
       if (signal?.aborted) throw error
+      cmsProblem = describeCmsError(error)
       // The public endpoint is still useful for tariff data when CMS is unavailable.
     }
   }
@@ -87,9 +95,17 @@ export async function lookupHsCode(
     return await fetchPublicResult(hsCode, baseUrl, config.timeoutMs, signal)
   } catch (error) {
     if (signal?.aborted) throw error
-    const message = error instanceof Error ? error.message : String(error)
+    const publicMessage = error instanceof Error ? error.message : String(error)
+    const message = cmsProblem ? `${cmsProblem} Sumber publik juga gagal: ${publicMessage}` : publicMessage
     return emptyResult(hsCode, 'source-error', message)
   }
+}
+
+function describeCmsError(error: unknown): string {
+  if (error instanceof InswHttpError && (error.status === 401 || error.status === 403)) {
+    return `Token INSW ditolak (HTTP ${error.status}); perbarui LARTAS_TOKEN atau kredensial SSO.`
+  }
+  return `CMS INSW gagal: ${error instanceof Error ? error.message : String(error)}`
 }
 
 export async function lookupHsCodes(
@@ -166,7 +182,7 @@ async function fetchJson(
 
   try {
     const response = await fetch(url, { headers, signal: controller.signal, cache: 'no-store' })
-    if (!response.ok) throw new Error(`INSW tidak tersedia (HTTP ${response.status}).`)
+    if (!response.ok) throw new InswHttpError(response.status)
     const json: unknown = await response.json()
     if (!isRecord(json)) throw new Error('Respons INSW tidak valid.')
     return json
@@ -180,7 +196,14 @@ async function fetchJson(
   }
 }
 
-async function resolveCmsToken(config: LookupConfig, signal?: AbortSignal): Promise<string | null> {
+const NO_TOKEN_PROBLEM =
+  'Token INSW belum dikonfigurasi (isi LARTAS_TOKEN / LARTAS_TOKEN_FILE_PATH, atau INSW_CLIENT_ID + INSW_CLIENT_BEARER).'
+
+async function resolveCmsToken(
+  config: LookupConfig,
+  signal?: AbortSignal,
+): Promise<{ token: string | null; problem: string | null }> {
+  let ssoProblem: string | null = null
   if (config.clientId?.trim() && config.clientBearer?.trim()) {
     try {
       const headers = {
@@ -195,13 +218,16 @@ async function resolveCmsToken(config: LookupConfig, signal?: AbortSignal): Prom
       if (isc) {
         const tokenResponse = await fetchJson(new URL(`/api/v1/client/${clientId}/token`, 'https://sso.insw.go.id'), { ...headers, 'x-sign-for': isc }, config.timeoutMs, signal)
         const refreshedToken = stringValue(tokenResponse.token)
-        if (refreshedToken) return refreshedToken
+        if (refreshedToken) return { token: refreshedToken, problem: null }
       }
+      ssoProblem = 'Refresh token SSO INSW tidak mengembalikan token.'
     } catch (error) {
       if (signal?.aborted) throw error
+      ssoProblem = `Refresh token SSO INSW gagal: ${error instanceof Error ? error.message : String(error)}`
     }
   }
-  return readToken(config)
+  const token = await readToken(config)
+  return { token, problem: token ? null : ssoProblem ?? NO_TOKEN_PROBLEM }
 }
 
 async function readToken(config: LookupConfig): Promise<string | null> {
