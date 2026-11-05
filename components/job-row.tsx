@@ -2,32 +2,17 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import {
-  CheckCircle2,
-  CircleAlert,
-  FileText,
-  MoreVertical,
-  Pencil,
-  Plane,
-  Ship,
-  Trash2,
-  Truck,
-  Upload,
-} from 'lucide-react'
+import { CircleAlert, MoreVertical, Pencil, Plane, Ship, Trash2, Truck } from 'lucide-react'
 
 import { getOperationalDetails, type Job } from '@/lib/data-client'
-import { invoiceStatusLabels, transportModeLabels } from '@/domain/job/types'
+import { transportModeLabels } from '@/domain/job/types'
+import { summarizeKoliCollections } from '@/domain/job/manifest'
 import { jobJenisLabel, jobJenisKey } from '@/lib/job-jenis'
 import type {
   JobInvoiceExtraction,
   JobTransportExtraction,
 } from '@/domain/exhibition/source-documents'
 import type { BcDocumentKind } from '@/domain/job/types'
-import { StatusBadge } from '@/components/status-badge'
-import { Button } from '@/components/ui/button'
-import type { EditableJobDocument } from '@/components/job-document-editor-dialog'
-import { JobUploadDialog } from '@/components/job-upload-dialog'
-import { compareInvoiceWithTransport } from '@/lib/document-comparison'
 import { jobFileName, jobLabel } from '@/domain/job/numbering'
 
 export type DocumentClassification = {
@@ -44,6 +29,7 @@ export const date = (value: string | null) =>
 export const label = (key: string) => key.replaceAll('_', ' ')
 const normalizedName = (value: string | null | undefined) =>
   value?.toLocaleLowerCase('id-ID').replace(/[^\p{L}\p{N}]+/gu, '') ?? ''
+const quantity = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 3 })
 
 export type JobDocumentExtraction = {
   invoice?: JobInvoiceExtraction | null
@@ -70,62 +56,11 @@ export async function downloadCustomsWorkbook(job: Job, documentType: BcDocument
   URL.revokeObjectURL(url)
 }
 
-function CustomsProgress({
-  job,
-  onGenerate,
-}: {
-  job: Job
-  onGenerate: (job: Job, documentType: BcDocumentKind) => void
-}) {
-  const customs = getOperationalDetails(job).customs
-  return (
-    <div className="flex min-w-[175px] gap-1">
-      {(Object.keys(customs) as Array<keyof typeof customs>).map((key) => {
-        const item = customs[key]
-        const tone = !item.applicable
-          ? 'border-slate-200 bg-slate-50 text-slate-400'
-          : item.status === 'COMPLETED'
-            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-            : item.status === 'ON_HOLD'
-              ? 'border-amber-200 bg-amber-50 text-amber-800'
-              : item.status === 'NOT_STARTED'
-                ? 'border-slate-200 bg-white text-slate-500'
-                : 'border-blue-200 bg-blue-50 text-blue-800'
-        return (
-          <button
-            type="button"
-            key={key}
-            disabled={!item.applicable}
-            onClick={() => onGenerate(job, key)}
-            className={`min-w-0 flex-1 rounded-lg border px-1.5 py-1 text-center text-[10px] font-semibold ${tone}`}
-            title={
-              item.applicable
-                ? `${label(key)} · Klik untuk mengunduh Excel`
-                : `${label(key)} · Tidak diperlukan`
-            }
-          >
-            <span className="block">{label(key)}</span>
-            <span className="mt-0.5 block truncate font-normal">
-              {item.applicable
-                ? item.registrationNumber || item.ajuNumber || label(item.status)
-                : 'N/A'}
-            </span>
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
 export function JobRow({
   job,
   nomor,
   event,
   actions,
-  onJobUpdated,
-  onToast,
-  onGenerate,
-  onEditDocument,
 }: {
   job: Job
   /** No Job yang diisi manual; kosong bila belum ditetapkan. */
@@ -137,218 +72,90 @@ export function JobRow({
     onEdit: (job: Job) => void
     onDelete: (job: Job) => void
   }
-  /** Dipanggil dengan job terbaru dari server sesudah unggahan dokumen mengubahnya. */
-  onJobUpdated: (job: Job) => void
-  onToast: (message: string, tone?: 'info' | 'error') => void
-  onGenerate: (job: Job, documentType: BcDocumentKind) => void
-  onEditDocument: (job: Job, kind: EditableJobDocument) => void
 }) {
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null)
-  const [uploadOpen, setUploadOpen] = useState(false)
-  const operational = getOperationalDetails(job)
-  const inbound = operational.inbound
-  const transport = job.transportDocument
-  const documentComparison =
-    operational.invoice && transport
-      ? compareInvoiceWithTransport(operational.invoice, transport)
-      : null
-  const comparisonDifferences =
-    documentComparison?.filter((item) => item.status === 'DIFFERENT') ?? []
-  const hasComparableDocumentValues =
-    documentComparison?.some((item) => item.status !== 'UNAVAILABLE') ?? false
+  const inbound = getOperationalDetails(job).inbound
   const partyName = job.party?.name || 'Pihak belum ditetapkan'
-  const shipperName = transport?.shipper?.name ?? null
+  const shipperName = job.transportDocument?.shipper?.name ?? null
   // Job yang dipegang exhibitor langsung: exhibitor itulah shipper pada B/L.
   const exhibitorDiffersFromShipper = Boolean(
     job.party?.kind === 'EXHIBITOR' &&
       shipperName &&
       normalizedName(job.party.name) !== normalizedName(shipperName),
   )
-  const partyLine = job.party?.kind === 'EXHIBITOR'
-    ? job.ciplLines.find((line) => line.exhibitorId === job.party?.id)
-    : undefined
-  const exhibitorCount = job.ciplLines.length
-  const unlinkedCount = job.ciplLines.filter((line) => !line.exhibitorId).length
-  const invoice = job.invoice
+  // Total PKG dan CBM job = turunan koli seluruh baris CIPL (sama dengan header blok manifest).
+  const totals = summarizeKoliCollections(job.ciplLines.map((line) => line.koli))
+  const blAwbLabel = job.transportDocumentNumber
+    ? `${job.transportDocumentType ? `${job.transportDocumentType} · ` : ''}${job.transportDocumentNumber}`
+    : null
   const TransportIcon = inbound.mode === 'AIR' ? Plane : inbound.mode === 'SEA' ? Ship : Truck
 
   return (
-    <>
-      <tr className="border-b border-slate-100 odd:bg-slate-50/70 last:border-0 hover:bg-orange-50/40">
-      <td className="px-3 py-3 align-top">
-        <Link
-          href={`/jobs/${job.id}`}
-          className="font-semibold text-slate-900 hover:text-orange-700"
-        >
-          {nomor || jobLabel(job)}
-        </Link>
-        <p className="mt-1">
-          <span className="inline-flex rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-inset ring-sky-200">
-            {date(job.createdAt)}
-          </span>
-        </p>
-        <div className="mt-1.5">
-          <StatusBadge status={job.status} />
+    <tr className="border-b border-slate-100 odd:bg-slate-50/70 last:border-0 hover:bg-orange-50/40">
+      <td className="px-3 py-2.5 align-middle">
+        <div className="flex items-center gap-2 whitespace-nowrap">
+          <Link
+            href={`/jobs/${job.id}`}
+            className="min-w-0 truncate font-semibold text-slate-900 hover:text-orange-700"
+          >
+            {nomor || jobLabel(job)}
+          </Link>
         </div>
       </td>
       {event !== undefined && (
-        <td className="px-3 py-3 align-top">
-          {event ? (
-            <Link
-              href={`/events/${event.id}`}
-              className="line-clamp-2 font-medium text-slate-800 hover:text-orange-700"
-              title={event.name}
-            >
-              {event.name}
-            </Link>
-          ) : (
-            <span className="text-slate-400">—</span>
-          )}
-          <p className="mt-1 text-xs text-slate-500">
-            {jobJenisLabel(jobJenisKey(job))}
-            {job.transportMode ? ` · ${transportModeLabels[job.transportMode]}` : ''}
-          </p>
+        <td className="px-3 py-2.5 align-middle">
+          <div className="flex items-center gap-2 whitespace-nowrap">
+            {event ? (
+              <Link
+                href={`/events/${event.id}`}
+                className="min-w-0 truncate font-medium text-slate-800 hover:text-orange-700"
+                title={event.name}
+              >
+                {event.name}
+              </Link>
+            ) : (
+              <span className="text-slate-400">—</span>
+            )}
+            <span className="shrink-0 text-xs text-slate-500">
+              {jobJenisLabel(jobJenisKey(job))}
+              {job.transportMode ? ` · ${transportModeLabels[job.transportMode]}` : ''}
+            </span>
+          </div>
         </td>
       )}
-      <td className="w-[145px] max-w-[145px] px-3 py-3 align-top">
-        <p className="truncate font-medium text-slate-800" title={partyName}>
-          {partyName}
-        </p>
-        {exhibitorDiffersFromShipper && (
-          <p
-            className="mt-1 flex items-center gap-1 text-xs font-medium text-destructive"
-            title={`Nama Exhibitor berbeda dari Shipper pada B/L: ${shipperName}`}
-          >
-            <CircleAlert aria-hidden="true" /> Berbeda dengan Shipper B/L
-          </p>
-        )}
-        <p className="mt-1 truncate">
-          <span className="inline-flex max-w-full truncate rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700 ring-1 ring-inset ring-violet-200">
-            {job.party?.kind === 'AGENT' ? 'Agent' : job.party?.kind === 'EXHIBITOR' ? 'Exhibitor' : 'Pihak?'}
-          </span>
-        </p>
-        {partyLine?.exhibitor ? (
-          <p className="mt-1.5 text-xs text-slate-500">
-            Hall: {partyLine.exhibitor.hall || '—'}
-            <br />
-            Booth: {partyLine.exhibitor.booth || '—'}
-          </p>
-        ) : (
-          <p className="mt-1.5 text-xs text-slate-500">
-            {exhibitorCount ? `${exhibitorCount} exhibitor di CIPL` : 'CIPL belum di-scan'}
-            {unlinkedCount ? ` · ${unlinkedCount} belum ditautkan` : ''}
-          </p>
-        )}
-      </td>
-      <td className="px-3 py-3 align-top">
-        <div className="flex items-start gap-2">
-          <button
-            type="button"
-            onClick={() => setUploadOpen(true)}
-            aria-label={`Upload dokumen shipment untuk ${jobLabel(job)}`}
-            title="Upload dokumen: CIPL, B/L atau AWB, dokumen pendukung"
-            className="mt-0.5 shrink-0 rounded p-0.5 text-slate-400 hover:bg-orange-100 hover:text-orange-700"
-          >
-            <Upload size={16} aria-hidden="true" />
-          </button>
-          <div className="min-w-0">
-            <Button
-              type="button"
-              variant="link"
-              size="sm"
-              onClick={() => onEditDocument(job, 'TRANSPORT')}
+      <td className="px-3 py-2.5 align-middle">
+        <div className="flex items-center gap-2 whitespace-nowrap">
+          {exhibitorDiffersFromShipper && (
+            <span
+              className="shrink-0 text-destructive"
+              title={`Nama Exhibitor berbeda dari Shipper pada B/L: ${shipperName}`}
             >
-              {job.transportDocumentType || 'Masuk'} · {job.transportDocumentNumber || 'Belum ada dokumen'}
-            </Button>
-            <p className="mt-1">
-              <Button
-                type="button"
-                variant="link"
-                size="xs"
-                className="text-primary hover:text-primary/80"
-                onClick={() => onEditDocument(job, 'INVOICE')}
-              >
-                <FileText data-icon="inline-start" />
-                Invoice: {operational.invoiceNumber || 'Belum ada dokumen'}
-              </Button>
-            </p>
-            {documentComparison &&
-              hasComparableDocumentValues &&
-              (comparisonDifferences.length ? (
-                <p
-                  className="group relative mt-1 flex w-fit cursor-help items-center gap-1 text-xs font-medium text-amber-700"
-                  aria-describedby={`document-differences-${job.id}`}
-                >
-                  <CircleAlert size={14} aria-hidden="true" />
-                  {comparisonDifferences.length} data berbeda
-                  <span
-                    id={`document-differences-${job.id}`}
-                    role="tooltip"
-                    className="pointer-events-none absolute left-0 top-full z-20 mt-1 w-64 translate-y-1 rounded-md bg-slate-900 px-2.5 py-2 text-xs font-normal leading-5 text-white opacity-0 shadow-lg transition-all duration-75 group-hover:translate-y-0 group-hover:opacity-100"
-                  >
-                    Field yang berbeda: {comparisonDifferences.map((item) => item.label).join(', ')}
-                    .
-                  </span>
-                </p>
-              ) : (
-                <Link
-                  href={`/jobs/${job.id}#pemeriksaan-dokumen`}
-                  className="mt-1 flex items-center gap-1 text-xs font-medium text-emerald-700 hover:text-emerald-900"
-                  title="Buka ringkasan pemeriksaan dokumen"
-                >
-                  <CheckCircle2 size={14} aria-hidden="true" />
-                  Dokumen sesuai
-                </Link>
-              ))}
-            {!documentComparison && (
-              <p className="mt-1 text-xs text-slate-500">Menunggu Invoice dan B/L/AWB</p>
-            )}
-          </div>
+              <CircleAlert size={14} role="img" aria-label="Berbeda dengan Shipper B/L" />
+            </span>
+          )}
+          <span className="min-w-0 truncate font-medium text-slate-800" title={partyName}>
+            {partyName}
+          </span>
         </div>
       </td>
-      <td className="px-3 py-3 align-top">
-        <div className="flex items-start gap-2">
-          <TransportIcon size={16} className="mt-0.5 shrink-0 text-slate-400" aria-hidden="true" />
-          <div>
-            <p className="text-sm font-medium text-slate-700">{date(inbound.scheduleAt)}</p>
-            <p className="mt-1">
-              <span className="inline-flex max-w-full truncate rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
-                {inbound.carrier || '-'}
-              </span>
-            </p>
-          </div>
+      <td className="px-3 py-2.5 align-middle">
+        <span className="block truncate text-slate-700" title={blAwbLabel ?? undefined}>
+          {blAwbLabel ?? '—'}
+        </span>
+      </td>
+      <td className="px-3 py-2.5 align-middle">
+        <div className="flex items-center gap-2 whitespace-nowrap">
+          <TransportIcon size={16} className="shrink-0 text-slate-400" aria-hidden="true" />
+          <span className="text-sm font-medium text-slate-700">{date(inbound.scheduleAt)}</span>
         </div>
       </td>
-      <td className="px-3 py-3 align-top">
-        <p className="truncate text-slate-600" title={invoice.number || undefined}>
-          {invoice.number || '—'}
-        </p>
-        {invoice.amount !== null && (
-          <p className="mt-1 text-xs tabular-nums text-slate-500">
-            {invoice.currency ?? ''} {new Intl.NumberFormat('id-ID').format(invoice.amount)}
-          </p>
-        )}
+      <td className="px-3 py-2.5 align-middle tabular-nums text-slate-700">
+        {totals.totalCount > 0 ? quantity.format(totals.totalCount) : '—'}
       </td>
-      <td className="px-3 py-3 align-top">
-        {invoice.status === 'SENT' || invoice.status === 'PAID' ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
-            <CheckCircle2 size={12} aria-hidden="true" /> {invoiceStatusLabels[invoice.status]}
-          </span>
-        ) : (
-          <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 ring-1 ring-inset ring-slate-200">
-            {invoiceStatusLabels[invoice.status]}
-          </span>
-        )}
+      <td className="px-3 py-2.5 align-middle tabular-nums text-slate-700">
+        {totals.volumeCbm > 0 ? quantity.format(totals.volumeCbm) : '—'}
       </td>
-      <td className="px-3 py-3 align-top">
-        <p className="line-clamp-2 text-slate-600" title={job.notes || undefined}>
-          {job.notes || '—'}
-        </p>
-      </td>
-      <td className="px-3 py-3 align-top">
-        <CustomsProgress job={job} onGenerate={onGenerate} />
-      </td>
-      <td className="px-3 py-3 align-top">
+      <td className="px-3 py-2.5 align-middle">
         {actions ? (
           <div className="relative">
             <button
@@ -409,14 +216,6 @@ export function JobRow({
           </div>
         ) : null}
       </td>
-      </tr>
-      <JobUploadDialog
-        job={job}
-        open={uploadOpen}
-        onOpenChange={setUploadOpen}
-        onJobUpdated={onJobUpdated}
-        onToast={onToast}
-      />
-    </>
+    </tr>
   )
 }

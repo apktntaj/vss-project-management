@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, Building2, CalendarDays, ChevronDown, ChevronRight, FileSpreadsheet, MapPin, Plus } from 'lucide-react'
+import {
+  AlertTriangle,
+  Building2,
+  CalendarDays,
+  ChevronDown,
+  ChevronRight,
+  FileSpreadsheet,
+  MapPin,
+  Plus,
+} from 'lucide-react'
 import { useParams } from 'next/navigation'
 import {
   deleteJob,
@@ -13,18 +22,12 @@ import {
   type LocalEvent,
   type Job,
 } from '@/lib/data-client'
-import { type BcDocumentKind } from '@/domain/job/types'
 import { groupJobsByJenis, jobJenisLabel } from '@/lib/job-jenis'
 import { buildJobNomor } from '@/lib/job-number'
 import { PageSkeleton } from '@/components/loading-skeletons'
 import { ContextTicketList } from '@/components/context-ticket-list'
-import { EventAccessCard } from '@/components/event-access-card'
 import { JobCreateWizard } from '@/components/job-create-wizard'
-import {
-  JobDocumentEditorDialog,
-  type EditableJobDocument,
-} from '@/components/job-document-editor-dialog'
-import { JobRow, downloadCustomsWorkbook, label } from '@/components/job-row'
+import { JobRow } from '@/components/job-row'
 
 function formatDateRange(startsAt: string, endsAt: string) {
   const formatter = new Intl.DateTimeFormat('id-ID', {
@@ -35,7 +38,6 @@ function formatDateRange(startsAt: string, endsAt: string) {
   return `${formatter.format(new Date(startsAt))} - ${formatter.format(new Date(endsAt))}`
 }
 
-
 export default function EventDetailPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
@@ -43,10 +45,6 @@ export default function EventDetailPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [showNewJob, setShowNewJob] = useState(false)
-  const [editingDocument, setEditingDocument] = useState<{
-    job: Job
-    kind: EditableJobDocument
-  } | null>(null)
   const [openJenis, setOpenJenis] = useState<Record<string, boolean>>({})
   const [deletingJob, setDeletingJob] = useState<Job | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -82,18 +80,6 @@ export default function EventDetailPage() {
       }),
     )
   }
-  // Ganti job di daftar dengan versi terbaru dari server (sesudah unggah/edit dokumen).
-  const handleJobUpdated = (updated: Job) => {
-    setJobs((current) => current.map((job) => (job.id === updated.id ? updated : job)))
-  }
-  async function generateCustomsWorkbook(job: Job, documentType: BcDocumentKind) {
-    try {
-      await downloadCustomsWorkbook(job, documentType)
-      showToast(`${label(documentType)} berhasil diunduh.`)
-    } catch (caught) {
-      showToast(caught instanceof Error ? caught.message : 'File BC tidak dapat dibuat.', 'error')
-    }
-  }
   const [exporting, setExporting] = useState(false)
   async function exportManifest() {
     setExporting(true)
@@ -107,7 +93,10 @@ export default function EventDetailPage() {
       URL.revokeObjectURL(url)
       showToast('Manifest berhasil diekspor.')
     } catch (caught) {
-      showToast(caught instanceof Error ? caught.message : 'Manifest tidak dapat diekspor.', 'error')
+      showToast(
+        caught instanceof Error ? caught.message : 'Manifest tidak dapat diekspor.',
+        'error',
+      )
     } finally {
       setExporting(false)
     }
@@ -146,15 +135,24 @@ export default function EventDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
+        <div className="min-w-0">
           <h1 className="mt-2 text-3xl font-bold tracking-tight">{event.officialName}</h1>
           {event.alias && <p className="mt-2 text-sm text-slate-500">{event.alias}</p>}
         </div>
+        <button
+          type="button"
+          onClick={exportManifest}
+          disabled={exporting}
+          className="btn-secondary shrink-0"
+          title="Unduh inward manifest event ini (Excel, format dokumen klien)"
+        >
+          <FileSpreadsheet size={16} /> {exporting ? 'Mengekspor…' : 'Export manifest (Excel)'}
+        </button>
       </div>
 
       <section className="card p-6 sm:p-8">
         <h2 className="text-lg font-semibold">Informasi event</h2>
-        <dl className="mt-5 grid gap-5 text-sm sm:grid-cols-2">
+        <dl className="mt-5 grid gap-5 text-sm md:grid-cols-3">
           <div className="flex items-start gap-3">
             <CalendarDays className="mt-0.5 shrink-0 text-orange-600" size={18} />
             <div>
@@ -192,22 +190,11 @@ export default function EventDetailPage() {
         )}
       </section>
 
-      <EventAccessCard event={event} />
-
       <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold">{jobs.length} Jobs</h2>
+            <h2 className="text-lg font-semibold">Detail Jobs</h2>
           </div>
-          <button
-            type="button"
-            onClick={exportManifest}
-            disabled={exporting}
-            className="btn-secondary ml-auto shrink-0"
-            title="Unduh inward manifest event ini (Excel, format dokumen klien)"
-          >
-            <FileSpreadsheet size={16} /> {exporting ? 'Mengekspor…' : 'Export manifest (Excel)'}
-          </button>
           {event.status !== 'CANCELLED' && (
             <button
               type="button"
@@ -245,28 +232,24 @@ export default function EventDetailPage() {
                   </button>
                   {isOpen && (
                     <div className="overflow-x-auto">
-                      <table className="min-w-[1200px] w-full table-fixed text-left text-sm">
+                      <table className="min-w-[1030px] w-full table-fixed text-left text-sm">
                         <colgroup>
-                          <col className="w-[110px]" />
-                          <col className="w-[145px]" />
-                          <col className="w-[185px]" />
-                          <col className="w-[110px]" />
-                          <col className="w-[95px]" />
-                          <col className="w-[90px]" />
                           <col className="w-[140px]" />
+                          <col className="w-[260px]" />
                           <col className="w-[200px]" />
-                          <col className="w-[60px]" />
+                          <col className="w-[150px]" />
+                          <col className="w-[110px]" />
+                          <col className="w-[100px]" />
+                          <col className="w-[70px]" />
                         </colgroup>
-                        <thead className="border-b bg-white text-slate-900 font-semibold uppercase tracking-wider">
+                        <thead className="whitespace-nowrap border-b bg-white text-slate-900 font-semibold uppercase tracking-wider">
                           <tr>
                             <th className="px-3 py-3">No Job</th>
-                            <th className="px-3 py-3">Pihak</th>
-                            <th className="px-3 py-3">Dokumen shipment</th>
+                            <th className="px-3 py-3">Agent</th>
+                            <th className="px-3 py-3">BL/AWB</th>
                             <th className="px-3 py-3">ETA</th>
-                            <th className="px-3 py-3">Tagihan</th>
-                            <th className="px-3 py-3">Status tagihan</th>
-                            <th className="px-3 py-3">Remark</th>
-                            <th className="px-3 py-3">Dokumen BC</th>
+                            <th className="px-3 py-3">Packages</th>
+                            <th className="px-3 py-3">CBM</th>
                             <th className="px-3 py-3">Aksi</th>
                           </tr>
                         </thead>
@@ -280,12 +263,6 @@ export default function EventDetailPage() {
                                 onEdit: (editedJob) => router.push(`/jobs/${editedJob.id}`),
                                 onDelete: (deletedJob) => setDeletingJob(deletedJob),
                               }}
-                              onJobUpdated={handleJobUpdated}
-                              onToast={showToast}
-                              onGenerate={generateCustomsWorkbook}
-                              onEditDocument={(selectedJob, kind) =>
-                                setEditingDocument({ job: selectedJob, kind })
-                              }
                             />
                           ))}
                         </tbody>
@@ -303,16 +280,6 @@ export default function EventDetailPage() {
         )}
       </section>
       {/* <ContextTicketList contextKind="EVENT" contextId={event.id} /> */}
-      <JobDocumentEditorDialog
-        job={editingDocument?.job ?? null}
-        kind={editingDocument?.kind ?? 'INVOICE'}
-        open={Boolean(editingDocument)}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) setEditingDocument(null)
-        }}
-        onSaved={handleJobUpdated}
-        onToast={showToast}
-      />
       {deletingJob && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
