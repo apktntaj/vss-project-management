@@ -20,13 +20,10 @@ import {
   type OperationalNoteKind,
 } from '@/domain/job/manifest'
 import {
-  ciplLineInputs,
-  saveJobCipl,
   saveJobInward,
   saveJobKepulangan,
   saveJobOperationalDetails,
   type Job,
-  type JobCiplLineInput,
 } from '@/lib/data-client'
 import type { ManifestBlockParse } from '@/lib/server/manifest-extraction'
 import { jobLabel } from '@/domain/job/numbering'
@@ -146,35 +143,10 @@ const labelClass = 'label'
 const inputClass = 'input mt-1'
 
 /**
- * Gabungkan koli exhibitor dari blok manifest ke baris CIPL job: baris yang namanya cocok diganti
- * koli-nya (catatan digabung), exhibitor yang belum punya baris ditambahkan sebagai baris belum
- * tertaut. Hall/booth tidak ditulis di sini — milik exhibitor, diisi lewat editor baris CIPL.
+ * Editor inward & kepulangan blok manifest job: dokumen angkut, konfigurasi muatan, milestone,
+ * catatan, dan rencana pengembalian. Import file inward manifest mengisi form untuk direview.
+ * Koli per peserta TIDAK diimpor di sini — gunakan "Tambah / scan dokumen" pada kartu CIPL.
  */
-function mergeManifestCargo(job: Job, block: ManifestBlockParse): JobCiplLineInput[] {
-  const lines = ciplLineInputs(job)
-  for (const entry of block.exhibitors) {
-    const index = job.ciplLines.findIndex((line) =>
-      namesOverlap(line.exhibitor?.name ?? line.nameOnDocument, entry.name) ||
-      namesOverlap(line.nameOnDocument, entry.name),
-    )
-    if (index >= 0) {
-      lines[index] = {
-        ...lines[index],
-        koli: entry.logistics.koli,
-        notes: [...lines[index].notes, ...entry.logistics.notes],
-      }
-    } else {
-      lines.push({
-        exhibitorId: null,
-        nameOnDocument: entry.name,
-        koli: entry.logistics.koli,
-        items: [],
-        notes: entry.logistics.notes,
-      })
-    }
-  }
-  return lines
-}
 
 export function JobManifestEditorModal({
   job,
@@ -191,7 +163,6 @@ export function JobManifestEditorModal({
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState('')
   const [importResult, setImportResult] = useState<{ blocks: ManifestBlockParse[]; warnings: string[] } | null>(null)
-  const [applyCargo, setApplyCargo] = useState(true)
   const partyName = job.party?.name ?? ''
   const usedMilestoneKinds = new Set(draft.milestones.map((milestone) => milestone.kind))
   const appliedBlock = importResult
@@ -244,9 +215,6 @@ export function JobManifestEditorModal({
       }
       if (job.kind === 'INTERNATIONAL') saved = await saveJobInward(saved, inward)
       if (kepulanganParsed || job.kepulangan) saved = await saveJobKepulangan(saved, kepulanganParsed)
-      if (applyCargo && appliedBlock?.exhibitors.length) {
-        saved = await saveJobCipl(saved, saved.ciplDocument, mergeManifestCargo(saved, appliedBlock))
-      }
       toast('Blok manifest job tersimpan.', 'success')
       onSaved(saved)
     } catch (caught) {
@@ -374,36 +342,13 @@ export function JobManifestEditorModal({
                   ) : (
                     <p className="text-slate-500">Tidak ada blok yang cocok untuk job ini.</p>
                   )}
-                  {appliedBlock && appliedBlock.exhibitors.length > 0 && (
-                    <div className="rounded-lg border border-black/10 bg-white">
-                      <p className="border-b px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Koli exhibitor dari manifest
-                      </p>
-                      <ul className="divide-y divide-slate-100">
-                        {appliedBlock.exhibitors.map((exhibitor) => {
-                          const line = job.ciplLines.find(
-                            (item) =>
-                              namesOverlap(item.exhibitor?.name ?? item.nameOnDocument, exhibitor.name) ||
-                              namesOverlap(item.nameOnDocument, exhibitor.name),
-                          )
-                          return (
-                            <li key={exhibitor.name} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-                              <span className="min-w-0 truncate text-slate-700" title={exhibitor.name}>
-                                {exhibitor.name} · {exhibitor.logistics.koli.totalCount} koli
-                              </span>
-                              <span className="text-xs text-slate-500">
-                                {line ? `mengganti koli baris ${line.exhibitor?.name ?? line.nameOnDocument}` : 'baris CIPL baru (belum tertaut)'}
-                              </span>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                      <label className="flex items-center gap-2 border-t px-3 py-2 text-xs font-medium text-slate-700">
-                        <input type="checkbox" checked={applyCargo} onChange={(event) => setApplyCargo(event.target.checked)} />
-                        Terapkan koli ini ke baris CIPL job saat menyimpan
-                      </label>
-                    </div>
-                  )}
+                  {appliedBlock && appliedBlock.exhibitors.length > 0 ? (
+                    <p className="text-xs text-slate-500">
+                      {appliedBlock.exhibitors.length} peserta terbaca di blok ini. Koli per
+                      peserta diimpor lewat kartu CIPL — tombol Tambah / scan dokumen, jenis
+                      Inward manifest.
+                    </p>
+                  ) : null}
                 </div>
               )}
             </fieldset>
