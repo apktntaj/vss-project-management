@@ -14,16 +14,7 @@ import {
   type CiplRowDraft,
 } from '@/lib/cipl-form-draft'
 import type { DisposisiBarang } from '@/domain/exhibition/cipl-document'
-import { autofillResolutionLabels } from '@/domain/exhibition/cipl-autofill'
 import { cbmFromDimension } from '@/domain/job/manifest'
-
-export type ExhibitorLinkStatus = { kind: 'TERTAUT' | 'BARU' | 'AMBIGU'; hint: string } | null
-
-const linkStatusClass: Record<'TERTAUT' | 'BARU' | 'AMBIGU', string> = {
-  TERTAUT: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  BARU: 'bg-amber-50 text-amber-700 ring-amber-200',
-  AMBIGU: 'bg-rose-50 text-rose-700 ring-rose-200',
-}
 
 /**
  * Remark per barang: toggle dua pilihan, bawaan non-disposal (re-ekspor). Model menyimpan tetap
@@ -251,15 +242,11 @@ function CaseEditor({
  */
 export function CiplExhibitorForm({
   row,
-  link,
-  replacing,
   disabled,
   onChange,
   onRemove,
 }: {
   row: CiplRowDraft
-  link: ExhibitorLinkStatus
-  replacing: boolean
   disabled: boolean
   onChange: (update: (row: CiplRowDraft) => CiplRowDraft) => void
   onRemove: () => void
@@ -278,22 +265,6 @@ export function CiplExhibitorForm({
         <label className="label flex-1">
           Exhibitor
           {row.jobNo ? <span className="ml-1 text-xs font-normal text-slate-400">{row.jobNo}</span> : null}
-          {link ? (
-            <span
-              className={`ml-2 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${linkStatusClass[link.kind]}`}
-              title={link.hint}
-            >
-              {autofillResolutionLabels[link.kind]}
-            </span>
-          ) : null}
-          {replacing ? (
-            <span
-              className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 ring-1 ring-inset ring-amber-200"
-              title="Exhibitor ini sudah punya baris di job — lihat panel penggantian"
-            >
-              mengganti baris
-            </span>
-          ) : null}
           <input
             value={row.name}
             onChange={(event) => setRow({ name: event.target.value.toUpperCase() })}

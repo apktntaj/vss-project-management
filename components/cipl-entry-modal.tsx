@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Bot, Plus, Upload } from 'lucide-react'
+import { Bot, Loader2, Plus, Upload } from 'lucide-react'
 
 import {
   applyCiplAutofill,
@@ -20,7 +20,7 @@ import {
   type CiplDocumentHeader,
 } from '@/domain/exhibition/cipl-document'
 import { resolveCiplAutofill, summarizeAutofill } from '@/domain/exhibition/cipl-autofill'
-import { isSameExhibitorName, matchExhibitorByName } from '@/domain/event/exhibitor-matching'
+import { isSameExhibitorName } from '@/domain/event/exhibitor-matching'
 import type { CiplScanResult } from '@/lib/server/manifest-extraction'
 import {
   documentTotals,
@@ -49,16 +49,6 @@ function toast(message: string, tone: 'success' | 'error') {
   window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
 }
 
-/** Badge status penautan satu baris terhadap exhibitor event — diturunkan dari nama, bukan disimpan. */
-function rowLinkStatus(name: string, pool: ReadonlyArray<Exhibitor>) {
-  const trimmed = name.trim()
-  if (!trimmed) return null
-  const match = matchExhibitorByName(trimmed, pool)
-  if (match.kind === 'MATCHED') return { kind: 'TERTAUT' as const, hint: match.exhibitor.name }
-  if (match.kind === 'AMBIGUOUS')
-    return { kind: 'AMBIGU' as const, hint: `${match.candidates.length} exhibitor bernama sama` }
-  return { kind: 'BARU' as const, hint: 'akan didaftarkan ke event' }
-}
 
 function scanFileAcceptable(file: File): boolean {
   if (isAcceptedJobDocument(file)) return true
@@ -317,8 +307,11 @@ export function CiplEntryModal({
   )
 
   return (
-    <Dialog open onOpenChange={(next) => (!next && !saving ? onClose() : undefined)}>
-      <DialogContent className="flex h-[min(90vh,900px)] max-h-[90vh] w-[calc(100%-1rem)] max-w-none flex-col overflow-hidden p-0 sm:w-[calc(100%-2rem)] sm:max-w-[min(92vw,1100px)]">
+    <Dialog open onOpenChange={(next) => (!next && !saving && !scanningCipl ? onClose() : undefined)}>
+      <DialogContent
+        showCloseButton={!scanningCipl && !saving}
+        className="flex h-[min(90vh,900px)] max-h-[90vh] w-[calc(100%-1rem)] max-w-none flex-col overflow-hidden p-0 sm:w-[calc(100%-2rem)] sm:max-w-[min(92vw,1100px)]"
+      >
         <DialogHeader className="border-b px-5 py-5 pr-12 sm:px-6">
           <DialogTitle className="text-xl font-semibold">Form Commercial Invoice &amp; Packing List</DialogTitle>
           <DialogDescription className="text-base">
@@ -332,7 +325,10 @@ export function CiplEntryModal({
               aria-busy="true"
               aria-live="polite"
             >
-              <p className="text-sm font-medium text-orange-700">Memeriksa dokumen dengan AI...</p>
+              <p className="flex items-center gap-2 text-sm font-medium text-slate-600">
+                <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                Memeriksa dokumen dengan AI...
+              </p>
               <Skeleton className="h-6 w-56" />
               <div className="space-y-3">
                 {Array.from({ length: 6 }, (_, index) => (
@@ -467,8 +463,6 @@ export function CiplEntryModal({
                 <CiplExhibitorForm
                   key={row.key}
                   row={row}
-                  link={rowLinkStatus(row.name, eventExhibitors)}
-                  replacing={matchJobLineIndex(row.name) >= 0}
                   disabled={saving}
                   onChange={(update) =>
                     setCiplRows((current) =>
