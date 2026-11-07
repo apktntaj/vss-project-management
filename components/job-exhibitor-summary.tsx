@@ -40,21 +40,28 @@ const thNum = `${th} text-right`
 const td = 'px-3 py-2.5 align-top'
 const tdNum = `${td} text-right tabular-nums`
 
-/** Tampilan ringkas: satu baris per exhibitor; rincian koli dibuka lewat panah di barisnya. */
+/**
+ * Tampilan ringkas: satu baris per exhibitor yang otomatis membuka baris case saat di-hover
+ * (klik panah = tetap terbuka). Tiap case membuka baris barangnya dengan logika hover yang sama.
+ */
 export function ExhibitorSummaryTable({ peserta }: { peserta: ReadonlyArray<ManifestPeserta> }) {
-  const [openKeys, setOpenKeys] = useState<ReadonlySet<string>>(new Set())
-  const toggle = (key: string) =>
-    setOpenKeys((current) => {
+  // `pinned` = dibuka lewat klik panah (tetap terbuka); `hover*` = dibuka otomatis saat di-hover.
+  const [pinned, setPinned] = useState<ReadonlySet<string>>(new Set())
+  const [hoverExhibitor, setHoverExhibitor] = useState<string | null>(null)
+  const [hoverCase, setHoverCase] = useState<string | null>(null)
+  const togglePinned = (key: string) =>
+    setPinned((current) => {
       const next = new Set(current)
       if (!next.delete(key)) next.add(key)
       return next
     })
+  const isOpen = (key: string) => pinned.has(key) || hoverExhibitor === key
 
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-200">
       <table className="w-full border-collapse text-left text-sm">
         <caption className="sr-only">Ringkasan exhibitor pada blok manifest</caption>
-        <thead className="bg-slate-50 text-xs font-semibold tracking-wide text-slate-500">
+        <thead className="bg-slate-50 text-sm font-semibold tracking-wide text-slate-500">
           <tr>
             <th className={`${th} w-10`}>
               <span className="sr-only">Rincian koli</span>
@@ -67,96 +74,161 @@ export function ExhibitorSummaryTable({ peserta }: { peserta: ReadonlyArray<Mani
             <th className={thNum}>Berat (Kg)</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-200 text-slate-700">
-          {peserta.length ? (
-            peserta.map((item) => {
-              const details = item.logistics.koli.details
-              const summary = summarizeKoli(item.logistics.koli)
-              const open = openKeys.has(item.key)
-              const panelId = `koli-${item.key}`
-              return (
-                <Fragment key={item.key}>
-                  <tr>
-                    <td className={td}>
-                      {details.length ? (
-                        <button
-                          type="button"
-                          onClick={() => toggle(item.key)}
-                          aria-expanded={open}
-                          aria-controls={panelId}
-                          aria-label={`${open ? 'Tutup' : 'Buka'} rincian koli ${item.name}`}
-                          className="rounded p-0.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-                        >
-                          {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                        </button>
-                      ) : null}
-                    </td>
-                    <td className={`${td} min-w-[200px]`}>
-                      <ExhibitorIdentity peserta={item} />
-                    </td>
-                    <td className={td}>{item.logistics.hall ?? '—'}</td>
-                    <td className={td}>{item.logistics.booth ?? '—'}</td>
-                    <td className={tdNum}>{summary.totalCount}</td>
-                    <td className={tdNum}>{details.length ? numberID(summary.volumeCbm) : '—'}</td>
-                    <td className={tdNum}>{details.length ? numberID(summary.weightKg) : '—'}</td>
-                  </tr>
-                  {open && (
-                    <tr id={panelId} className="bg-slate-50/60">
-                      <td />
-                      <td colSpan={6} className="px-3 py-3">
-                        <table className="w-full text-xs">
-                          <thead className="text-[11px] font-semibold tracking-wide text-slate-500">
-                            <tr>
-                              <th className="py-1 pr-3 text-left">Koli</th>
-                              <th className="py-1 pr-3 text-right">L × W × H (cm)</th>
-                              <th className="py-1 pr-3 text-right">CBM</th>
-                              <th className="py-1 text-right">Berat (Kg)</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {details.map((koli, index) => (
-                              <tr key={koli.id ?? index} className="border-t border-slate-200">
-                                <td className="py-1.5 pr-3 font-medium text-slate-600">
-                                  {koli.label ?? `Koli ${index + 1}`}
-                                </td>
-                                <td className="py-1.5 pr-3 text-right tabular-nums">
-                                  {[
-                                    koli.dimension?.lengthCm,
-                                    koli.dimension?.widthCm,
-                                    koli.dimension?.heightCm,
-                                  ]
-                                    .map(optionalNumber)
-                                    .join(' × ')}
-                                </td>
-                                <td className="py-1.5 pr-3 text-right tabular-nums">
-                                  {optionalNumber(koli.volumeCbm)}
-                                </td>
-                                <td className="py-1.5 text-right tabular-nums">
-                                  {optionalNumber(koli.weightKg)}
-                                </td>
+        {peserta.length ? (
+          peserta.map((item) => {
+            const details = item.logistics.koli.details
+            const summary = summarizeKoli(item.logistics.koli)
+            const open = isOpen(item.key)
+            const panelId = `koli-${item.key}`
+            const items = item.line.items
+            const looseItems = items.filter((barang) => !barang.refKoliIds.length)
+            return (
+              // tbody per exhibitor: hover pindah dari baris exhibitor ke baris case tidak memicu mouseleave.
+              <tbody
+                key={item.key}
+                className="divide-y divide-slate-200 text-slate-700"
+                onMouseEnter={() => setHoverExhibitor(item.key)}
+                onMouseLeave={() => setHoverExhibitor(null)}
+              >
+                <tr className={open ? 'bg-slate-50/60' : undefined}>
+                  <td className={td}>
+                    {details.length ? (
+                      <button
+                        type="button"
+                        onClick={() => togglePinned(item.key)}
+                        aria-expanded={open}
+                        aria-controls={panelId}
+                        aria-label={`${open ? 'Tutup' : 'Buka'} rincian koli ${item.name}`}
+                        className="rounded p-0.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                      >
+                        {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      </button>
+                    ) : null}
+                  </td>
+                  <td className={`${td} min-w-[200px]`}>
+                    <ExhibitorIdentity peserta={item} />
+                  </td>
+                  <td className={td}>{item.logistics.hall ?? '—'}</td>
+                  <td className={td}>{item.logistics.booth ?? '—'}</td>
+                  <td className={tdNum}>{summary.totalCount}</td>
+                  <td className={tdNum}>{details.length ? numberID(summary.volumeCbm) : '—'}</td>
+                  <td className={tdNum}>{details.length ? numberID(summary.weightKg) : '—'}</td>
+                </tr>
+                {open && (
+                  <tr id={panelId} className="bg-slate-50/60">
+                    <td />
+                    <td colSpan={6} className="px-3 py-3">
+                      <table className="w-full text-xs">
+                          {details.map((koli, index) => {
+                            const caseKey = `${item.key}-${koli.id ?? index}`
+                            const caseOpen = hoverCase === caseKey || pinned.has(caseKey)
+                            const barang = items.filter((entry) => entry.refKoliIds.includes(koli.id ?? ''))
+                            return (
+                              <tbody
+                                key={caseKey}
+                                className="divide-y divide-slate-100"
+                                onMouseEnter={() => setHoverCase(caseKey)}
+                                onMouseLeave={() => setHoverCase(null)}
+                              >
+                                <tr className={caseOpen ? 'font-medium text-slate-800' : 'text-slate-600'}>
+                                  <td className="w-8 py-1.5 pl-1">
+                                    {barang.length ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => togglePinned(caseKey)}
+                                        aria-expanded={caseOpen}
+                                        aria-label={`${caseOpen ? 'Tutup' : 'Buka'} barang ${koli.label ?? index + 1}`}
+                                        className="rounded p-0.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                                      >
+                                        {caseOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                                      </button>
+                                    ) : null}
+                                  </td>
+                                  <td className="py-1.5 pr-3">
+                                    Case {koli.label ?? index + 1}
+                                    <span className="ml-3 text-slate-400">
+                                      {[
+                                        koli.dimension?.lengthCm,
+                                        koli.dimension?.widthCm,
+                                        koli.dimension?.heightCm,
+                                      ]
+                                        .map(optionalNumber)
+                                        .join(' × ')}{' '}
+                                      cm
+                                    </span>
+                                  </td>
+                                  <td className="py-1.5 pr-3 text-right tabular-nums">
+                                    {optionalNumber(koli.volumeCbm)} CBM
+                                  </td>
+                                  <td className="py-1.5 text-right tabular-nums">
+                                    {optionalNumber(koli.weightKg)} kg
+                                  </td>
+                                </tr>
+                                {caseOpen &&
+                                  barang.map((entry, barangIndex) => (
+                                    <tr key={entry.refKoliIds[0] ?? barangIndex} className="text-slate-500">
+                                      <td />
+                                      <td className="py-1 pr-3 pl-8">{entry.uraian}</td>
+                                      <td className="py-1 pr-3 text-right tabular-nums">
+                                        {entry.jumlah} {entry.satuan} ·{' '}
+                                        {optionalNumber(entry.nilaiSatuan)}
+                                      </td>
+                                      <td className="py-1 text-right tabular-nums">
+                                        {optionalNumber(entry.nilaiTotal)}
+                                      </td>
+                                    </tr>
+                                  ))}
+                              </tbody>
+                            )
+                          })}
+                          {looseItems.length ? (
+                            <tbody
+                              className="divide-y divide-slate-100"
+                              onMouseEnter={() => setHoverCase(`${item.key}-loose`)}
+                              onMouseLeave={() => setHoverCase(null)}
+                            >
+                              <tr className="text-slate-600">
+                                <td className="w-8 py-1.5 pl-1" />
+                                <td className="py-1.5 pr-3">Tanpa nomor case</td>
+                                <td className="py-1.5 pr-3" />
+                                <td className="py-1.5" />
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        {item.logistics.koli.bareCaseCount !== null && (
-                          <p className="mt-2 text-xs text-slate-500">
-                            Bare case: {item.logistics.koli.bareCaseCount}
-                          </p>
-                        )}
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              )
-            })
-          ) : (
+                              {(hoverCase === `${item.key}-loose` || pinned.has(`${item.key}-loose`)) &&
+                                looseItems.map((entry, barangIndex) => (
+                                  <tr key={barangIndex} className="text-slate-500">
+                                    <td />
+                                    <td className="py-1 pr-3 pl-8">{entry.uraian}</td>
+                                    <td className="py-1 pr-3 text-right tabular-nums">
+                                      {entry.jumlah} {entry.satuan} · {optionalNumber(entry.nilaiSatuan)}
+                                    </td>
+                                    <td className="py-1 text-right tabular-nums">
+                                      {optionalNumber(entry.nilaiTotal)}
+                                    </td>
+                                  </tr>
+                                ))}
+                            </tbody>
+                          ) : null}
+                      </table>
+                      {item.logistics.koli.bareCaseCount !== null && (
+                        <p className="mt-2 text-xs text-slate-500">
+                          Bare case: {item.logistics.koli.bareCaseCount}
+                        </p>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            )
+          })
+        ) : (
+          <tbody className="text-slate-700">
             <tr>
               <td className="px-3 py-6 text-center text-sm text-slate-500" colSpan={7}>
                 Belum ada baris CIPL. Scan CIPL saat membuat job, atau import dari manifest.
               </td>
             </tr>
-          )}
-        </tbody>
+          </tbody>
+        )}
       </table>
     </div>
   )
