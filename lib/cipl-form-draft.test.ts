@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 
 import type { BarisBarang } from '@/domain/exhibition/cipl-document'
 import type { ExhibitorLogistics } from '@/domain/job/manifest'
-import { autoTotalPrice, documentTotals, emptyRow, isRowFilled, rowFromScan, rowSums, rowToScanEntry } from './cipl-form-draft'
+import type { JobCiplLine } from '@/domain/job/types'
+import { autoTotalPrice, documentTotals, emptyRow, isRowFilled, rowFromJobLine, rowFromScan, rowSums, rowToScanEntry } from './cipl-form-draft'
 
 const barang = (uraian: string, refKoli: string | null, extra: Partial<BarisBarang> = {}): BarisBarang => ({
   uraian,
@@ -139,3 +140,63 @@ assert.deepEqual(documentTotals([scanned, priced], [{ nilaiTotal: 10 }]), {
   net: 120,
 })
 assert.deepEqual(documentTotals([]), { amount: 0, packages: 0, cbm: 0, gross: 0, net: 0 })
+
+// Edit CIPL tersimpan: baris dibuka kembali apa adanya (case dari koli, barang lewat refKoliIds),
+// lalu simpan ulang mempertahankan isinya.
+const storedLine: JobCiplLine = {
+  id: 'line-1',
+  exhibitorId: 'ex-1',
+  exhibitor: { id: 'ex-1', name: 'PT MAJU', hall: 'B1', booth: 'D035' },
+  nameOnDocument: 'PT MAJU JAYA',
+  koli: {
+    totalCount: 2,
+    bareCaseCount: 1,
+    totalWeightKg: 150,
+    totalNetWeightKg: 120,
+    details: [
+      { id: 'k1', label: 'PKG 1', dimension: { lengthCm: 100, widthCm: 50, heightCm: 25 }, volumeCbm: 0.125, weightKg: 80, netWeightKg: 70, satuanKemasan: 'CARTON' },
+      { id: 'k2', label: 'PKG 2', dimension: null, volumeCbm: null, weightKg: 70, netWeightKg: 50 },
+    ],
+  },
+  items: [
+    barang('PRINTER', 'PKG 1', { refKoliIds: ['k1'], kodeHs: '84716040', merekModel: 'HP' }),
+    barang('SPARE', null),
+  ],
+  notes: [{ kind: 'ANOMALI_BARANG', text: 'Kardus penyok' }],
+}
+const editing = rowFromJobLine('line-1', storedLine)
+assert.equal(editing.sourceLineId, 'line-1')
+assert.equal(editing.name, 'PT MAJU')
+assert.equal(editing.bareCase, '1')
+assert.deepEqual(editing.cases.map((entry) => entry.label), ['PKG 1', 'PKG 2', ''])
+assert.deepEqual(editing.cases[0].items.map((item) => item.uraian), ['PRINTER'])
+assert.equal(editing.cases[1].items.length, 1) // case tanpa barang tetap punya satu baris kosong
+assert.deepEqual(editing.cases[2].items.map((item) => item.uraian), ['SPARE'])
+
+const resaved = rowToScanEntry(editing)!
+assert.equal(resaved.invalidItems, 0)
+assert.deepEqual(resaved.entry.items.map((item) => item.uraian), ['PRINTER', 'SPARE'])
+assert.equal(resaved.entry.items[0].kodeHs, '84716040')
+assert.equal(resaved.entry.items[0].merekModel, 'HP')
+assert.equal(resaved.entry.items[0].refKoli, 'PKG 1')
+assert.deepEqual(resaved.entry.items[0].refKoliIds, [resaved.entry.logistics.koli.details[0].id])
+assert.deepEqual(resaved.entry.items[1].refKoliIds, [])
+assert.deepEqual(resaved.entry.logistics.notes, [{ kind: 'ANOMALI_BARANG', text: 'Kardus penyok' }])
+assert.equal(resaved.entry.logistics.koli.totalCount, 2)
+
+// Data lama tanpa id koli: barang tetap masuk case-nya lewat label `refKoli`.
+const legacy = rowFromJobLine('line-2', {
+  ...storedLine,
+  id: 'line-2',
+  koli: {
+    totalCount: 1,
+    bareCaseCount: null,
+    totalWeightKg: null,
+    totalNetWeightKg: null,
+    details: [{ label: 'PKG 9', dimension: null, volumeCbm: null, weightKg: null, netWeightKg: null }],
+  },
+  items: [barang('MONITOR', 'PKG 9', { refKoliIds: ['k1'] })],
+  notes: [],
+})
+assert.deepEqual(legacy.cases.map((entry) => entry.label), ['PKG 9'])
+assert.deepEqual(legacy.cases[0].items.map((item) => item.uraian), ['MONITOR'])

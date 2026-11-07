@@ -42,7 +42,8 @@ const tdNum = `${td} text-right tabular-nums`
 
 /**
  * Tampilan ringkas: satu baris per exhibitor; rincian case dibuka lewat klik panah (tidak otomatis
- * saat hover). Tiap case membuka baris barangnya dengan klik panah di baris case.
+ * saat hover). Barang per case tidak lagi ditampilkan di sini — rinciannya ada di kartu Detail
+ * Barang (`job-barang-card`) agar kedalaman tabel tetap dua tingkat.
  */
 export function ExhibitorSummaryTable({ peserta }: { peserta: ReadonlyArray<ManifestPeserta> }) {
   const [openKeys, setOpenKeys] = useState<ReadonlySet<string>>(new Set())
@@ -77,8 +78,6 @@ export function ExhibitorSummaryTable({ peserta }: { peserta: ReadonlyArray<Mani
             const summary = summarizeKoli(item.logistics.koli)
             const open = isOpen(item.key)
             const panelId = `koli-${item.key}`
-            const items = item.line.items
-            const looseItems = items.filter((barang) => !barang.refKoliIds.length)
             return (
               <tbody key={item.key} className="divide-y divide-slate-200 text-slate-700">
                 <tr className={open ? 'bg-slate-50/60' : undefined}>
@@ -110,100 +109,31 @@ export function ExhibitorSummaryTable({ peserta }: { peserta: ReadonlyArray<Mani
                     <td />
                     <td colSpan={6} className="px-3 py-3">
                       <table className="w-full text-sm">
-                          {details.map((koli, index) => {
-                            const caseKey = `${item.key}-${koli.id ?? index}`
-                            const caseOpen = openKeys.has(caseKey)
-                            const barang = items.filter((entry) => entry.refKoliIds.includes(koli.id ?? ''))
-                            return (
-                              <tbody key={caseKey} className="divide-y divide-slate-100">
-                                <tr className={caseOpen ? 'font-medium text-slate-800' : 'text-slate-600'}>
-                                  <td className="w-8 py-1.5 pl-1">
-                                    {barang.length ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => toggle(caseKey)}
-                                        aria-expanded={caseOpen}
-                                        aria-label={`${caseOpen ? 'Tutup' : 'Buka'} barang ${koli.label ?? index + 1}`}
-                                        className="rounded p-0.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-                                      >
-                                        {caseOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                                      </button>
-                                    ) : null}
-                                  </td>
-                                  <td className="py-1.5 pr-3">
-                                    Case {koli.label ?? index + 1}
-                                    <span className="ml-3 text-slate-400">
-                                      {[
-                                        koli.dimension?.lengthCm,
-                                        koli.dimension?.widthCm,
-                                        koli.dimension?.heightCm,
-                                      ]
-                                        .map(optionalNumber)
-                                        .join(' × ')}{' '}
-                                      cm
-                                    </span>
-                                  </td>
-                                  <td className="py-1.5 pr-3 text-right tabular-nums">
-                                    {optionalNumber(koli.volumeCbm)} CBM
-                                  </td>
-                                  <td className="py-1.5 text-right tabular-nums">
-                                    {optionalNumber(koli.weightKg)} kg
-                                  </td>
-                                </tr>
-                                {caseOpen &&
-                                  barang.map((entry, barangIndex) => (
-                                    <tr key={entry.refKoliIds[0] ?? barangIndex} className="text-slate-500">
-                                      <td />
-                                      <td className="py-1 pr-3 pl-4">{entry.uraian}</td>
-                                      <td className="py-1 pr-3 text-right tabular-nums">
-                                        {entry.jumlah} {entry.satuan} ·{' '}
-                                        {optionalNumber(entry.nilaiSatuan)}
-                                      </td>
-                                      <td className="py-1 text-right tabular-nums">
-                                        {optionalNumber(entry.nilaiTotal)}
-                                      </td>
-                                    </tr>
-                                  ))}
-                              </tbody>
-                            )
-                          })}
-                          {looseItems.length ? (
-                            <tbody className="divide-y divide-slate-100">
-                              <tr className="text-slate-600">
-                                <td className="w-8 py-1.5 pl-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => toggle(`${item.key}-loose`)}
-                                    aria-expanded={openKeys.has(`${item.key}-loose`)}
-                                    aria-label="Buka barang tanpa nomor case"
-                                    className="rounded p-0.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-                                  >
-                                    {openKeys.has(`${item.key}-loose`) ? (
-                                      <ChevronDown size={13} />
-                                    ) : (
-                                      <ChevronRight size={13} />
-                                    )}
-                                  </button>
-                                </td>
-                                <td className="py-1.5 pr-3">Tanpa nomor case</td>
-                                <td className="py-1.5 pr-3" />
-                                <td className="py-1.5" />
-                              </tr>
-                              {openKeys.has(`${item.key}-loose`) &&
-                                looseItems.map((entry, barangIndex) => (
-                                  <tr key={barangIndex} className="text-slate-500">
-                                    <td />
-                                    <td className="py-1 pr-3 pl-4">{entry.uraian}</td>
-                                    <td className="py-1 pr-3 text-right tabular-nums">
-                                      {entry.jumlah} {entry.satuan} · {optionalNumber(entry.nilaiSatuan)}
-                                    </td>
-                                    <td className="py-1 text-right tabular-nums">
-                                      {optionalNumber(entry.nilaiTotal)}
-                                    </td>
-                                  </tr>
-                                ))}
-                            </tbody>
-                          ) : null}
+                        {details.map((koli, index) => (
+                          <tbody key={`${item.key}-${koli.id ?? index}`} className="divide-y divide-slate-100">
+                            <tr className="text-slate-600">
+                              <td className="py-1.5 pl-1 pr-3">
+                                Case {koli.label ?? index + 1}
+                                <span className="ml-3 text-slate-400">
+                                  {[
+                                    koli.dimension?.lengthCm,
+                                    koli.dimension?.widthCm,
+                                    koli.dimension?.heightCm,
+                                  ]
+                                    .map(optionalNumber)
+                                    .join(' × ')}{' '}
+                                  cm
+                                </span>
+                              </td>
+                              <td className="py-1.5 pr-3 text-right tabular-nums">
+                                {optionalNumber(koli.volumeCbm)} CBM
+                              </td>
+                              <td className="py-1.5 text-right tabular-nums">
+                                {optionalNumber(koli.weightKg)} kg
+                              </td>
+                            </tr>
+                          </tbody>
+                        ))}
                       </table>
                       {item.logistics.koli.bareCaseCount !== null && (
                         <p className="mt-2 text-xs text-slate-500">

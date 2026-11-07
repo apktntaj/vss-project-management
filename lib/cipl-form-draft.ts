@@ -13,6 +13,7 @@ import {
   type Koli,
   type OperationalNote,
 } from '@/domain/job/manifest'
+import type { JobCiplLine } from '@/domain/job/types'
 
 /** Satu barang di dalam case. `merekModel` dibawa dari scan tetapi tidak diedit di form. */
 export type CiplItemDraft = {
@@ -42,6 +43,8 @@ export type CiplCaseDraft = {
 
 export type CiplRowDraft = {
   key: string
+  /** Id baris CIPL yang sudah tersimpan; absen untuk baris baru/hasil scan. */
+  sourceLineId?: string
   jobNo: string
   name: string
   /** Pass-through dari scan manifest; tidak diedit di form ini. */
@@ -177,6 +180,48 @@ export function rowFromScan(
   for (const draft of cases) if (!draft.items.length) draft.items = [emptyItem()]
   return {
     ...rowHeader(key, exhibitor.name, exhibitor.jobNo, exhibitor.logistics),
+    cases: cases.length ? cases : [emptyCase()],
+  }
+}
+
+/**
+ * Baris CIPL job → draft edit. Case dibangun dari koli tersimpan dan barang ditempelkan lewat
+ * `refKoliIds`; barang yang tidak menunjuk koli mana pun ditampung di satu case tanpa nomor supaya
+ * tidak hilang saat disimpan kembali. Mengembalikan bentuk yang sama dengan `rowFromScan`, jadi
+ * jalur simpan (draft → entri → autofill) dipakai ulang tanpa cabang khusus.
+ */
+export function rowFromJobLine(key: string, line: JobCiplLine): CiplRowDraft {
+  const cases = line.koli.details.map(caseFromKoli)
+  const caseByKoliId = new Map<string, CiplCaseDraft>()
+  const caseByLabel = new Map<string, CiplCaseDraft>()
+  line.koli.details.forEach((koli, index) => {
+    if (koli.id) caseByKoliId.set(koli.id, cases[index])
+    const label = koli.label?.trim()
+    if (label && !caseByLabel.has(label)) caseByLabel.set(label, cases[index])
+  })
+
+  const unnumbered: CiplItemDraft[] = []
+  for (const item of line.items) {
+    // Id koli absen pada data lama — label `refKoli` jadi cadangan agar barang tetap di case-nya.
+    const target =
+      item.refKoliIds
+        .map((koliId) => caseByKoliId.get(koliId))
+        .find((draft): draft is CiplCaseDraft => Boolean(draft)) ??
+      (item.refKoli ? caseByLabel.get(item.refKoli.trim()) : undefined)
+    if (target) target.items.push(itemFromBarang(item))
+    else unnumbered.push(itemFromBarang(item))
+  }
+  if (unnumbered.length) cases.push({ ...emptyCase(), items: unnumbered })
+  for (const draft of cases) if (!draft.items.length) draft.items = [emptyItem()]
+
+  return {
+    ...rowHeader(key, line.exhibitor?.name ?? line.nameOnDocument, null, {
+      hall: line.exhibitor?.hall ?? null,
+      booth: line.exhibitor?.booth ?? null,
+      koli: line.koli,
+      notes: line.notes,
+    }),
+    sourceLineId: line.id,
     cases: cases.length ? cases : [emptyCase()],
   }
 }

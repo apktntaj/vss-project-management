@@ -17,6 +17,9 @@ import {
 import type { ManifestBlockView, ManifestPeserta } from '@/lib/manifest-view'
 import { ExhibitorIdentity, ExhibitorSummaryTable, numberID } from '@/components/job-exhibitor-summary'
 
+// Kepulangan (return list) sementara disembunyikan dari kartu manifest; data dan alur simpannya tetap ada.
+const SHOW_KEPULANGAN = false
+
 const milestoneOrder: MilestoneKind[] = [
   'ETA',
   'SKEP',
@@ -331,41 +334,43 @@ export function JobManifestSection({
         </p>
       )}
 
-      <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-start gap-2">
-            <Ship size={18} className="mt-0.5 shrink-0 text-slate-400" aria-hidden="true" />
-            <div>
-              <p className="text-sm font-semibold text-slate-800">Kepulangan (return list)</p>
-              {kepulangan ? (
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className={chip('slate')}>
-                    {kepulangan.mode.kind === 'LCL'
-                      ? `LCL · ${kepulangan.mode.koliCount} koli`
-                      : kepulangan.mode.containers.map(containerLabel).join(' + ')}
-                  </span>
-                  {kepulangan.destination && <span className={chip('slate')}>{kepulangan.destination}</span>}
-                  {kepulangan.shippingLine && <span className={chip('slate')}>{kepulangan.shippingLine}</span>}
-                  {kepulangan.bookingNumber && <span className={chip('slate')}>Booking {kepulangan.bookingNumber}</span>}
-                  {kepulangan.vessel && <span className={chip('slate')}>{kepulangan.vessel}</span>}
-                  {kepulangan.etd && <span className={chip('slate')}>ETD {dateID(kepulangan.etd)}</span>}
-                  {kepulangan.eta && <span className={chip('slate')}>ETA {dateID(kepulangan.eta)}</span>}
-                  {kepulangan.notes.map((note, index) => (
-                    <span key={index} className={chip('amber')}>
-                      {operationalNoteKindLabels[note.kind]}: {note.text}
+      {SHOW_KEPULANGAN && (
+        <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-start gap-2">
+              <Ship size={18} className="mt-0.5 shrink-0 text-slate-400" aria-hidden="true" />
+              <div>
+                <p className="text-sm font-semibold text-slate-800">Kepulangan (return list)</p>
+                {kepulangan ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className={chip('slate')}>
+                      {kepulangan.mode.kind === 'LCL'
+                        ? `LCL · ${kepulangan.mode.koliCount} koli`
+                        : kepulangan.mode.containers.map(containerLabel).join(' + ')}
                     </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="mt-1 text-sm text-slate-500">
-                  Rencana pengembalian kontainer/LCL belum diisi. Total koli peserta:{' '}
-                  {view.totals.totalCount}.
-                </p>
-              )}
+                    {kepulangan.destination && <span className={chip('slate')}>{kepulangan.destination}</span>}
+                    {kepulangan.shippingLine && <span className={chip('slate')}>{kepulangan.shippingLine}</span>}
+                    {kepulangan.bookingNumber && <span className={chip('slate')}>Booking {kepulangan.bookingNumber}</span>}
+                    {kepulangan.vessel && <span className={chip('slate')}>{kepulangan.vessel}</span>}
+                    {kepulangan.etd && <span className={chip('slate')}>ETD {dateID(kepulangan.etd)}</span>}
+                    {kepulangan.eta && <span className={chip('slate')}>ETA {dateID(kepulangan.eta)}</span>}
+                    {kepulangan.notes.map((note, index) => (
+                      <span key={index} className={chip('amber')}>
+                        {operationalNoteKindLabels[note.kind]}: {note.text}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-sm text-slate-500">
+                    Rencana pengembalian kontainer/LCL belum diisi. Total koli peserta:{' '}
+                    {view.totals.totalCount}.
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </section>
   )
 }

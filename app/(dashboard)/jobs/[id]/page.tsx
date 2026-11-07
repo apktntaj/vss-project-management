@@ -33,6 +33,7 @@ import {
   JobCustomsCard,
 } from '@/components/job-detail-cards'
 import { JobManifestSection } from '@/components/job-manifest-section'
+import { JobBarangCard } from '@/components/job-barang-card'
 import { CiplEntryModal } from '@/components/cipl-entry-modal'
 import {
   JobDocumentEditorDialog,
@@ -53,6 +54,9 @@ import { jobLabel } from '@/domain/job/numbering'
 import { hasTabData, tabActionLabel } from '@/domain/job/tab-data'
 import type { JobDetailTab, JobReadinessTarget } from '@/lib/job-readiness'
 import { StatusBadge } from '@/components/status-badge'
+
+// Sementara disembunyikan dari tab Muatan atas permintaan; kartu, komponen, dan alurnya tetap ada.
+const SHOW_MUATAN_EXTRAS = false
 
 const toast = (message: string, tone: 'info' | 'error' = 'info') =>
   window.dispatchEvent(
@@ -417,44 +421,49 @@ export default function JobDetail({ params }: { params: { id: string } }) {
                   totalAmount={job.ciplDocument ? totalDokumen(job.ciplDocument).nilaiTotal : null}
                 />
               )}
-              {job.kind !== 'LOCAL' && <JobLartasCard job={job} onToast={toast} />}
-              <section className="card p-5">
-                <h2 className="font-semibold">Details Barang</h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  Diekstrak dari invoice; nanti bersumber dari CIPL.
-                </p>
-                <p className="mt-3 text-sm font-medium text-slate-800">
-                  No. Invoice: {details.invoiceNumber || '-'}
-                </p>
-                {invoiceItems.length ? (
-                  <div className="mt-4 overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead className="text-slate-500">
-                        <tr>
-                          <th className="pb-2 pr-3">Barang</th>
-                          <th className="pb-2 pr-3">HS</th>
-                          <th className="pb-2 text-right">Harga</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {invoiceItems.map((item, index) => (
-                          <tr key={`${item.description}-${index}`} className="border-t">
-                            <td className="py-2 pr-3 text-slate-700">{item.description}</td>
-                            <td className="py-2 pr-3 text-slate-600">{item.hsCode || '-'}</td>
-                            <td className="py-2 text-right text-slate-700">
-                              {item.currency || ''} {item.lineTotal ?? item.unitPrice ?? '-'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className="mt-2 text-sm text-slate-500">
-                    Belum ada baris barang yang berhasil diekstrak.
+              {job.ciplLines.length > 0 && <JobBarangCard job={job} onToast={toast} />}
+              {SHOW_MUATAN_EXTRAS && job.kind !== 'LOCAL' && (
+                <JobLartasCard job={job} onToast={toast} />
+              )}
+              {SHOW_MUATAN_EXTRAS && (
+                <section className="card p-5">
+                  <h2 className="font-semibold">Details Barang</h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Diekstrak dari invoice; nanti bersumber dari CIPL.
                   </p>
-                )}
-              </section>
+                  <p className="mt-3 text-sm font-medium text-slate-800">
+                    No. Invoice: {details.invoiceNumber || '-'}
+                  </p>
+                  {invoiceItems.length ? (
+                    <div className="mt-4 overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="text-slate-500">
+                          <tr>
+                            <th className="pb-2 pr-3">Barang</th>
+                            <th className="pb-2 pr-3">HS</th>
+                            <th className="pb-2 text-right">Harga</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {invoiceItems.map((item, index) => (
+                            <tr key={`${item.description}-${index}`} className="border-t">
+                              <td className="py-2 pr-3 text-slate-700">{item.description}</td>
+                              <td className="py-2 pr-3 text-slate-600">{item.hsCode || '-'}</td>
+                              <td className="py-2 text-right text-slate-700">
+                                {item.currency || ''} {item.lineTotal ?? item.unitPrice ?? '-'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-sm text-slate-500">
+                      Belum ada baris barang yang berhasil diekstrak.
+                    </p>
+                  )}
+                </section>
+              )}
             </>
           ) : (
             <EmptyTabState tab="muatan" />

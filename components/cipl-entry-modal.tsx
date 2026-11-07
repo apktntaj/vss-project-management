@@ -26,6 +26,7 @@ import {
   documentTotals,
   emptyRow,
   isRowFilled,
+  rowFromJobLine,
   rowFromScan,
   rowSums,
   rowToScanEntry,
@@ -44,6 +45,20 @@ import {
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { jobLabel } from '@/domain/job/numbering'
+import type { OperationalNote } from '@/domain/job/manifest'
+
+/** Gabung catatan operasional tanpa menduplikasi yang sudah ada (kind + teks sama). */
+function mergeNotes(existing: OperationalNote[], incoming: OperationalNote[]): OperationalNote[] {
+  const merged = [...existing]
+  const seen = new Set(existing.map((note) => `${note.kind}\u0000${note.text}`))
+  for (const note of incoming) {
+    const key = `${note.kind}\u0000${note.text}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    merged.push(note)
+  }
+  return merged
+}
 
 function toast(message: string, tone: 'success' | 'error') {
   window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
@@ -73,7 +88,12 @@ export function CiplEntryModal({
   onSaved: (job: Job) => void
   onClose: () => void
 }) {
-  const [ciplRows, setCiplRows] = useState<CiplRowDraft[]>(() => [emptyRow('cipl-row-0')])
+  /** Baris tersimpan dibuka apa adanya; job tanpa baris CIPL mulai dari satu baris kosong. */
+  const initialRows = (): CiplRowDraft[] =>
+    job.ciplLines.length
+      ? job.ciplLines.map((line) => rowFromJobLine(`cipl-line-${line.id}`, line))
+      : [emptyRow('cipl-row-0')]
+  const [ciplRows, setCiplRows] = useState<CiplRowDraft[]>(initialRows)
   const [ciplFile, setCiplFile] = useState<File | null>(null)
   const [scanningCipl, setScanningCipl] = useState(false)
   const [ciplHeader, setCiplHeader] = useState<CiplDocumentHeader | null>(null)
@@ -86,17 +106,22 @@ export function CiplEntryModal({
   const rowKeyRef = useRef(0)
   const nextRowKey = () => `cipl-row-${++rowKeyRef.current}`
 
-  /** Index baris CIPL job yang ditunjuk sebuah nama hasil scan (nama master ATAU nama di dokumen). */
-  function matchJobLineIndex(name: string): number {
+  /**
+   * Index baris CIPL job yang ditunjuk sebuah nama (nama master ATAU nama di dokumen). `used`
+   * mencegah dua baris menunjuk baris job yang sama ketika nama exhibitor terulang.
+   */
+  function matchJobLineIndex(name: string, used?: ReadonlySet<number>): number {
     const trimmed = name.trim()
     if (!trimmed) return -1
-    return job.ciplLines.findIndex((line) =>
-      isSameExhibitorName(line.exhibitor?.name ?? line.nameOnDocument, trimmed),
+    return job.ciplLines.findIndex(
+      (line, index) =>
+        !used?.has(index) &&
+        isSameExhibitorName(line.exhibitor?.name ?? line.nameOnDocument, trimmed),
     )
   }
 
   function resetScanState() {
-    setCiplRows([emptyRow('cipl-row-0')])
+    setCiplRows(initialRows())
     setCiplFile(null)
     setCiplHeader(null)
     setCiplBelumTerpetakan([])
@@ -194,9 +219,12 @@ export function CiplEntryModal({
       const ciplDocument = buildCiplDocument(headerUsed, plan.rows, ciplBelumTerpetakan)
       // resolveCiplAutofill bisa MENGGABUNGkan entri bernama sama, jadi kecocokan baris dihitung
       // per baris plan (bukan per entri): nama tertera dulu, lalu nama master.
+      const usedLineIndexes = new Set<number>()
       const rowLineIndex = plan.rows.map((row) => {
-        const byDocument = matchJobLineIndex(row.namaTertera)
-        return byDocument >= 0 ? byDocument : matchJobLineIndex(row.name)
+        const byDocument = matchJobLineIndex(row.namaTertera, usedLineIndexes)
+        const lineIndex = byDocument >= 0 ? byDocument : matchJobLineIndex(row.name, usedLineIndexes)
+        if (lineIndex >= 0) usedLineIndexes.add(lineIndex)
+        return lineIndex
       })
       // lineIndex → baris plan yang menggantikannya (baris pertama menang bila dua baris
       // mengarah ke baris job yang sama).
@@ -215,7 +243,8 @@ export function CiplEntryModal({
           nameOnDocument: row.namaTertera,
           koli: row.logistics.koli,
           items: row.items,
-          notes: [...line.notes, ...row.logistics.notes],
+          // Baris yang dibuka dari CIPL tersimpan sudah membawa catatannya sendiri — jangan gandakan.
+          notes: mergeNotes(line.notes, row.logistics.notes),
         }
       })
       // Baris yang menunjuk baris lama TIDAK pernah masuk sebagai baris baru: applyReplace
@@ -269,7 +298,7 @@ export function CiplEntryModal({
         ].filter(Boolean)
         parts.push(`${newRows.length} exhibitor CIPL${rincian.length ? ` (${rincian.join(', ')})` : ''}`)
       }
-      if (replacedCount) parts.push(`${replacedCount} baris lama diganti`)
+      if (replacedCount) parts.push(`${replacedCount} baris CIPL diperbarui`)
       if (skippedReplace)
         parts.push(`${skippedReplace} baris sudah ada — dipertahankan (penggantian dimatikan)`)
       const itemCount =
@@ -301,9 +330,12 @@ export function CiplEntryModal({
     onSaved(updated)
   }
 
-  /** Baris draft saat ini yang menunjuk baris job yang sudah ada — dasar panel penggantian. */
+  /**
+   * Baris draft saat ini yang menunjuk baris job yang sudah ada — dasar panel penggantian. Baris
+   * yang dibuka dari CIPL tersimpan dikecualikan: ia memang baris lama, bukan entri scan.
+   */
   const replacementRows = ciplRows.filter(
-    (row) => row.name.trim().length > 0 && matchJobLineIndex(row.name) >= 0,
+    (row) => !row.sourceLineId && row.name.trim().length > 0 && matchJobLineIndex(row.name) >= 0,
   )
 
   return (
