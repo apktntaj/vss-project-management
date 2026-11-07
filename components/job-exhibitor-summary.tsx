@@ -41,21 +41,18 @@ const td = 'px-3 py-2.5 align-top'
 const tdNum = `${td} text-right tabular-nums`
 
 /**
- * Tampilan ringkas: satu baris per exhibitor yang otomatis membuka baris case saat di-hover
- * (klik panah = tetap terbuka). Tiap case membuka baris barangnya dengan logika hover yang sama.
+ * Tampilan ringkas: satu baris per exhibitor; rincian case dibuka lewat klik panah (tidak otomatis
+ * saat hover). Tiap case membuka baris barangnya dengan klik panah di baris case.
  */
 export function ExhibitorSummaryTable({ peserta }: { peserta: ReadonlyArray<ManifestPeserta> }) {
-  // `pinned` = dibuka lewat klik panah (tetap terbuka); `hover*` = dibuka otomatis saat di-hover.
-  const [pinned, setPinned] = useState<ReadonlySet<string>>(new Set())
-  const [hoverExhibitor, setHoverExhibitor] = useState<string | null>(null)
-  const [hoverCase, setHoverCase] = useState<string | null>(null)
-  const togglePinned = (key: string) =>
-    setPinned((current) => {
+  const [openKeys, setOpenKeys] = useState<ReadonlySet<string>>(new Set())
+  const toggle = (key: string) =>
+    setOpenKeys((current) => {
       const next = new Set(current)
       if (!next.delete(key)) next.add(key)
       return next
     })
-  const isOpen = (key: string) => pinned.has(key) || hoverExhibitor === key
+  const isOpen = (key: string) => openKeys.has(key)
 
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-200">
@@ -83,19 +80,13 @@ export function ExhibitorSummaryTable({ peserta }: { peserta: ReadonlyArray<Mani
             const items = item.line.items
             const looseItems = items.filter((barang) => !barang.refKoliIds.length)
             return (
-              // tbody per exhibitor: hover pindah dari baris exhibitor ke baris case tidak memicu mouseleave.
-              <tbody
-                key={item.key}
-                className="divide-y divide-slate-200 text-slate-700"
-                onMouseEnter={() => setHoverExhibitor(item.key)}
-                onMouseLeave={() => setHoverExhibitor(null)}
-              >
+              <tbody key={item.key} className="divide-y divide-slate-200 text-slate-700">
                 <tr className={open ? 'bg-slate-50/60' : undefined}>
                   <td className={td}>
                     {details.length ? (
                       <button
                         type="button"
-                        onClick={() => togglePinned(item.key)}
+                        onClick={() => toggle(item.key)}
                         aria-expanded={open}
                         aria-controls={panelId}
                         aria-label={`${open ? 'Tutup' : 'Buka'} rincian koli ${item.name}`}
@@ -121,21 +112,16 @@ export function ExhibitorSummaryTable({ peserta }: { peserta: ReadonlyArray<Mani
                       <table className="w-full text-xs">
                           {details.map((koli, index) => {
                             const caseKey = `${item.key}-${koli.id ?? index}`
-                            const caseOpen = hoverCase === caseKey || pinned.has(caseKey)
+                            const caseOpen = openKeys.has(caseKey)
                             const barang = items.filter((entry) => entry.refKoliIds.includes(koli.id ?? ''))
                             return (
-                              <tbody
-                                key={caseKey}
-                                className="divide-y divide-slate-100"
-                                onMouseEnter={() => setHoverCase(caseKey)}
-                                onMouseLeave={() => setHoverCase(null)}
-                              >
+                              <tbody key={caseKey} className="divide-y divide-slate-100">
                                 <tr className={caseOpen ? 'font-medium text-slate-800' : 'text-slate-600'}>
                                   <td className="w-8 py-1.5 pl-1">
                                     {barang.length ? (
                                       <button
                                         type="button"
-                                        onClick={() => togglePinned(caseKey)}
+                                        onClick={() => toggle(caseKey)}
                                         aria-expanded={caseOpen}
                                         aria-label={`${caseOpen ? 'Tutup' : 'Buka'} barang ${koli.label ?? index + 1}`}
                                         className="rounded p-0.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
@@ -182,18 +168,28 @@ export function ExhibitorSummaryTable({ peserta }: { peserta: ReadonlyArray<Mani
                             )
                           })}
                           {looseItems.length ? (
-                            <tbody
-                              className="divide-y divide-slate-100"
-                              onMouseEnter={() => setHoverCase(`${item.key}-loose`)}
-                              onMouseLeave={() => setHoverCase(null)}
-                            >
+                            <tbody className="divide-y divide-slate-100">
                               <tr className="text-slate-600">
-                                <td className="w-8 py-1.5 pl-1" />
+                                <td className="w-8 py-1.5 pl-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggle(`${item.key}-loose`)}
+                                    aria-expanded={openKeys.has(`${item.key}-loose`)}
+                                    aria-label="Buka barang tanpa nomor case"
+                                    className="rounded p-0.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                                  >
+                                    {openKeys.has(`${item.key}-loose`) ? (
+                                      <ChevronDown size={13} />
+                                    ) : (
+                                      <ChevronRight size={13} />
+                                    )}
+                                  </button>
+                                </td>
                                 <td className="py-1.5 pr-3">Tanpa nomor case</td>
                                 <td className="py-1.5 pr-3" />
                                 <td className="py-1.5" />
                               </tr>
-                              {(hoverCase === `${item.key}-loose` || pinned.has(`${item.key}-loose`)) &&
+                              {openKeys.has(`${item.key}-loose`) &&
                                 looseItems.map((entry, barangIndex) => (
                                   <tr key={barangIndex} className="text-slate-500">
                                     <td />
