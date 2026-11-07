@@ -220,7 +220,7 @@ export function JobManifestSection({
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
             No. Invoice{' '}
-            <span className="font-semibold text-slate-900 normal-case tracking-normal">
+            <span className="text-lg font-bold text-slate-900 normal-case tracking-normal">
               {invoiceNumber ?? '—'}
             </span>
           </p>
@@ -234,8 +234,8 @@ export function JobManifestSection({
                 ['Total amount', totalAmount === null ? '—' : numberID(totalAmount), true],
               ] as const
             ).map(([title, value, isAmount]) => (
-              <div key={title}>
-                <dt className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+              <div key={title} className="text-center">
+                <dt className="flex items-center justify-center gap-1 text-xs font-medium uppercase tracking-wide text-slate-500">
                   {isAmount ? <DollarSign size={13} aria-hidden="true" /> : null}
                   {title}
                 </dt>
@@ -259,29 +259,23 @@ export function JobManifestSection({
       ))}
 
       <div className="mt-5 flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-slate-800">Exhibitor</p>
-        <div
-          role="group"
-          aria-label="Tampilan manifest"
-          className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs font-medium"
+        <p className="text-sm font-semibold text-slate-800">Manifest</p>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={mode === 'manifest'}
+          title={mode === 'manifest' ? 'kembali' : 'beralih ke tabel'}
+          onClick={() => setMode(mode === 'manifest' ? 'ringkas' : 'manifest')}
+          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+            mode === 'manifest' ? 'bg-orange-600' : 'bg-orange-200'
+          }`}
         >
-          {(
-            [
-              ['ringkas', 'Ringkas'],
-              ['manifest', 'Tabel manifest'],
-            ] as const
-          ).map(([value, text]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setMode(value)}
-              aria-pressed={mode === value}
-              className={`rounded-md px-3 py-1 transition-colors ${mode === value ? 'bg-orange-600 text-white shadow-sm' : 'text-slate-500 hover:bg-orange-50 hover:text-orange-700'}`}
-            >
-              {text}
-            </button>
-          ))}
-        </div>
+          <span
+            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+              mode === 'manifest' ? 'translate-x-4' : 'translate-x-0.5'
+            }`}
+          />
+        </button>
       </div>
       {mode === 'ringkas' ? (
         <div className="mt-3">
