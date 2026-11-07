@@ -109,7 +109,7 @@ export function ExhibitorSummaryTable({ peserta }: { peserta: ReadonlyArray<Mani
                   <tr id={panelId} className="bg-slate-50/60">
                     <td />
                     <td colSpan={6} className="px-3 py-3">
-                      <table className="w-full text-xs">
+                      <table className="w-full text-sm">
                           {details.map((koli, index) => {
                             const caseKey = `${item.key}-${koli.id ?? index}`
                             const caseOpen = openKeys.has(caseKey)
@@ -154,7 +154,7 @@ export function ExhibitorSummaryTable({ peserta }: { peserta: ReadonlyArray<Mani
                                   barang.map((entry, barangIndex) => (
                                     <tr key={entry.refKoliIds[0] ?? barangIndex} className="text-slate-500">
                                       <td />
-                                      <td className="py-1 pr-3 pl-8">{entry.uraian}</td>
+                                      <td className="py-1 pr-3 pl-4">{entry.uraian}</td>
                                       <td className="py-1 pr-3 text-right tabular-nums">
                                         {entry.jumlah} {entry.satuan} ·{' '}
                                         {optionalNumber(entry.nilaiSatuan)}
@@ -193,7 +193,7 @@ export function ExhibitorSummaryTable({ peserta }: { peserta: ReadonlyArray<Mani
                                 looseItems.map((entry, barangIndex) => (
                                   <tr key={barangIndex} className="text-slate-500">
                                     <td />
-                                    <td className="py-1 pr-3 pl-8">{entry.uraian}</td>
+                                    <td className="py-1 pr-3 pl-4">{entry.uraian}</td>
                                     <td className="py-1 pr-3 text-right tabular-nums">
                                       {entry.jumlah} {entry.satuan} · {optionalNumber(entry.nilaiSatuan)}
                                     </td>
