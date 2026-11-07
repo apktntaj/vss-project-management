@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { CalendarDays, FileText, Pencil, Save, ShipWheel, Sparkles } from 'lucide-react'
+import { FileText, Pencil, Save, ShipWheel, Sparkles } from 'lucide-react'
 import {
   getNextManifestSeq,
   getOperationalDetails,
@@ -19,13 +19,11 @@ import {
   transportModeLabels,
   transportModes,
   type BcDocumentKind,
-  type JobCiplSourceKind,
   type JobCustomsDocument,
   type JobStatus,
   type JobTransportLeg,
   type TransportMode,
 } from '@/domain/job/types'
-import { ciplStatusText, deriveCiplStatus } from '@/domain/job/cipl-status'
 import { formatJobNumber, formatManifestSequence } from '@/domain/job/numbering'
 
 // Editor per-area di halaman detail job: tiap kartu menampilkan ringkasan read-only dan, saat
@@ -648,42 +646,6 @@ export function JobCustomsCard({ job, onSaved }: { job: Job; onSaved: (job: Job)
 }
 
 // --------------------------------------------------------------------------------------------
-// CIPL: status DITURUNKAN dari berkas lampiran + data job (`deriveCiplStatus`); tidak ada field
-// manual. Entri & scan CIPL/packing list lewat CiplEntryModal (tombol "Buat/Edit CIPL"); scan
-// inward manifest lewat editor manifest (tab transport); nomor invoice diubah lewat header job.
+// CIPL read-only: entri & scan lewat CiplEntryModal (tombol "Buat/Edit CIPL"); ringkasan dokumen
+// (no. invoice, total) tampil di JobManifestSection; nomor invoice diubah lewat header job.
 // --------------------------------------------------------------------------------------------
-
-const ciplSourceLabels: Record<JobCiplSourceKind, string> = {
-  CIPL: 'CIPL gabungan',
-  COMMERCIAL_INVOICE: 'Commercial invoice',
-  PACKING_LIST: 'Packing list',
-}
-
-export function JobCiplStatusCard({ job, onScan }: { job: Job; onScan: () => void }) {
-  const summary = deriveCiplStatus(job)
-  const invoiceNumber = job.commercialInvoiceNumber || job.ciplDocument?.nomor || null
-  return (
-    <section className="card p-5">
-      <h2 className="flex items-center gap-2 font-semibold">
-        <CalendarDays size={20} className="text-orange-600" aria-hidden="true" />
-        CIPL
-      </h2>
-      <p className="mt-4 text-sm font-medium text-slate-800">{ciplStatusText(summary)}</p>
-      {job.ciplSources.length > 0 ? (
-        <ul className="mt-2 space-y-1 text-sm text-slate-600">
-          {job.ciplSources.map((source, index) => (
-            <li key={`${source.kind}-${source.receivedAt}-${index}`}>
-              {ciplSourceLabels[source.kind]} · {fmtDate(source.receivedAt)}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="mt-2 text-sm text-slate-500">Belum ada berkas CIPL.</p>
-      )}
-      <p className="mt-3 text-sm text-slate-600">No. Invoice: {invoiceNumber || '—'}</p>
-      <button type="button" className="btn-secondary mt-4" onClick={onScan}>
-        Tambah / scan dokumen
-      </button>
-    </section>
-  )
-}

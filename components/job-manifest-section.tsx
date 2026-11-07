@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
-import { Pencil, Ship, TriangleAlert } from 'lucide-react'
+import { Ship, TriangleAlert } from 'lucide-react'
 
 import {
   containerLabel,
@@ -91,11 +91,15 @@ function ExhibitorCell({
 
 export function JobManifestSection({
   view,
-  onEditManifest,
+  invoiceNumber,
+  totalAmount,
   onEditPeserta,
 }: {
   view: ManifestBlockView
-  onEditManifest: () => void
+  /** No. invoice komersial dokumen (header job / CIPL); null bila belum ada. */
+  invoiceNumber: string | null
+  /** Total nilai seluruh barang di dokumen; null bila belum ada datanya. */
+  totalAmount: number | null
   onEditPeserta: (peserta: ManifestPeserta) => void
 }) {
   const [mode, setMode] = useState<'ringkas' | 'manifest'>('ringkas')
@@ -214,11 +218,12 @@ export function JobManifestSection({
     <section className="card border-orange-200 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="eyebrow">Blok manifest · {view.jobNumber}</p>
-          <dl className="mt-3 grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
+          <p className="eyebrow">No. Invoice {invoiceNumber ?? '—'}</p>
+          <dl className="mt-3 grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-5">
             {(
               [
                 ['Exhibitor', numberID(view.peserta.length)],
+                ['Total amount', totalAmount === null ? '—' : numberID(totalAmount)],
                 ['Total package', numberID(view.totals.totalCount)],
                 ['Total CBM', numberID(view.totals.volumeCbm)],
                 ['Total berat (Kg)', numberID(view.totals.weightKg)],
@@ -231,9 +236,6 @@ export function JobManifestSection({
             ))}
           </dl>
         </div>
-        <button type="button" onClick={onEditManifest} className="btn-secondary shrink-0">
-          <Pencil size={16} /> Edit manifest
-        </button>
       </div>
 
       {penahanan.map((note, index) => (

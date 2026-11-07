@@ -26,15 +26,14 @@ import {
 } from '@/lib/data-client'
 import { bcDocumentLabels, transportModeLabels, type BcDocumentKind } from '@/domain/job/types'
 import { buildManifestView } from '@/lib/manifest-view'
+import { totalDokumen } from '@/domain/exhibition/cipl-document'
 import {
   JobHeaderDialog,
   JobJourneyCard,
   JobLogisticsCard,
   JobCustomsCard,
-  JobCiplStatusCard,
 } from '@/components/job-detail-cards'
 import { JobManifestSection } from '@/components/job-manifest-section'
-import { JobManifestEditorModal } from '@/components/job-manifest-editor-modal'
 import { CiplLineModal } from '@/components/cipl-line-modal'
 import { CiplEntryModal } from '@/components/cipl-entry-modal'
 import {
@@ -184,10 +183,9 @@ export default function JobDetail({ params }: { params: { id: string } }) {
     }
   }, [params.id])
   const [exhibitors, setExhibitors] = useState<Exhibitor[]>([])
-  const [manifestModalOpen, setManifestModalOpen] = useState(false)
   const [lineTarget, setLineTarget] = useState<JobCiplLine | null>(null)
   const [ciplEntryOpen, setCiplEntryOpen] = useState(false)
-  // Dialog dokumen sumber yang sedang diedit: INVOICE (tab Muatan) atau TRANSPORT (tab Transport).
+  // Dialog dokumen sumber yang sedang diedit: INVOICE (tab CIPL) atau TRANSPORT (tab Transport).
   const [documentEdit, setDocumentEdit] = useState<EditableJobDocument | null>(null)
   const [billingOpen, setBillingOpen] = useState(false)
   const [headerOpen, setHeaderOpen] = useState(false)
@@ -390,7 +388,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           <TabsList className="h-auto gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
             {(
               [
-                ['muatan', 'Muatan'],
+                ['muatan', 'CIPL'],
                 ['transport', 'Transport'],
                 ['billing', 'Billing'],
               ] as const
@@ -415,11 +413,11 @@ export default function JobDetail({ params }: { params: { id: string } }) {
         <TabsContent value="muatan" className="space-y-6">
           {hasTabData('muatan', job) ? (
             <>
-              <JobCiplStatusCard job={job} onScan={() => setDocumentEdit('INVOICE')} />
               {isEvent && (
                 <JobManifestSection
                   view={buildManifestView(job)}
-                  onEditManifest={() => setManifestModalOpen(true)}
+                  invoiceNumber={job.commercialInvoiceNumber || job.ciplDocument?.nomor || null}
+                  totalAmount={job.ciplDocument ? totalDokumen(job.ciplDocument).nilaiTotal : null}
                   onEditPeserta={(peserta) => setLineTarget(peserta.line)}
                 />
               )}
@@ -505,16 +503,6 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           )}
         </TabsContent>
       </Tabs>
-      {manifestModalOpen && (
-        <JobManifestEditorModal
-          job={job}
-          onClose={() => setManifestModalOpen(false)}
-          onSaved={(savedJob) => {
-            setJob(savedJob)
-            setManifestModalOpen(false)
-          }}
-        />
-      )}
       {lineTarget && (
         <CiplLineModal
           job={job}
