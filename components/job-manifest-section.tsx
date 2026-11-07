@@ -72,19 +72,11 @@ const thGroup = 'border border-slate-200 px-2 py-1.5 text-center align-middle'
 const td = 'border border-slate-200 px-2 py-1.5 align-top'
 const tdNum = 'border border-slate-200 px-2 py-1.5 text-right align-top tabular-nums'
 
-/** Sel "Exhibitor" — nama, status tautan, catatan anomali, dan afordans edit baris CIPL. */
-function ExhibitorCell({
-  peserta,
-  rowSpan,
-  onEdit,
-}: {
-  peserta: ManifestPeserta
-  rowSpan: number
-  onEdit: (peserta: ManifestPeserta) => void
-}) {
+/** Sel "Exhibitor" — nama, status tautan, dan catatan anomali. */
+function ExhibitorCell({ peserta, rowSpan }: { peserta: ManifestPeserta; rowSpan: number }) {
   return (
     <td className={`${td} min-w-[180px]`} rowSpan={rowSpan}>
-      <ExhibitorIdentity peserta={peserta} onEdit={onEdit} />
+      <ExhibitorIdentity peserta={peserta} />
     </td>
   )
 }
@@ -93,14 +85,12 @@ export function JobManifestSection({
   view,
   invoiceNumber,
   totalAmount,
-  onEditPeserta,
 }: {
   view: ManifestBlockView
   /** No. invoice komersial dokumen (header job / CIPL); null bila belum ada. */
   invoiceNumber: string | null
   /** Total nilai seluruh barang di dokumen; null bila belum ada datanya. */
   totalAmount: number | null
-  onEditPeserta: (peserta: ManifestPeserta) => void
 }) {
   const [mode, setMode] = useState<'ringkas' | 'manifest'>('ringkas')
   const inward = view.inward
@@ -157,7 +147,7 @@ export function JobManifestSection({
             </td>
           )}
           {firstPesertaRow && (
-            <ExhibitorCell peserta={peserta} rowSpan={pesertaRowSpan} onEdit={onEditPeserta} />
+            <ExhibitorCell peserta={peserta} rowSpan={pesertaRowSpan} />
           )}
           {firstPesertaRow && (
             <td className={`${tdNum}`} rowSpan={pesertaRowSpan}>
@@ -218,7 +208,7 @@ export function JobManifestSection({
     <section className="card border-orange-200 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+          <p className="text-xs font-medium tracking-wide text-slate-500">
             No. Invoice{' '}
             <span className="text-lg font-bold text-slate-900 normal-case tracking-normal">
               {invoiceNumber ?? '—'}
@@ -235,7 +225,7 @@ export function JobManifestSection({
               ] as const
             ).map(([title, value, isAmount]) => (
               <div key={title} className="text-center">
-                <dt className="flex items-center justify-center gap-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+                <dt className="flex items-center justify-center gap-1 text-xs font-medium tracking-wide text-slate-500">
                   {isAmount ? <DollarSign size={13} aria-hidden="true" /> : null}
                   {title}
                 </dt>
@@ -259,27 +249,35 @@ export function JobManifestSection({
       ))}
 
       <div className="mt-5 flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-slate-800">Manifest</p>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={mode === 'manifest'}
-          title={mode === 'manifest' ? 'kembali' : 'beralih ke tabel'}
-          onClick={() => setMode(mode === 'manifest' ? 'ringkas' : 'manifest')}
-          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-            mode === 'manifest' ? 'bg-orange-600' : 'bg-orange-200'
-          }`}
-        >
-          <span
-            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-              mode === 'manifest' ? 'translate-x-4' : 'translate-x-0.5'
+        <p className="text-base font-semibold text-slate-800">Manifest</p>
+        <div className="group relative">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={mode === 'manifest'}
+            aria-label="Tampilan tabel manifest"
+            onClick={() => setMode(mode === 'manifest' ? 'ringkas' : 'manifest')}
+            className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+              mode === 'manifest' ? 'bg-orange-600' : 'bg-orange-200'
             }`}
-          />
-        </button>
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                mode === 'manifest' ? 'translate-x-4' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+          <span
+            role="tooltip"
+            className="pointer-events-none absolute right-0 bottom-[calc(100%+6px)] rounded-md bg-slate-800 px-2 py-1 text-xs font-medium whitespace-nowrap text-white opacity-0 transition-opacity duration-150 delay-200 group-focus-within:opacity-100 group-hover:opacity-100"
+          >
+            {mode === 'manifest' ? 'kembali' : 'beralih ke tabel'}
+          </span>
+        </div>
       </div>
       {mode === 'ringkas' ? (
         <div className="mt-3">
-          <ExhibitorSummaryTable peserta={view.peserta} onEdit={onEditPeserta} />
+          <ExhibitorSummaryTable peserta={view.peserta} />
         </div>
       ) : (
       <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200">

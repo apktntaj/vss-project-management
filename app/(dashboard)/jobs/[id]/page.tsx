@@ -22,7 +22,6 @@ import {
   listEventExhibitors,
   type Exhibitor,
   type Job,
-  type JobCiplLine,
 } from '@/lib/data-client'
 import { bcDocumentLabels, transportModeLabels, type BcDocumentKind } from '@/domain/job/types'
 import { buildManifestView } from '@/lib/manifest-view'
@@ -34,7 +33,6 @@ import {
   JobCustomsCard,
 } from '@/components/job-detail-cards'
 import { JobManifestSection } from '@/components/job-manifest-section'
-import { CiplLineModal } from '@/components/cipl-line-modal'
 import { CiplEntryModal } from '@/components/cipl-entry-modal'
 import {
   JobDocumentEditorDialog,
@@ -183,7 +181,6 @@ export default function JobDetail({ params }: { params: { id: string } }) {
     }
   }, [params.id])
   const [exhibitors, setExhibitors] = useState<Exhibitor[]>([])
-  const [lineTarget, setLineTarget] = useState<JobCiplLine | null>(null)
   const [ciplEntryOpen, setCiplEntryOpen] = useState(false)
   // Dialog dokumen sumber yang sedang diedit: INVOICE (tab CIPL) atau TRANSPORT (tab Transport).
   const [documentEdit, setDocumentEdit] = useState<EditableJobDocument | null>(null)
@@ -418,7 +415,6 @@ export default function JobDetail({ params }: { params: { id: string } }) {
                   view={buildManifestView(job)}
                   invoiceNumber={job.commercialInvoiceNumber || job.ciplDocument?.nomor || null}
                   totalAmount={job.ciplDocument ? totalDokumen(job.ciplDocument).nilaiTotal : null}
-                  onEditPeserta={(peserta) => setLineTarget(peserta.line)}
                 />
               )}
               {job.kind !== 'LOCAL' && <JobLartasCard job={job} onToast={toast} />}
@@ -503,18 +499,6 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           )}
         </TabsContent>
       </Tabs>
-      {lineTarget && (
-        <CiplLineModal
-          job={job}
-          line={lineTarget}
-          eventExhibitors={exhibitors}
-          onClose={() => setLineTarget(null)}
-          onSaved={(savedJob) => {
-            setJob(savedJob)
-            setLineTarget(null)
-          }}
-        />
-      )}
       {ciplEntryOpen && (
         <CiplEntryModal
           job={job}
