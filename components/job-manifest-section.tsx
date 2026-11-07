@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
-import { Ship, TriangleAlert } from 'lucide-react'
+import { DollarSign, Ship, TriangleAlert } from 'lucide-react'
 
 import {
   containerLabel,
@@ -218,19 +218,27 @@ export function JobManifestSection({
     <section className="card border-orange-200 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="eyebrow">No. Invoice {invoiceNumber ?? '—'}</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            No. Invoice{' '}
+            <span className="font-semibold text-slate-900 normal-case tracking-normal">
+              {invoiceNumber ?? '—'}
+            </span>
+          </p>
           <dl className="mt-3 grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-5">
             {(
               [
-                ['Exhibitor', numberID(view.peserta.length)],
-                ['Total amount', totalAmount === null ? '—' : numberID(totalAmount)],
-                ['Total package', numberID(view.totals.totalCount)],
-                ['Total CBM', numberID(view.totals.volumeCbm)],
-                ['Total berat (Kg)', numberID(view.totals.weightKg)],
+                ['Exhibitor', numberID(view.peserta.length), false],
+                ['Total package', numberID(view.totals.totalCount), false],
+                ['Total CBM', numberID(view.totals.volumeCbm), false],
+                ['Total berat (Kg)', numberID(view.totals.weightKg), false],
+                ['Total amount', totalAmount === null ? '—' : numberID(totalAmount), true],
               ] as const
-            ).map(([title, value]) => (
+            ).map(([title, value, isAmount]) => (
               <div key={title}>
-                <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">{title}</dt>
+                <dt className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+                  {isAmount ? <DollarSign size={13} aria-hidden="true" /> : null}
+                  {title}
+                </dt>
                 <dd className="mt-1 text-2xl font-bold tabular-nums text-slate-900">{value}</dd>
               </div>
             ))}
