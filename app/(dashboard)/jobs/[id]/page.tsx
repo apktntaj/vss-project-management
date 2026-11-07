@@ -10,7 +10,11 @@ import {
   FileSpreadsheet,
   MoreVertical,
   Pencil,
+  PackageOpen,
+  ReceiptText,
+  Ship,
   Trash2,
+  type LucideIcon,
 } from 'lucide-react'
 import {
   getJob,
@@ -33,9 +37,12 @@ import { JobManifestSection } from '@/components/job-manifest-section'
 import { JobManifestEditorModal } from '@/components/job-manifest-editor-modal'
 import { CiplLineModal } from '@/components/cipl-line-modal'
 import { CiplEntryModal } from '@/components/cipl-entry-modal'
-import { JobDocumentEditorDialog } from '@/components/job-document-editor-dialog'
+import {
+  JobDocumentEditorDialog,
+  type EditableJobDocument,
+} from '@/components/job-document-editor-dialog'
 import { JobLartasCard } from '@/components/job-lartas-card'
-import { JobPartyInvoiceCard } from '@/components/job-party-invoice-card'
+import { JobBillingDialog, JobPartyInvoiceCard } from '@/components/job-party-invoice-card'
 import { JobContextSummary } from '@/components/job-context-summary'
 import { JobDetailSkeleton } from '@/components/loading-skeletons'
 import { JobReadinessBar } from '@/components/job-readiness-bar'
@@ -46,6 +53,7 @@ import { downloadCustomsWorkbook, label } from '@/components/job-row'
 import { jobContext } from '@/lib/job-context'
 import { compareInvoiceWithTransport, type DocumentComparison } from '@/lib/document-comparison'
 import { jobLabel } from '@/domain/job/numbering'
+import { hasTabData, tabActionLabel } from '@/domain/job/tab-data'
 import type { JobDetailTab, JobReadinessTarget } from '@/lib/job-readiness'
 import { StatusBadge } from '@/components/status-badge'
 
@@ -55,6 +63,24 @@ const toast = (message: string, tone: 'info' | 'error' = 'info') =>
       detail: { message, tone: tone === 'error' ? 'error' : 'success' },
     }),
   )
+
+const emptyTabIcons = {
+  muatan: PackageOpen,
+  transport: Ship,
+  billing: ReceiptText,
+} satisfies Record<JobDetailTab, LucideIcon>
+
+function EmptyTabState({ tab }: { tab: JobDetailTab }) {
+  const Icon = emptyTabIcons[tab]
+  return (
+    <section className="card flex flex-col items-center px-6 py-12 text-center">
+      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-50 text-orange-600 ring-8 ring-orange-50/60">
+        <Icon size={26} strokeWidth={1.75} aria-hidden="true" />
+      </span>
+      <p className="mt-4 text-sm font-medium text-slate-500">Belum ada data</p>
+    </section>
+  )
+}
 
 function Info({ label: title, value }: { label: string; value: string | null | undefined }) {
   return (
@@ -161,7 +187,9 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   const [manifestModalOpen, setManifestModalOpen] = useState(false)
   const [lineTarget, setLineTarget] = useState<JobCiplLine | null>(null)
   const [ciplEntryOpen, setCiplEntryOpen] = useState(false)
-  const [transportOpen, setTransportOpen] = useState(false)
+  // Dialog dokumen sumber yang sedang diedit: INVOICE (tab Muatan) atau TRANSPORT (tab Transport).
+  const [documentEdit, setDocumentEdit] = useState<EditableJobDocument | null>(null)
+  const [billingOpen, setBillingOpen] = useState(false)
   const [headerOpen, setHeaderOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null)
@@ -198,6 +226,12 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   }
 
   const context = job ? jobContext(job) : null
+  // Tombol di ujung tab membuka form sesuai tab aktif.
+  function openTabEditor() {
+    if (tab === 'billing') setBillingOpen(true)
+    else if (tab === 'transport') setDocumentEdit('TRANSPORT')
+    else setCiplEntryOpen(true)
+  }
   const eventId = context?.kind === 'EVENT' ? context.eventId : null
   // Exhibitor event: pilihan pihak & penautan baris CIPL. Dimuat ulang saat versi job berubah
   // karena menyimpan baris CIPL bisa mendaftarkan exhibitor baru. Hanya untuk konteks EVENT.
@@ -352,7 +386,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
       </div>
       <JobReadinessBar job={job} activeTab={tab} onNavigate={navigateReadiness} />
       <Tabs value={tab} onValueChange={(value) => selectTab(value as JobDetailTab)}>
-        <div className="sticky top-0 z-30 -mx-1 border-b bg-white/95 px-1 py-2 backdrop-blur">
+        <div className="sticky top-0 z-30 -mx-1 flex items-center justify-between gap-3 border-b bg-white/95 px-1 py-2 backdrop-blur">
           <TabsList className="h-auto gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
             {(
               [
@@ -370,82 +404,105 @@ export default function JobDetail({ params }: { params: { id: string } }) {
               </TabsTrigger>
             ))}
           </TabsList>
+          <button
+            type="button"
+            onClick={openTabEditor}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-orange-50 hover:text-orange-700"
+          >
+            <Pencil size={14} aria-hidden="true" /> {tabActionLabel(tab, job)}
+          </button>
         </div>
         <TabsContent value="muatan" className="space-y-6">
-          <JobCiplStatusCard job={job} onScan={() => setCiplEntryOpen(true)} />
-          {isEvent && (
-            <JobManifestSection
-              view={buildManifestView(job)}
-              onEditManifest={() => setManifestModalOpen(true)}
-              onEditPeserta={(peserta) => setLineTarget(peserta.line)}
-            />
+          {hasTabData('muatan', job) ? (
+            <>
+              <JobCiplStatusCard job={job} onScan={() => setDocumentEdit('INVOICE')} />
+              {isEvent && (
+                <JobManifestSection
+                  view={buildManifestView(job)}
+                  onEditManifest={() => setManifestModalOpen(true)}
+                  onEditPeserta={(peserta) => setLineTarget(peserta.line)}
+                />
+              )}
+              {job.kind !== 'LOCAL' && <JobLartasCard job={job} onToast={toast} />}
+              <section className="card p-5">
+                <h2 className="font-semibold">Details Barang</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Diekstrak dari invoice; nanti bersumber dari CIPL.
+                </p>
+                <p className="mt-3 text-sm font-medium text-slate-800">
+                  No. Invoice: {details.invoiceNumber || '-'}
+                </p>
+                {invoiceItems.length ? (
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="text-slate-500">
+                        <tr>
+                          <th className="pb-2 pr-3">Barang</th>
+                          <th className="pb-2 pr-3">HS</th>
+                          <th className="pb-2 text-right">Harga</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {invoiceItems.map((item, index) => (
+                          <tr key={`${item.description}-${index}`} className="border-t">
+                            <td className="py-2 pr-3 text-slate-700">{item.description}</td>
+                            <td className="py-2 pr-3 text-slate-600">{item.hsCode || '-'}</td>
+                            <td className="py-2 text-right text-slate-700">
+                              {item.currency || ''} {item.lineTotal ?? item.unitPrice ?? '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-500">
+                    Belum ada baris barang yang berhasil diekstrak.
+                  </p>
+                )}
+              </section>
+            </>
+          ) : (
+            <EmptyTabState tab="muatan" />
           )}
-          {job.kind !== 'LOCAL' && <JobLartasCard job={job} onToast={toast} />}
-          <section className="card p-5">
-            <h2 className="font-semibold">Details Barang</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Diekstrak dari invoice; nanti bersumber dari CIPL.
-            </p>
-            <p className="mt-3 text-sm font-medium text-slate-800">
-              No. Invoice: {details.invoiceNumber || '-'}
-            </p>
-            {invoiceItems.length ? (
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="text-slate-500">
-                    <tr>
-                      <th className="pb-2 pr-3">Barang</th>
-                      <th className="pb-2 pr-3">HS</th>
-                      <th className="pb-2 text-right">Harga</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {invoiceItems.map((item, index) => (
-                      <tr key={`${item.description}-${index}`} className="border-t">
-                        <td className="py-2 pr-3 text-slate-700">{item.description}</td>
-                        <td className="py-2 pr-3 text-slate-600">{item.hsCode || '-'}</td>
-                        <td className="py-2 text-right text-slate-700">
-                          {item.currency || ''} {item.lineTotal ?? item.unitPrice ?? '-'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="mt-2 text-sm text-slate-500">
-                Belum ada baris barang yang berhasil diekstrak.
-              </p>
-            )}
-          </section>
         </TabsContent>
         <TabsContent value="transport" className="space-y-6">
-          <div className="grid gap-6 xl:grid-cols-2">
-            <JobJourneyCard job={job} onSaved={setJob} />
-            <JobLogisticsCard job={job} onSaved={setJob} />
-          </div>
-          <section className="card p-5">
-            <h2 className="font-semibold">Pihak pada dokumen angkut</h2>
-            <dl className="mt-4 grid gap-5 sm:grid-cols-2">
-              <Info label="Shipper" value={transport?.shipper?.name} />
-              <Info label="Consignee" value={transport?.consignee?.name} />
-              <Info label="Notify party" value={transport?.notifyParty?.name} />
-              <Info label="PIC" value={job.assignedTo?.name} />
-            </dl>
-            <button
-              type="button"
-              className="btn-secondary mt-4"
-              onClick={() => setTransportOpen(true)}
-            >
-              Scan / edit B/L atau AWB
-            </button>
-          </section>
-          {documentComparison && <DocumentComparisonSummary comparison={documentComparison} />}
-          <JobCustomsCard job={job} onSaved={setJob} />
-          <JobAttachmentsCard job={job} />
+          {hasTabData('transport', job) ? (
+            <>
+              <div className="grid gap-6 xl:grid-cols-2">
+                <JobJourneyCard job={job} onSaved={setJob} />
+                <JobLogisticsCard job={job} onSaved={setJob} />
+              </div>
+              <section className="card p-5">
+                <h2 className="font-semibold">Pihak pada dokumen angkut</h2>
+                <dl className="mt-4 grid gap-5 sm:grid-cols-2">
+                  <Info label="Shipper" value={transport?.shipper?.name} />
+                  <Info label="Consignee" value={transport?.consignee?.name} />
+                  <Info label="Notify party" value={transport?.notifyParty?.name} />
+                  <Info label="PIC" value={job.assignedTo?.name} />
+                </dl>
+                <button
+                  type="button"
+                  className="btn-secondary mt-4"
+                  onClick={() => setDocumentEdit('TRANSPORT')}
+                >
+                  Scan / edit B/L atau AWB
+                </button>
+              </section>
+              {documentComparison && <DocumentComparisonSummary comparison={documentComparison} />}
+              <JobCustomsCard job={job} onSaved={setJob} />
+              <JobAttachmentsCard job={job} />
+            </>
+          ) : (
+            <EmptyTabState tab="transport" />
+          )}
         </TabsContent>
         <TabsContent value="billing">
-          <JobPartyInvoiceCard job={job} exhibitors={isEvent ? exhibitors : null} onSaved={setJob} />
+          {hasTabData('billing', job) ? (
+            <JobPartyInvoiceCard job={job} exhibitors={isEvent ? exhibitors : null} onSaved={setJob} />
+          ) : (
+            <EmptyTabState tab="billing" />
+          )}
         </TabsContent>
       </Tabs>
       {manifestModalOpen && (
@@ -483,11 +540,20 @@ export default function JobDetail({ params }: { params: { id: string } }) {
       )}
       <JobDocumentEditorDialog
         job={job}
-        kind="TRANSPORT"
-        open={transportOpen}
-        onOpenChange={setTransportOpen}
+        kind={documentEdit ?? 'TRANSPORT'}
+        open={documentEdit !== null}
+        onOpenChange={(open) => {
+          if (!open) setDocumentEdit(null)
+        }}
         onSaved={setJob}
         onToast={toast}
+      />
+      <JobBillingDialog
+        job={job}
+        exhibitors={isEvent ? exhibitors : null}
+        open={billingOpen}
+        onClose={() => setBillingOpen(false)}
+        onSaved={setJob}
       />
       <JobHeaderDialog
         job={job}

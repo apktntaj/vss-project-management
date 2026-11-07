@@ -308,3 +308,66 @@ export function JobPartyInvoiceCard({
     </section>
   )
 }
+
+/**
+ * Dialog ubah Billing (tombol di ujung tab). Dua form berdiri sendiri: pihak yang ditagih dan tagihan.
+ * Dialog tetap terbuka setelah satu form tersimpan supaya isian form lain tidak hilang.
+ */
+export function JobBillingDialog({
+  job,
+  exhibitors,
+  open,
+  onClose,
+  onSaved,
+}: {
+  job: Job
+  exhibitors: Exhibitor[] | null
+  open: boolean
+  onClose: () => void
+  onSaved: (job: Job) => void
+}) {
+  const canEditBilling = useCanEditBilling()
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (keyEvent: KeyboardEvent) => {
+      if (keyEvent.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open, onClose])
+  if (!open) return null
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      role="presentation"
+      onMouseDown={(mouseEvent) => {
+        if (mouseEvent.target === mouseEvent.currentTarget) onClose()
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="job-billing-title"
+        className="max-h-full w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
+      >
+        <h2 id="job-billing-title" className="text-lg font-bold">
+          Ubah billing
+        </h2>
+        <section className="mt-4">
+          <h3 className="flex items-center gap-2 font-semibold">
+            <UserRound size={18} className="text-orange-600" aria-hidden="true" /> Pihak
+          </h3>
+          <PartyEditor job={job} exhibitors={exhibitors} onSaved={onSaved} onCancel={onClose} />
+        </section>
+        {canEditBilling && (
+          <section className="mt-6 border-t pt-4">
+            <h3 className="flex items-center gap-2 font-semibold">
+              <Receipt size={18} className="text-orange-600" aria-hidden="true" /> Tagihan
+            </h3>
+            <InvoiceEditor job={job} onSaved={onSaved} onCancel={onClose} />
+          </section>
+        )}
+      </div>
+    </div>
+  )
+}
