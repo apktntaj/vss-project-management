@@ -1,11 +1,12 @@
 'use client'
 
 // Tabel daftar job sederhana untuk /jobs, mengikuti gaya tabel di halaman events: satu baris teks
-// per job, tautan ke detail, dan semua aksi (upload, edit dokumen, unduh BC) di menu titik tiga.
+// per job, tautan ke detail, dan aksi unduh BC di menu titik tiga.
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Download, ExternalLink, FileText, MoreVertical, Ship, Upload } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Download, MoreVertical } from 'lucide-react'
 
 import { getOperationalDetails, type Job } from '@/lib/data-client'
 import {
@@ -17,8 +18,6 @@ import { ciplStatusText, deriveCiplStatus, type CiplStatus } from '@/domain/job/
 import { jobJenisKey, jobJenisLabel } from '@/lib/job-jenis'
 import type { JobListEvent } from '@/lib/job-list'
 import { StatusBadge } from '@/components/status-badge'
-import type { EditableJobDocument } from '@/components/job-document-editor-dialog'
-import { JobUploadDialog } from '@/components/job-upload-dialog'
 import { date, label } from '@/components/job-row'
 import { jobLabel } from '@/domain/job/numbering'
 
@@ -58,10 +57,7 @@ const th = 'sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2'
 type JobTableProps = {
   jobs: Job[]
   eventById: ReadonlyMap<string, JobListEvent>
-  onJobUpdated: (job: Job) => void
-  onToast: (message: string, tone?: 'info' | 'error') => void
   onGenerate: (job: Job, documentType: BcDocumentKind) => void
-  onEditDocument: (job: Job, kind: EditableJobDocument) => void
 }
 
 export function JobTable({ jobs, eventById, ...handlers }: JobTableProps) {
@@ -114,15 +110,13 @@ function JobTableRow({
   job,
   index,
   event,
-  onJobUpdated,
-  onToast,
   onGenerate,
-  onEditDocument,
 }: Omit<JobTableProps, 'jobs' | 'eventById'> & {
   job: Job
   index: number
   event: JobListEvent | undefined
 }) {
+  const router = useRouter()
   const operational = getOperationalDetails(job)
   const cipl = deriveCiplStatus(job)
   const exhibitors = exhibitorNames(job)
@@ -136,7 +130,14 @@ function JobTableRow({
     .join(' · ')
 
   return (
-    <tr className="border-b border-slate-100 odd:bg-slate-50/70 last:border-0 hover:bg-orange-50/40">
+    <tr
+      onClick={(clickEvent) => {
+        // Klik pada link, tombol, atau menu aksi punya perilakunya sendiri.
+        if ((clickEvent.target as HTMLElement).closest('a, button, [role="menu"], [role="presentation"]')) return
+        router.push(`/jobs/${job.id}`)
+      }}
+      className="cursor-pointer border-b border-slate-100 odd:bg-slate-50/70 last:border-0 hover:bg-orange-50/40"
+    >
       <td className="px-2 py-3 text-right align-top tabular-nums text-slate-400">{index + 1}</td>
       <td className="px-2 py-2 align-top">
         <Link
@@ -216,10 +217,7 @@ function JobTableRow({
       <td className="px-2 py-2 text-right align-top">
         <JobRowMenu
           job={job}
-          onJobUpdated={onJobUpdated}
-          onToast={onToast}
           onGenerate={onGenerate}
-          onEditDocument={onEditDocument}
         />
       </td>
     </tr>
@@ -228,19 +226,17 @@ function JobTableRow({
 
 function JobRowMenu({
   job,
-  onJobUpdated,
-  onToast,
   onGenerate,
-  onEditDocument,
 }: Omit<JobTableProps, 'jobs' | 'eventById'> & { job: Job }) {
   // Menu di-anchor fixed dari getBoundingClientRect agar tidak terpotong wadah tabel yang overflow.
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null)
-  const [uploadOpen, setUploadOpen] = useState(false)
   const customs = getOperationalDetails(job).customs
   const applicableBc = (Object.keys(customs) as BcDocumentKind[]).filter(
     (key) => customs[key].applicable,
   )
   const name = jobLabel(job)
+  // Tanpa dokumen BC yang berlaku tidak ada aksi untuk ditampilkan.
+  if (!applicableBc.length) return null
 
   const item =
     'flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50'
@@ -279,34 +275,6 @@ function JobRowMenu({
             className="fixed z-50 w-52 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg"
             style={{ top: menuAnchor.top, left: menuAnchor.left }}
           >
-            <Link role="menuitem" href={`/jobs/${job.id}`} className={item}>
-              <ExternalLink size={15} /> Buka detail
-            </Link>
-            <button
-              role="menuitem"
-              type="button"
-              className={item}
-              onClick={run(() => setUploadOpen(true))}
-            >
-              <Upload size={15} /> Upload dokumen
-            </button>
-            <button
-              role="menuitem"
-              type="button"
-              className={item}
-              onClick={run(() => onEditDocument(job, 'TRANSPORT'))}
-            >
-              <Ship size={15} /> Edit B/L · AWB
-            </button>
-            <button
-              role="menuitem"
-              type="button"
-              className={item}
-              onClick={run(() => onEditDocument(job, 'INVOICE'))}
-            >
-              <FileText size={15} /> Edit invoice
-            </button>
-            {applicableBc.length ? <div className="my-1 border-t border-slate-100" /> : null}
             {applicableBc.map((key) => (
               <button
                 key={key}
@@ -321,13 +289,6 @@ function JobRowMenu({
           </div>
         </>
       )}
-      <JobUploadDialog
-        job={job}
-        open={uploadOpen}
-        onOpenChange={setUploadOpen}
-        onJobUpdated={onJobUpdated}
-        onToast={onToast}
-      />
     </>
   )
 }

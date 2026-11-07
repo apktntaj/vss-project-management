@@ -13,10 +13,6 @@ import {
   type JobListEvent,
   type JobTableFilters,
 } from '@/lib/job-list'
-import {
-  JobDocumentEditorDialog,
-  type EditableJobDocument,
-} from '@/components/job-document-editor-dialog'
 import { Button } from '@/components/ui/button'
 import { NewJobDialog } from '@/components/new-job-dialog'
 import { JobCreateWizard } from '@/components/job-create-wizard'
@@ -56,10 +52,6 @@ export default function JobsPage() {
   const [filters, setFilters] = useState<JobTableFilters>(emptyJobTableFilters)
   const [showNewJob, setShowNewJob] = useState(false)
   const [wizardOpen, setWizardOpen] = useState(false)
-  const [editingDocument, setEditingDocument] = useState<{
-    job: Job
-    kind: EditableJobDocument
-  } | null>(null)
   const [toast, setToast] = useState<{ message: string; tone: 'info' | 'error' } | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -92,9 +84,6 @@ export default function JobsPage() {
   }, [toast])
 
   const showToast = (message: string, tone: 'info' | 'error' = 'info') => setToast({ message, tone })
-  // Ganti job di daftar dengan versi terbaru dari server (sesudah unggah/edit dokumen).
-  const handleJobUpdated = (updated: Job) =>
-    setJobs((current) => current.map((job) => (job.id === updated.id ? updated : job)))
   async function generateCustomsWorkbook(job: Job, documentType: BcDocumentKind) {
     try {
       await downloadCustomsWorkbook(job, documentType)
@@ -239,10 +228,7 @@ export default function JobsPage() {
             <JobTable
               jobs={rows}
               eventById={eventById}
-              onJobUpdated={handleJobUpdated}
-              onToast={showToast}
               onGenerate={generateCustomsWorkbook}
-              onEditDocument={(selectedJob, kind) => setEditingDocument({ job: selectedJob, kind })}
             />
           ) : (
             <section className="card p-12 text-center">
@@ -280,16 +266,6 @@ export default function JobsPage() {
           onCancel={() => setWizardOpen(false)}
         />
       )}
-      <JobDocumentEditorDialog
-        job={editingDocument?.job ?? null}
-        kind={editingDocument?.kind ?? 'INVOICE'}
-        open={Boolean(editingDocument)}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) setEditingDocument(null)
-        }}
-        onSaved={handleJobUpdated}
-        onToast={showToast}
-      />
       {toast && (
         <div
           role="status"
