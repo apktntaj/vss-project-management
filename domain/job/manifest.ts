@@ -76,7 +76,10 @@ export const koliSchema = z.object({
   label: optionalText,
   dimension: koliDimensionSchema.nullable(),
   volumeCbm: nonNegative,
+  /** Berat GROSS koli (kg). Nama lama dipertahankan agar data tersimpan tetap terbaca. */
   weightKg: nonNegative,
+  /** Berat NET koli (kg); absen pada data lama. */
+  netWeightKg: nonNegative.optional(),
   /** Satuan/jenis kemasan koli ini (CARTON, WOODEN CASE, PALLET, KOLI); null/absen bila tak tercantum. */
   satuanKemasan: optionalText.optional(),
 })
@@ -101,6 +104,10 @@ export const koliCollectionSchema = z
     totalCount: z.number().int().min(0),
     /** Koli tanpa pelindung (kolom Bare Case pada manifest ALLPACK); null bila tak tercantum. */
     bareCaseCount: z.number().int().min(0).nullable().default(null),
+    /** Total berat gross / net yang disebut dokumen atau diketik operator; null/absen = jumlahkan rincian. */
+    totalWeightKg: nonNegative.optional(),
+    totalNetWeightKg: nonNegative.optional(),
+    totalVolumeCbm: nonNegative.optional(),
     details: z.array(koliSchema),
   })
   .refine((collection) => koliTersendiri(collection.details).length <= collection.totalCount, {
@@ -200,19 +207,40 @@ export function countKoliFromLabels(details: ReadonlyArray<Koli>): number {
 }
 
 export function summarizeKoli(
-  collection: Pick<KoliCollection, 'totalCount' | 'details'>,
+  collection: Pick<KoliCollection, 'totalCount' | 'details'> &
+    Partial<Pick<KoliCollection, 'totalWeightKg' | 'totalVolumeCbm'>>,
 ): KoliSummary {
   return {
     totalCount: collection.totalCount,
     detailedCount: collection.details.length,
-    weightKg: collection.details.reduce((sum, koli) => sum + (koli.weightKg ?? 0), 0),
-    volumeCbm: collection.details.reduce((sum, koli) => sum + (koli.volumeCbm ?? 0), 0),
+    // Total gross yang disebut dokumen / diketik operator menang atas penjumlahan rincian.
+    weightKg:
+      collection.totalWeightKg ??
+      collection.details.reduce((sum, koli) => sum + (koli.weightKg ?? 0), 0),
+    volumeCbm:
+      collection.totalVolumeCbm ??
+      collection.details.reduce((sum, koli) => sum + (koli.volumeCbm ?? 0), 0),
   }
+}
+
+/** CBM dari dimensi koli (cm): P × L × T / 1.000.000, dibulatkan 3 desimal; null bila ada dimensi kosong/nol. */
+export function cbmFromDimension(
+  lengthCm: number | null,
+  widthCm: number | null,
+  heightCm: number | null,
+): number | null {
+  if (!lengthCm || !widthCm || !heightCm) return null
+  return Math.round(((lengthCm * widthCm * heightCm) / 1_000_000) * 1000) / 1000
 }
 
 /** Gabungan koli beberapa peserta untuk header blok manifest (total PKG/KGM/CBM). */
 export function summarizeKoliCollections(
-  collections: ReadonlyArray<Pick<KoliCollection, 'totalCount' | 'details'> | null | undefined>,
+  collections: ReadonlyArray<
+    | (Pick<KoliCollection, 'totalCount' | 'details'> &
+        Partial<Pick<KoliCollection, 'totalWeightKg' | 'totalVolumeCbm'>>)
+    | null
+    | undefined
+  >,
 ): KoliSummary {
   return collections
     .map((collection) => summarizeKoli(collection ?? { totalCount: 0, details: [] }))

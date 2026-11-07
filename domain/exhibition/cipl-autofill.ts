@@ -109,6 +109,12 @@ function mergeEntries(left: CiplScanEntry, right: CiplScanEntry): CiplScanEntry 
             ? null
             : (left.logistics.koli.bareCaseCount ?? 0) + (right.logistics.koli.bareCaseCount ?? 0),
         totalCount: reconcileKoliTotal(details, statedTotalCount),
+        totalWeightKg: sumStated(left.logistics.koli.totalWeightKg, right.logistics.koli.totalWeightKg),
+        totalNetWeightKg: sumStated(
+          left.logistics.koli.totalNetWeightKg,
+          right.logistics.koli.totalNetWeightKg,
+        ),
+        totalVolumeCbm: sumStated(left.logistics.koli.totalVolumeCbm, right.logistics.koli.totalVolumeCbm),
       },
       notes: [...left.logistics.notes, ...right.logistics.notes],
     },

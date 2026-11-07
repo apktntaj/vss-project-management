@@ -288,7 +288,15 @@ menempel ke entri; `RefKoli` tidak ada; koli tidak punya berat net; disposisi ma
 1. ✅ `domain/exhibition/cipl-document.ts` — tipe + Zod `CiplDocument`/`EntriExhibitor`/
    `BarisBarang`/`DisposisiBarang`/`RefKoli` + test terdaftar di script `domain:test`
    (`f1fa8d9`, ditambah `buildCiplDocument` assembler di `dd88b8e`).
-2. ⬜ `koliSchema` + `beratNetKg` (gross/net berdampingan) di `domain/job/manifest.ts`.
+2. ✅ Berat gross/net di `domain/job/manifest.ts`: `koliSchema.weightKg` tetap berarti GROSS (data lama
+   tetap terbaca), ditambah `netWeightKg`; `koliCollectionSchema` mendapat `totalWeightKg` /
+   `totalNetWeightKg` / `totalVolumeCbm` (total yang disebut dokumen; kosong = jumlahkan rincian).
+   Scan AI belum mengisi net dan total. Form CIPL selalu menghitung total dari rincian case
+   (field total mati; total dokumen lama tidak dibawa saat edit lewat form).
+   Remark per barang di form: toggle dua pilihan (non-disposal → `RE_EXPORT`, disposal →
+   `DISPOSED`), bawaan non-disposal; enum empat nilai tetap, `GIVE_AWAY` hanya dari scan dan
+   "tidak disebut" dari scan diterima sebagai bawaan non-disposal. Total price barang: kosong =
+   Qty × Price (2 desimal).
 3. ✅ `/api/scan-cipl` menghasilkan kepala dokumen + baris barang + `itemsBelumTerpetakan`
    selain baris exhibitor/koli (`dd88b8e`); wizard merakit `CiplDocument` saat Selesai dan
    menyimpannya sebagai `job.manifestCiplDocument` (berdampingan dengan

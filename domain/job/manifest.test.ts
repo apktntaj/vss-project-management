@@ -6,6 +6,7 @@ import {
   inwardManifestSchema,
   jobReturnSchema,
   exhibitorLogisticsSchema,
+  cbmFromDimension,
   summarizeKoli,
   summarizeKoliCollections,
   transportDocumentSchema,
@@ -140,5 +141,35 @@ assert.equal(containerLabel({ containerNumber: 'COAU6464738840', size: 'K40', se
 
 // BC 2.7 masuk set dokumen BC operasional.
 assert.ok(bcDocumentKinds.includes('BC_2_7'))
+
+// Total gross yang diketik/dicantumkan dokumen menang atas jumlah rincian; tanpa itu rincian dijumlahkan.
+const weighted = {
+  totalCount: 2,
+  details: [
+    { label: 'PKG 1', dimension: null, volumeCbm: null, weightKg: 40, netWeightKg: 35 },
+    { label: 'PKG 2', dimension: null, volumeCbm: null, weightKg: 60, netWeightKg: 55 },
+  ],
+}
+assert.equal(summarizeKoli(weighted).weightKg, 100)
+assert.equal(summarizeKoli({ ...weighted, totalWeightKg: 120 }).weightKg, 120)
+assert.equal(summarizeKoli({ ...weighted, totalWeightKg: null }).weightKg, 100)
+assert.equal(summarizeKoli({ ...weighted, details: [{ ...weighted.details[0], volumeCbm: 1.5 }] }).volumeCbm, 1.5)
+assert.equal(summarizeKoli({ ...weighted, totalVolumeCbm: 3 }).volumeCbm, 3)
+// Data lama tanpa kolom net/total tetap lolos skema.
+assert.equal(
+  exhibitorLogisticsSchema.safeParse({
+    hall: null,
+    booth: null,
+    koli: { totalCount: 1, details: [{ label: 'PKG 1', dimension: null, volumeCbm: null, weightKg: 10 }] },
+    notes: [],
+  }).success,
+  true,
+)
+
+// Saran CBM: P × L × T / 1.000.000 (3 desimal); dimensi kosong/nol = tidak ada saran.
+assert.equal(cbmFromDimension(100, 50, 25), 0.125)
+assert.equal(cbmFromDimension(120.5, 80, 90), 0.868)
+assert.equal(cbmFromDimension(100, 50, null), null)
+assert.equal(cbmFromDimension(100, 0, 25), null)
 
 console.log('job manifest data definitions passed')
