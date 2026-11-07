@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Plus, Trash2, X } from 'lucide-react'
 
 import {
+  cbmFromDimension,
   koliCollectionSchema,
   operationalNoteKindLabels,
   operationalNoteKinds,
@@ -34,10 +35,11 @@ type KoliDraft = {
   heightCm: string
   volumeCbm: string
   weightKg: string
+  netWeightKg: string
 }
 type NoteDraft = { kind: OperationalNoteKind; text: string }
 
-const emptyKoli = (): KoliDraft => ({ label: '', lengthCm: '', widthCm: '', heightCm: '', volumeCbm: '', weightKg: '' })
+const emptyKoli = (): KoliDraft => ({ label: '', lengthCm: '', widthCm: '', heightCm: '', volumeCbm: '', weightKg: '', netWeightKg: '' })
 const emptyNote = (): NoteDraft => ({ kind: 'LAINNYA', text: '' })
 
 const numberOrNull = (value: string) => {
@@ -47,12 +49,14 @@ const numberOrNull = (value: string) => {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : Number.NaN
 }
 
-const computedCbm = (koli: KoliDraft) => {
-  const lengthCm = Number(koli.lengthCm)
-  const widthCm = Number(koli.widthCm)
-  const heightCm = Number(koli.heightCm)
-  if (!lengthCm || !widthCm || !heightCm) return null
-  return Math.round(((lengthCm * widthCm * heightCm) / 1_000_000) * 1000) / 1000
+const computedCbm = (koli: KoliDraft) =>
+  cbmFromDimension(Number(koli.lengthCm), Number(koli.widthCm), Number(koli.heightCm))
+
+/** Total berat gross/net: kosong = null (jumlahkan rincian); bukan angka ≥ 0 = galat. */
+function checkedWeight(value: string): number | null {
+  const parsed = numberOrNull(value)
+  if (Number.isNaN(parsed)) throw new Error('Total berat harus angka ≥ 0.')
+  return parsed
 }
 
 const labelClass = 'label'
@@ -83,6 +87,12 @@ export function CiplLineModal({
   const [hall, setHall] = useState(line.exhibitor?.hall ?? '')
   const [booth, setBooth] = useState(line.exhibitor?.booth ?? '')
   const [totalCount, setTotalCount] = useState(String(line.koli.totalCount))
+  const [totalWeightKg, setTotalWeightKg] = useState(
+    line.koli.totalWeightKg != null ? String(line.koli.totalWeightKg) : '',
+  )
+  const [totalNetWeightKg, setTotalNetWeightKg] = useState(
+    line.koli.totalNetWeightKg != null ? String(line.koli.totalNetWeightKg) : '',
+  )
   const [kolis, setKolis] = useState<KoliDraft[]>(
     line.koli.details.length
       ? line.koli.details.map((koli) => ({
@@ -94,6 +104,7 @@ export function CiplLineModal({
           heightCm: koli.dimension ? String(koli.dimension.heightCm) : '',
           volumeCbm: koli.volumeCbm !== null ? String(koli.volumeCbm) : '',
           weightKg: koli.weightKg !== null ? String(koli.weightKg) : '',
+          netWeightKg: koli.netWeightKg != null ? String(koli.netWeightKg) : '',
         }))
       : [emptyKoli()],
   )
@@ -115,14 +126,15 @@ export function CiplLineModal({
 
   function buildLine() {
     const details = kolis
-      .filter((koli) => [koli.label, koli.lengthCm, koli.widthCm, koli.heightCm, koli.volumeCbm, koli.weightKg].some((value) => value.trim()))
+      .filter((koli) => [koli.label, koli.lengthCm, koli.widthCm, koli.heightCm, koli.volumeCbm, koli.weightKg, koli.netWeightKg].some((value) => value.trim()))
       .map((koli) => {
         const lengthCm = numberOrNull(koli.lengthCm)
         const widthCm = numberOrNull(koli.widthCm)
         const heightCm = numberOrNull(koli.heightCm)
         const volumeCbm = numberOrNull(koli.volumeCbm)
         const weightKg = numberOrNull(koli.weightKg)
-        if ([lengthCm, widthCm, heightCm, volumeCbm, weightKg].includes(Number.NaN)) throw new Error('Ukuran/berat koli harus angka ≥ 0.')
+        const netWeightKg = numberOrNull(koli.netWeightKg)
+        if ([lengthCm, widthCm, heightCm, volumeCbm, weightKg, netWeightKg].includes(Number.NaN)) throw new Error('Ukuran/berat koli harus angka ≥ 0.')
         return {
           ...(koli.id ? { id: koli.id } : {}),
           ...(koli.satuanKemasan !== undefined ? { satuanKemasan: koli.satuanKemasan } : {}),
@@ -133,12 +145,16 @@ export function CiplLineModal({
               : null,
           volumeCbm: volumeCbm ?? computedCbm(koli),
           weightKg,
+          netWeightKg,
         }
       })
     return {
       koli: koliCollectionSchema.parse({
         totalCount: Number(totalCount.trim() || 0),
         bareCaseCount: line.koli.bareCaseCount ?? null,
+        totalWeightKg: checkedWeight(totalWeightKg),
+        totalNetWeightKg: checkedWeight(totalNetWeightKg),
+        totalVolumeCbm: line.koli.totalVolumeCbm ?? null,
         details,
       }),
       notes: notes
@@ -273,6 +289,30 @@ export function CiplLineModal({
                 onChange={(event) => setTotalCount(event.target.value)}
               />
             </label>
+            <label className={labelClass}>
+              Total gross (kg)
+              <input
+                type="number"
+                min="0"
+                step="any"
+                className={inputClass}
+                value={totalWeightKg}
+                placeholder="Jumlah rincian"
+                onChange={(event) => setTotalWeightKg(event.target.value)}
+              />
+            </label>
+            <label className={labelClass}>
+              Total net (kg)
+              <input
+                type="number"
+                min="0"
+                step="any"
+                className={inputClass}
+                value={totalNetWeightKg}
+                placeholder="Jumlah rincian"
+                onChange={(event) => setTotalNetWeightKg(event.target.value)}
+              />
+            </label>
           </div>
 
           <fieldset className="rounded-xl border border-black/10 p-4">
@@ -281,7 +321,7 @@ export function CiplLineModal({
               {kolis.map((koli, index) => {
                 const cbm = computedCbm(koli)
                 return (
-                  <div key={index} className="grid items-end gap-3 lg:grid-cols-[1fr_repeat(3,90px)_110px_110px_auto]">
+                  <div key={index} className="grid items-end gap-3 lg:grid-cols-[1fr_repeat(3,90px)_110px_110px_110px_auto]">
                     <label className={labelClass}>
                       Label
                       <input
@@ -324,7 +364,7 @@ export function CiplLineModal({
                       />
                     </label>
                     <label className={labelClass}>
-                      Berat (kg)
+                      Gross (kg)
                       <input
                         type="number"
                         min="0"
@@ -333,6 +373,19 @@ export function CiplLineModal({
                         value={koli.weightKg}
                         onChange={(event) =>
                           setKolis(kolis.map((item, itemIndex) => (itemIndex === index ? { ...item, weightKg: event.target.value } : item)))
+                        }
+                      />
+                    </label>
+                    <label className={labelClass}>
+                      Net (kg)
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        className={inputClass}
+                        value={koli.netWeightKg}
+                        onChange={(event) =>
+                          setKolis(kolis.map((item, itemIndex) => (itemIndex === index ? { ...item, netWeightKg: event.target.value } : item)))
                         }
                       />
                     </label>

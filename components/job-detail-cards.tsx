@@ -649,8 +649,8 @@ export function JobCustomsCard({ job, onSaved }: { job: Job; onSaved: (job: Job)
 
 // --------------------------------------------------------------------------------------------
 // CIPL: status DITURUNKAN dari berkas lampiran + data job (`deriveCiplStatus`); tidak ada field
-// manual. Entri & scan dokumen (CIPL/packing list maupun inward manifest) lewat CiplEntryModal
-// (tombol "Tambah / scan dokumen"); nomor invoice diubah lewat header job.
+// manual. Entri & scan CIPL/packing list lewat CiplEntryModal (tombol "Buat/Edit CIPL"); scan
+// inward manifest lewat editor manifest (tab transport); nomor invoice diubah lewat header job.
 // --------------------------------------------------------------------------------------------
 
 const ciplSourceLabels: Record<JobCiplSourceKind, string> = {

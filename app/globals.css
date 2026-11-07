@@ -74,6 +74,11 @@
   .input {
     @apply mt-1 block w-full rounded-lg border border-black/20 bg-white px-3 py-2 text-sm text-black outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100;
   }
+  /* Field sudah punya border + ring sendiri saat fokus; outline global (2px, offset 3px) menjadi garis kedua yang tebal. */
+  .input:focus-visible,
+  [data-slot='input']:focus-visible {
+    outline: none;
+  }
   .label {
     @apply text-sm font-medium text-black/70;
   }
