@@ -23,6 +23,7 @@ import { resolveCiplAutofill, summarizeAutofill } from '@/domain/exhibition/cipl
 import { isSameExhibitorName, matchExhibitorByName } from '@/domain/event/exhibitor-matching'
 import type { CiplScanResult } from '@/lib/server/manifest-extraction'
 import {
+  documentTotals,
   emptyRow,
   isRowFilled,
   rowFromScan,
@@ -30,7 +31,7 @@ import {
   rowToScanEntry,
   type CiplRowDraft,
 } from '@/lib/cipl-form-draft'
-import { CiplExhibitorForm } from '@/components/cipl-exhibitor-form'
+import { CiplExhibitorForm, TotalField } from '@/components/cipl-exhibitor-form'
 import { isAcceptedJobDocument, jobDocumentAccept } from '@/components/job-document-file'
 import { Button } from '@/components/ui/button'
 import {
@@ -88,6 +89,9 @@ export function CiplEntryModal({
   const [ciplHeader, setCiplHeader] = useState<CiplDocumentHeader | null>(null)
   const [ciplBelumTerpetakan, setCiplBelumTerpetakan] = useState<BarisBarang[]>([])
   const [applyReplace, setApplyReplace] = useState(true)
+  const [docNomor, setDocNomor] = useState(job.ciplDocument?.nomor ?? '')
+  const [docTanggal, setDocTanggal] = useState(job.ciplDocument?.tanggal ?? '')
+  const [docIncoterm, setDocIncoterm] = useState(job.ciplDocument?.incoterm ?? '')
   const [saving, setSaving] = useState(false)
   const rowKeyRef = useRef(0)
   const nextRowKey = () => `cipl-row-${++rowKeyRef.current}`
@@ -106,6 +110,9 @@ export function CiplEntryModal({
     setCiplFile(null)
     setCiplHeader(null)
     setCiplBelumTerpetakan([])
+    setDocNomor(job.ciplDocument?.nomor ?? '')
+    setDocTanggal(job.ciplDocument?.tanggal ?? '')
+    setDocIncoterm(job.ciplDocument?.incoterm ?? '')
   }
 
   async function scanCipl(file: File) {
@@ -129,6 +136,11 @@ export function CiplEntryModal({
       )
       setCiplRows(rows)
       setCiplHeader(data.header ?? null)
+      if (data.header) {
+        setDocNomor(data.header.nomor ?? '')
+        setDocTanggal(data.header.tanggal ?? '')
+        setDocIncoterm(data.header.incoterm ?? '')
+      }
       setCiplBelumTerpetakan(data.itemsBelumTerpetakan ?? [])
       setCiplFile(file)
       if (rows.length) {
@@ -169,8 +181,27 @@ export function CiplEntryModal({
     let updated = job
     let failures = 0
     try {
+      // Kepala dokumen: identitas dari scan (pengirim, penerima, dsb.) digabung dengan field yang
+      // diketik operator (no. invoice, tanggal, incoterm) — operator menang.
+      const typedNomor = docNomor.trim() || null
+      const typedTanggal = docTanggal || null
+      const typedIncoterm = docIncoterm.trim().toUpperCase() || null
+      const header: CiplDocumentHeader = {
+        ...(ciplHeader ?? {
+          pengirim: null,
+          penerima: null,
+          namaPameran: null,
+          mataUang: null,
+          infoKontainer: null,
+          nilaiTotalDeklarasi: null,
+        }),
+        nomor: typedNomor,
+        tanggal: typedTanggal,
+        incoterm: typedIncoterm,
+      }
+      const headerUsed = ciplHeader || typedNomor || typedTanggal || typedIncoterm ? header : null
       const plan = resolveCiplAutofill(scanEntries, eventExhibitors)
-      const ciplDocument = buildCiplDocument(ciplHeader, plan.rows, ciplBelumTerpetakan)
+      const ciplDocument = buildCiplDocument(headerUsed, plan.rows, ciplBelumTerpetakan)
       // resolveCiplAutofill bisa MENGGABUNGkan entri bernama sama, jadi kecocokan baris dihitung
       // per baris plan (bukan per entri): nama tertera dulu, lalu nama master.
       const rowLineIndex = plan.rows.map((row) => {
@@ -330,6 +361,60 @@ export function CiplEntryModal({
                   }}
                 />
               </label>
+
+              <div className="rounded-xl border border-black/10 p-4">
+                <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Dokumen</p>
+                <div className="mt-3 flex flex-wrap items-start gap-3">
+                  <label className="label w-44 text-xs">
+                    No. invoice
+                    <input
+                      className="input mt-1 py-1.5 text-sm"
+                      value={docNomor}
+                      onChange={(event) => setDocNomor(event.target.value)}
+                      disabled={saving}
+                    />
+                  </label>
+                  <label className="label w-40 text-xs">
+                    Tanggal
+                    <input
+                      type="date"
+                      className="input mt-1 py-1.5 text-sm"
+                      value={docTanggal}
+                      onChange={(event) => setDocTanggal(event.target.value)}
+                      disabled={saving}
+                    />
+                  </label>
+                  <label className="label w-28 text-xs">
+                    Incoterm
+                    <input
+                      className="input mt-1 py-1.5 text-sm uppercase"
+                      list="incoterm-options"
+                      value={docIncoterm}
+                      onChange={(event) => setDocIncoterm(event.target.value)}
+                      disabled={saving}
+                    />
+                    <datalist id="incoterm-options">
+                      {['EXW', 'FCA', 'FOB', 'CFR', 'CIF', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP'].map(
+                        (term) => (
+                          <option key={term} value={term} />
+                        ),
+                      )}
+                    </datalist>
+                  </label>
+                  {(() => {
+                    const totals = documentTotals(ciplRows, ciplBelumTerpetakan)
+                    return (
+                      <>
+                        <TotalField label="Total amount" derived={totals.amount} className="w-32" />
+                        <TotalField label="Total package" derived={totals.packages} className="w-28" />
+                        <TotalField label="Vol (CBM)" derived={totals.cbm} className="w-28" />
+                        <TotalField label="Gross (kg)" derived={totals.gross} className="w-32" />
+                        <TotalField label="Net (kg)" derived={totals.net} className="w-32" />
+                      </>
+                    )
+                  })()}
+                </div>
+              </div>
               {replacementRows.length > 0 ? (
                 <div className="rounded-xl border border-amber-300 bg-amber-50/70 p-4">
                   <p className="text-sm font-semibold text-amber-900">

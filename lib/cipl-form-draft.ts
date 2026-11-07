@@ -287,6 +287,50 @@ export function autoTotalPrice(item: Pick<CiplItemDraft, 'jumlah' | 'nilaiSatuan
   return qty === null || price === null ? null : Math.round(qty * price * 100) / 100
 }
 
+/**
+ * Jumlah turunan level dokumen dari semua baris exhibitor: total amount = jumlah Total price
+ * barang (termasuk barang belum terpetakan dari scan), sisanya penjumlahan `rowSums`.
+ */
+export function documentTotals(
+  rows: CiplRowDraft[],
+  extraItems: ReadonlyArray<Pick<BarisBarang, 'nilaiTotal'>> = [],
+): { amount: number; packages: number; cbm: number; gross: number; net: number } {
+  const amount =
+    rows.reduce(
+      (sum, row) =>
+        sum +
+        row.cases.reduce(
+          (caseSum, draft) =>
+            caseSum +
+            draft.items.reduce(
+              (itemSum, item) => itemSum + (numberOrNull(item.nilaiTotal) ?? autoTotalPrice(item) ?? 0),
+              0,
+            ),
+          0,
+        ),
+      0,
+    ) + extraItems.reduce((sum, item) => sum + (item.nilaiTotal ?? 0), 0)
+  const sums = rows.reduce(
+    (total, row) => {
+      const rowSum = rowSums(row)
+      return {
+        packages: total.packages + rowSum.packages,
+        cbm: total.cbm + rowSum.cbm,
+        gross: total.gross + rowSum.gross,
+        net: total.net + rowSum.net,
+      }
+    },
+    { packages: 0, cbm: 0, gross: 0, net: 0 },
+  )
+  return {
+    amount: Math.round(amount * 100) / 100,
+    packages: sums.packages,
+    cbm: round3(sums.cbm),
+    gross: round3(sums.gross),
+    net: round3(sums.net),
+  }
+}
+
 function itemToBarang(item: CiplItemDraft, refKoli: string | null): BarisBarang | null {
   const parsed = barisBarangSchema.safeParse({
     uraian: item.uraian.trim(),

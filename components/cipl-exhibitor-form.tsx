@@ -149,8 +149,7 @@ function ItemRow({
   )
 }
 
-/** Total exhibitor hasil hitungan otomatis dari rincian case; field mati dan tidak bisa diketik. */
-function TotalField({
+export function TotalField({
   label,
   derived,
   className,

@@ -297,6 +297,9 @@ menempel ke entri; `RefKoli` tidak ada; koli tidak punya berat net; disposisi ma
    `DISPOSED`), bawaan non-disposal; enum empat nilai tetap, `GIVE_AWAY` hanya dari scan dan
    "tidak disebut" dari scan diterima sebagai bawaan non-disposal. Total price barang: kosong =
    Qty × Price (2 desimal).
+   Field level dokumen di form: No. invoice (`nomor`), Tanggal (`tanggal`), Incoterm (`incoterm`)
+   bisa diketik (prefill dari scan/job lama); total amount/package/vol/gross/net dihitung dari
+   seluruh baris exhibitor dan tidak bisa diketik.
 3. ✅ `/api/scan-cipl` menghasilkan kepala dokumen + baris barang + `itemsBelumTerpetakan`
    selain baris exhibitor/koli (`dd88b8e`); wizard merakit `CiplDocument` saat Selesai dan
    menyimpannya sebagai `job.manifestCiplDocument` (berdampingan dengan

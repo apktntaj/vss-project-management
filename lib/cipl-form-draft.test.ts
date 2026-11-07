@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 
 import type { BarisBarang } from '@/domain/exhibition/cipl-document'
 import type { ExhibitorLogistics } from '@/domain/job/manifest'
-import { autoTotalPrice, emptyRow, isRowFilled, rowFromScan, rowSums, rowToScanEntry } from './cipl-form-draft'
+import { autoTotalPrice, documentTotals, emptyRow, isRowFilled, rowFromScan, rowSums, rowToScanEntry } from './cipl-form-draft'
 
 const barang = (uraian: string, refKoli: string | null, extra: Partial<BarisBarang> = {}): BarisBarang => ({
   uraian,
@@ -128,3 +128,14 @@ assert.equal(afterScan.totalCount, 1)
 assert.ok(afterScan.totalWeightKg == null)
 assert.ok(afterScan.totalNetWeightKg == null)
 assert.ok(afterScan.totalVolumeCbm == null)
+
+// Total level dokumen: penjumlahan semua baris + barang belum terpetakan dari scan
+// (priced memakai total yang diketik operator: 40, bukan 37.5 otomatis).
+assert.deepEqual(documentTotals([scanned, priced], [{ nilaiTotal: 10 }]), {
+  amount: 50,
+  packages: 2,
+  cbm: 0.125,
+  gross: 150,
+  net: 120,
+})
+assert.deepEqual(documentTotals([]), { amount: 0, packages: 0, cbm: 0, gross: 0, net: 0 })
