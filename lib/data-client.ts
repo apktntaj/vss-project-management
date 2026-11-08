@@ -287,25 +287,6 @@ export async function getAttachmentContent(attachmentId: string): Promise<Blob |
   return response.ok ? response.blob() : null
 }
 
-export type JobAttachmentMeta = {
-  id: string
-  kind: string | null
-  fileName: string
-  mimeType: string
-  fileSize: number
-  createdAt: string
-}
-
-/** Metadata lampiran milik satu job (terbaru dulu); isi file lewat `getAttachmentContent`. */
-export async function listJobAttachments(jobId: string): Promise<JobAttachmentMeta[]> {
-  const response = await fetch(
-    `/api/attachments?ownerType=JOB&ownerId=${encodeURIComponent(jobId)}`,
-    { cache: 'no-store' },
-  )
-  if (!response.ok) throw new Error('Lampiran tidak dapat dimuat.')
-  return (await response.json()) as JobAttachmentMeta[]
-}
-
 async function ensureSeeded() {
   return readAll<LocalUser>('users')
 }
@@ -1012,11 +993,17 @@ export function saveJobInvoiceExtraction(job: JobRef, invoice: JobInvoiceExtract
   return applyJobExtraction(job, { invoice })
 }
 
-export function saveJobTransportExtraction(job: JobRef, transport: JobTransportExtraction) {
-  return applyJobExtraction(job, { transport })
+/**
+ * Simpan data B/L atau AWB hasil koreksi manual. `documentType` ikut dikirim karena tanpa berkas
+ * terpindai server tidak punya cara lain mengetahui dokumen angkut ini laut (BL) atau udara (AWB).
+ */
+export function saveJobTransportExtraction(
+  job: JobRef,
+  transport: JobTransportExtraction,
+  documentType?: 'BL' | 'AWB',
+) {
+  return applyJobExtraction(job, { transport, transportDocumentType: documentType ?? null })
 }
-
-export type JobOperationalAttachment = { kind: JobDocumentKind; file: File }
 
 export type JobDetailsInput = Partial<
   Pick<
@@ -1037,18 +1024,12 @@ export type JobDetailsInput = Partial<
   party?: { agentId: string | null; exhibitorId: string | null }
 }
 
-/** Simpan detail job (hanya field yang dikirim), lalu unggah lampiran baru. */
-export async function saveJobOperationalDetails(
-  job: JobRef,
-  patch: JobDetailsInput,
-  attachments: JobOperationalAttachment[] = [],
-): Promise<Job> {
-  const updated = await jobsRequest<Job>(jobPath(job.id), {
+/** Simpan detail job (hanya field yang dikirim). */
+export async function saveJobOperationalDetails(job: JobRef, patch: JobDetailsInput): Promise<Job> {
+  return jobsRequest<Job>(jobPath(job.id), {
     method: 'PATCH',
     body: JSON.stringify({ version: job.version, ...patch }),
   })
-  for (const { kind, file } of attachments) await uploadJobAttachment(job.id, file, kind)
-  return updated
 }
 
 export type JobCreateInput = {

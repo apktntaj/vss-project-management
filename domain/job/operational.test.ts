@@ -27,15 +27,15 @@ assert.equal('billing' in details.customs.BC_2_3, false)
 const fresh = normalizeOperationalDetails(null)
 assert.deepEqual(fresh, emptyOperationalDetails())
 
-// Ekstraksi B/L: nomor & isi mentah menjadi milik job; leg inbound hanya carrier + jadwal.
+// Ekstraksi B/L: nomor & isi mentah menjadi milik job; leg inbound hanya carrier (ETA milik job, tidak ditimpa B/L).
 const transport: JobTransportExtraction = {
   documentNumber: ' HLCU123 ', documentDate: null, carrier: 'Hapag-Lloyd', vesselOrFlight: null,
   voyageOrFlightNumber: null, bookingNumber: null,
   shipper: { name: 'ACME GmbH', address: null, countryCode: 'DE', taxId: null },
   consignee: null, notifyParty: null,
   portOfLoading: null, portOfDischarge: null, placeOfReceipt: null, placeOfDelivery: null,
-  etd: null, eta: '2026-10-01', packageCount: null, packageType: null, marksAndNumbers: null,
-  grossWeightKg: null, netWeightKg: null, volumeM3: null, containers: [],
+  etd: null, eta: '2026-10-01', packageCount: null, packageType: null, marksAndNumbers: null, goodsDescription: null,
+  grossWeightKg: null, netWeightKg: null, volumeM3: null, loadType: null, containers: [],
 }
 const empty = { operational: fresh, transportDocumentType: null, commercialInvoiceNumber: null }
 const viaBl = applyDocumentExtraction(empty, { transport })
@@ -44,7 +44,9 @@ assert.equal(viaBl.fields.transportDocumentNumber, 'HLCU123')
 assert.equal(viaBl.fields.transportDocument, transport)
 assert.equal(viaBl.operational.inbound.mode, 'SEA')
 assert.equal(viaBl.operational.inbound.carrier, 'Hapag-Lloyd')
-assert.equal(viaBl.operational.inbound.scheduleAt, '2026-10-01')
+assert.equal(viaBl.operational.inbound.scheduleAt, null)
+const withJobEta = { ...empty, operational: { ...fresh, inbound: { ...fresh.inbound, scheduleAt: '2026-12-01' } } }
+assert.equal(applyDocumentExtraction(withJobEta, { transport }).operational.inbound.scheduleAt, '2026-12-01')
 
 // Jenis eksplisit AWB menang; tanpa jenis eksplisit, jenis yang sudah tercatat di job dipakai.
 assert.equal(applyDocumentExtraction(empty, { transport, transportDocumentType: 'AWB' }).fields.transportDocumentType, 'AWB')

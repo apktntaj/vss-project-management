@@ -5,8 +5,6 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft,
-  CheckCircle2,
-  CircleAlert,
   FileSpreadsheet,
   MoreVertical,
   Pencil,
@@ -26,12 +24,7 @@ import {
 import { bcDocumentLabels, transportModeLabels, type BcDocumentKind } from '@/domain/job/types'
 import { buildManifestView } from '@/lib/manifest-view'
 import { totalDokumen } from '@/domain/exhibition/cipl-document'
-import {
-  JobHeaderDialog,
-  JobJourneyCard,
-  JobLogisticsCard,
-  JobCustomsCard,
-} from '@/components/job-detail-cards'
+import { JobHeaderDialog } from '@/components/job-detail-cards'
 import { JobManifestSection } from '@/components/job-manifest-section'
 import { JobBarangCard } from '@/components/job-barang-card'
 import { CiplEntryModal } from '@/components/cipl-entry-modal'
@@ -39,17 +32,16 @@ import {
   JobDocumentEditorDialog,
   type EditableJobDocument,
 } from '@/components/job-document-editor-dialog'
+import { JobTransportDocumentCard } from '@/components/job-transport-document-card'
 import { JobLartasCard } from '@/components/job-lartas-card'
 import { JobBillingDialog, JobPartyInvoiceCard } from '@/components/job-party-invoice-card'
 import { JobContextSummary } from '@/components/job-context-summary'
 import { JobDetailSkeleton } from '@/components/loading-skeletons'
 import { JobReadinessBar } from '@/components/job-readiness-bar'
-import { JobAttachmentsCard } from '@/components/job-attachments-card'
 import { DeleteJobDialog } from '@/components/delete-job-dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { downloadCustomsWorkbook, label } from '@/components/job-row'
 import { jobContext } from '@/lib/job-context'
-import { compareInvoiceWithTransport, type DocumentComparison } from '@/lib/document-comparison'
 import { jobLabel } from '@/domain/job/numbering'
 import { hasTabData, tabActionLabel } from '@/domain/job/tab-data'
 import type { JobDetailTab, JobReadinessTarget } from '@/lib/job-readiness'
@@ -79,83 +71,6 @@ function EmptyTabState({ tab }: { tab: JobDetailTab }) {
         <Icon size={26} strokeWidth={1.75} aria-hidden="true" />
       </span>
       <p className="mt-4 text-sm font-medium text-slate-500">Belum ada data</p>
-    </section>
-  )
-}
-
-function Info({ label: title, value }: { label: string; value: string | null | undefined }) {
-  return (
-    <div>
-      <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">{title}</dt>
-      <dd className="mt-1 text-sm font-medium text-slate-800">{value || '—'}</dd>
-    </div>
-  )
-}
-
-function comparisonValue(value: DocumentComparison['invoiceValue']) {
-  return value === null ? 'Tidak tersedia' : String(value)
-}
-
-function DocumentComparisonSummary({ comparison }: { comparison: DocumentComparison[] }) {
-  const differences = comparison.filter((item) => item.status === 'DIFFERENT')
-  const comparable = comparison.filter((item) => item.status !== 'UNAVAILABLE')
-  if (!comparison.length) return null
-  return (
-    <section
-      id="pemeriksaan-dokumen"
-      className={`card p-5 ${differences.length ? 'border-amber-300 bg-amber-50/50' : 'border-emerald-200 bg-emerald-50/40'}`}
-    >
-      <div className="flex items-start gap-3">
-        {differences.length ? (
-          <CircleAlert className="mt-0.5 shrink-0 text-amber-700" size={20} aria-hidden="true" />
-        ) : (
-          <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-700" size={20} aria-hidden="true" />
-        )}
-        <div>
-          <h2 className="font-semibold">Pemeriksaan Invoice vs B/L/AWB</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            {differences.length
-              ? `${differences.length} data berbeda dan perlu ditinjau.`
-              : comparable.length
-                ? 'Data yang tersedia konsisten.'
-                : 'AI belum menemukan nilai yang sama-sama tersedia untuk dibandingkan.'}
-          </p>
-        </div>
-      </div>
-      <div className="mt-4 overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="pb-2 pr-3">Data</th>
-              <th className="pb-2 pr-3">Invoice</th>
-              <th className="pb-2 pr-3">B/L / AWB</th>
-              <th className="pb-2">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {comparison.map((item) => (
-              <tr key={item.field} className="border-b border-slate-200/80 last:border-0">
-                <td className="py-2.5 pr-3 font-medium text-slate-800">{item.label}</td>
-                <td className="py-2.5 pr-3 text-slate-600">{comparisonValue(item.invoiceValue)}</td>
-                <td className="py-2.5 pr-3 text-slate-600">
-                  {comparisonValue(item.transportValue)}
-                </td>
-                <td className="py-2.5">
-                  <span
-                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${item.status === 'DIFFERENT' ? 'bg-amber-100 text-amber-800' : item.status === 'MATCH' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}
-                  >
-                    {item.status === 'DIFFERENT'
-                      ? 'Berbeda'
-                      : item.status === 'MATCH'
-                        ? 'Sama'
-                        : 'Belum tersedia'}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </section>
   )
 }
@@ -269,10 +184,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   }
   const isEvent = context?.kind === 'EVENT'
   const details = getOperationalDetails(job)
-  const transport = job.transportDocument
   const invoiceItems = details.invoiceItems ?? []
-  const documentComparison =
-    details.invoice && transport ? compareInvoiceWithTransport(details.invoice, transport) : null
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -470,35 +382,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           )}
         </TabsContent>
         <TabsContent value="transport" className="space-y-6">
-          {hasTabData('transport', job) ? (
-            <>
-              <div className="grid gap-6 xl:grid-cols-2">
-                <JobJourneyCard job={job} onSaved={setJob} />
-                <JobLogisticsCard job={job} onSaved={setJob} />
-              </div>
-              <section className="card p-5">
-                <h2 className="font-semibold">Pihak pada dokumen angkut</h2>
-                <dl className="mt-4 grid gap-5 sm:grid-cols-2">
-                  <Info label="Shipper" value={transport?.shipper?.name} />
-                  <Info label="Consignee" value={transport?.consignee?.name} />
-                  <Info label="Notify party" value={transport?.notifyParty?.name} />
-                  <Info label="PIC" value={job.assignedTo?.name} />
-                </dl>
-                <button
-                  type="button"
-                  className="btn-secondary mt-4"
-                  onClick={() => setDocumentEdit('TRANSPORT')}
-                >
-                  Scan / edit B/L atau AWB
-                </button>
-              </section>
-              {documentComparison && <DocumentComparisonSummary comparison={documentComparison} />}
-              <JobCustomsCard job={job} onSaved={setJob} />
-              <JobAttachmentsCard job={job} />
-            </>
-          ) : (
-            <EmptyTabState tab="transport" />
-          )}
+          <JobTransportDocumentCard job={job} />
         </TabsContent>
         <TabsContent value="billing">
           {hasTabData('billing', job) ? (

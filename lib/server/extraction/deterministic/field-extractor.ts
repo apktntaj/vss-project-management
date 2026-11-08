@@ -254,9 +254,12 @@ function extractTransport(parsed: ParsedDocument): JobTransportExtraction | null
     packageCount: packages?.count ?? null,
     packageType: packages?.type ?? null,
     marksAndNumbers: firstLabelValue(rows, [/(?:marks\s*(&|and)\s*numbers?|mks?\s*&?\s*nos?)\s*[:\-]?/i]),
+    goodsDescription: firstLabelValue(rows, [/description\s+of\s+(?:goods|packages)\s*[:\-]/i]),
     grossWeightKg: parseNumber(firstLabelValue(rows, [/(?:total\s*)?gross\s*weight\s*(?:\(kg\))?\s*[:#]?/i])),
     netWeightKg: parseNumber(firstLabelValue(rows, [/(?:total\s*)?net\s*weight\s*(?:\(kg\))?\s*[:#]?/i])),
     volumeM3: parseNumber(firstLabelValue(rows, [/(?:volume|measurement|cbm|m3)\s*[:#]?/i])),
+    // Sengaja null: kata "FCL/LCL" juga muncul di dokumen lain, dan transport non-null mengubah klasifikasi.
+    loadType: null,
     containers,
   }
   return hasValue(transport) ? transport : null

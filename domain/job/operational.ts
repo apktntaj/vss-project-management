@@ -100,7 +100,7 @@ export type ExtractedJobFields = {
 /**
  * Terapkan hasil ekstraksi dokumen ke job. Commercial invoice mengisi nomor + baris barang
  * (operational) dan — bila job belum punya — akhiran No Job. B/L/AWB menjadi dokumen angkut job
- * (jenis + nomor + isi mentah) serta mengisi carrier & jadwal leg inbound.
+ * (jenis + nomor + isi mentah) serta mengisi carrier leg inbound. ETA/jadwal tetap milik job.
  */
 export function applyDocumentExtraction(
   current: {
@@ -134,7 +134,7 @@ export function applyDocumentExtraction(
         ...operational.inbound,
         mode: documentType === 'BL' ? 'SEA' : 'AIR',
         carrier: transport.carrier,
-        scheduleAt: transport.eta ?? operational.inbound.scheduleAt,
+        // scheduleAt sengaja tidak disentuh: jadwal kedatangan milik job, bukan hasil baca B/L.
       },
     }
     fields.transportDocument = transport

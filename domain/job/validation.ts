@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { barisBarangSchema, ciplDocumentSchema } from '@/domain/exhibition/cipl-document'
+import { jobTransportLoadTypes } from '@/domain/exhibition/source-documents'
 import {
   inwardManifestSchema,
   jobReturnSchema,
@@ -104,9 +105,12 @@ export const transportExtractionSchema = z.object({
   packageCount: nullableNumber,
   packageType: nullableString,
   marksAndNumbers: nullableString,
+  goodsDescription: z.string().nullable().default(null),
   grossWeightKg: nullableNumber,
   netWeightKg: nullableNumber,
   volumeM3: nullableNumber,
+  // Dokumen tersimpan sebelum field ini ada tidak memuat kuncinya → dianggap belum diketahui.
+  loadType: z.enum(jobTransportLoadTypes).nullable().default(null),
   containers: z.array(
     z.object({
       containerNumber: nullableString,

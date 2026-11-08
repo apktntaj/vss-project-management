@@ -49,6 +49,9 @@ export type JobTransportContainer = {
   sealNumber: string | null
 }
 
+export const jobTransportLoadTypes = ['LCL', 'FCL'] as const
+export type JobTransportLoadType = (typeof jobTransportLoadTypes)[number]
+
 /** Values printed on a B/L or AWB that describe the inbound transport. */
 export type JobTransportExtraction = {
   documentNumber: string | null
@@ -69,9 +72,13 @@ export type JobTransportExtraction = {
   packageCount: number | null
   packageType: string | null
   marksAndNumbers: string | null
+  /** Deskripsi barang (cargo description); terpisah dari marks & numbers (remark). */
+  goodsDescription: string | null
   grossWeightKg: number | null
   netWeightKg: number | null
   volumeM3: number | null
+  /** LCL/FCL; hanya bermakna untuk B/L laut, null untuk AWB. */
+  loadType: JobTransportLoadType | null
   containers: JobTransportContainer[]
 }
 

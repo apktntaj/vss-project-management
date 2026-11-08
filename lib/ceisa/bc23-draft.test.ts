@@ -55,9 +55,11 @@ const transport: JobTransportExtraction = {
   packageCount: 2,
   packageType: 'CT',
   marksAndNumbers: 'MARKS',
+  goodsDescription: null,
   grossWeightKg: 121,
   netWeightKg: 100,
   volumeM3: null,
+  loadType: null,
   containers: [{ containerNumber: 'CONT001', size: '20', type: '1', sealNumber: 'SEAL1' }],
 }
 

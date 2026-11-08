@@ -1,4 +1,4 @@
-import type { JobDocumentParty, JobInvoiceExtraction, JobInvoiceItem, JobTransportContainer, JobTransportExtraction } from '@/domain/exhibition/source-documents'
+import { jobTransportLoadTypes, type JobDocumentParty, type JobInvoiceExtraction, type JobInvoiceItem, type JobTransportContainer, type JobTransportExtraction, type JobTransportLoadType } from '@/domain/exhibition/source-documents'
 import { MAX_DOCUMENT_SIZE } from '@/lib/server/extraction/config'
 
 const spreadsheetExtensions = new Set(['xls', 'xlsx', 'xlsm', 'xlsb', 'xltx', 'xltm'])
@@ -62,6 +62,11 @@ const countryCode = (value: unknown) => text(value)?.toUpperCase() ?? null
 const date = (value: unknown) => {
   const parsed = text(value)
   return parsed && /^\d{4}-\d{2}-\d{2}$/.test(parsed) ? parsed : null
+}
+
+function normalizeLoadType(value: unknown): JobTransportLoadType | null {
+  const candidate = text(value)?.toUpperCase()
+  return jobTransportLoadTypes.find((type) => type === candidate) ?? null
 }
 
 function normalizeParty(value: unknown): JobDocumentParty | null {
@@ -158,9 +163,11 @@ export function normalizeTransport(value: unknown): JobTransportExtraction | nul
     packageCount: wholeNumber(input.packageCount),
     packageType: text(input.packageType)?.toUpperCase() ?? null,
     marksAndNumbers: text(input.marksAndNumbers),
+    goodsDescription: text(input.goodsDescription),
     grossWeightKg: amount(input.grossWeightKg),
     netWeightKg: amount(input.netWeightKg),
     volumeM3: amount(input.volumeM3),
+    loadType: normalizeLoadType(input.loadType),
     containers,
   }
 }
