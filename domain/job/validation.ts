@@ -272,7 +272,11 @@ export type JobCreateInput = z.output<typeof jobCreateSchema>
 export const jobDetailsPatchSchema = z
   .object({
     version: jobVersionSchema,
-    status: z.enum(jobStatuses).optional(),
+    // CANCELLED hanya lewat `jobCancelSchema` (alasan wajib); tidak bisa dipasang lewat patch.
+    status: z
+      .enum(jobStatuses)
+      .refine((status) => status !== 'CANCELLED', { message: 'Gunakan fitur Batalkan job.' })
+      .optional(),
     transportMode: z.enum(transportModes).nullable().optional(),
     /** Ganti pihak: kirim keduanya (salah satu null). */
     party: z
@@ -299,6 +303,19 @@ export const jobDetailsPatchSchema = z
   })
   .strict()
 export type JobDetailsPatch = z.output<typeof jobDetailsPatchSchema>
+
+/** Batalkan job: alasan wajib; job yang sudah batal tidak dapat diubah lagi. */
+export const jobCancelSchema = z
+  .object({
+    version: jobVersionSchema,
+    reason: z
+      .string({ required_error: 'Alasan pembatalan wajib diisi.' })
+      .trim()
+      .min(1, 'Alasan pembatalan wajib diisi.')
+      .max(1000, 'Alasan pembatalan maksimal 1000 karakter.'),
+  })
+  .strict()
+export type JobCancelInput = z.output<typeof jobCancelSchema>
 
 const dateTime = z.string().datetime({ offset: true, message: 'Tanggal tidak valid.' })
 

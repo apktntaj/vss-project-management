@@ -30,6 +30,13 @@ export type InternationalJobJenis = (typeof internationalJobJenisValues)[number]
 
 export const jobStatuses = ['DRAFT', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'CANCELLED'] as const
 export type JobStatus = (typeof jobStatuses)[number]
+export const jobStatusLabels: Record<JobStatus, string> = {
+  DRAFT: 'Draf',
+  IN_PROGRESS: 'Sedang diproses',
+  ON_HOLD: 'Ditunda',
+  COMPLETED: 'Selesai',
+  CANCELLED: 'Dibatalkan',
+}
 
 export const jobKindLabels: Record<JobKind, string> = {
   LOCAL: 'Local',
@@ -195,6 +202,9 @@ export type JobCiplSource = { kind: JobCiplSourceKind; receivedAt: string }
 
 export type JobUserRef = { id: string; name: string }
 
+/** Fakta pembatalan job (tabel `job_cancellations`); job batal tidak dapat diubah lagi. */
+export type JobCancellation = { reason: string; cancelledAt: string; cancelledById: string }
+
 // --- Aggregate root ----------------------------------------------------------------------------
 
 export type Job = {
@@ -206,6 +216,8 @@ export type Job = {
   internationalJenis: InternationalJobJenis | null
   transportMode: TransportMode | null
   status: JobStatus
+  /** Terisi tepat bila `status === 'CANCELLED'`. */
+  cancellation: JobCancellation | null
 
   agentId: string | null
   exhibitorId: string | null

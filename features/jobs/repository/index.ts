@@ -9,13 +9,12 @@ import 'server-only'
 
 export {
   type NewJobRow,
-  deleteJobRow,
+  cancelJobGuarded,
   ensureEventAgent,
   exhibitorBelongsToEvent,
   findAgentName,
   findJobById,
   insertJob,
-  listManifestSeqs,
   saveJobCiplGuarded,
   updateJobGuarded,
 } from './job-crud'

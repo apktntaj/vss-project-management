@@ -5,13 +5,13 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft,
+  Ban,
   FileSpreadsheet,
   MoreVertical,
   Pencil,
   PackageOpen,
   ReceiptText,
   Ship,
-  Trash2,
   type LucideIcon,
 } from 'lucide-react'
 import {
@@ -21,7 +21,7 @@ import {
   type Exhibitor,
   type Job,
 } from '@/lib/data-client'
-import { bcDocumentLabels, transportModeLabels, type BcDocumentKind } from '@/domain/job/types'
+import { bcDocumentLabels, type BcDocumentKind } from '@/domain/job/types'
 import { buildManifestView } from '@/lib/manifest-view'
 import { totalDokumen } from '@/domain/exhibition/cipl-document'
 import { JobHeaderDialog } from '@/components/job-detail-cards'
@@ -35,12 +35,13 @@ import {
 import { JobTransportDocumentCard } from '@/components/job-transport-document-card'
 import { JobLartasCard } from '@/components/job-lartas-card'
 import { JobBillingDialog, JobPartyInvoiceCard } from '@/components/job-party-invoice-card'
-import { JobContextSummary } from '@/components/job-context-summary'
+import { JobContextBadge } from '@/components/job-context-badge'
 import { JobDetailSkeleton } from '@/components/loading-skeletons'
 import { JobReadinessBar } from '@/components/job-readiness-bar'
-import { DeleteJobDialog } from '@/components/delete-job-dialog'
+import { JobNotesCard } from '@/components/job-notes-card'
+import { CancelJobDialog } from '@/components/cancel-job-dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { downloadCustomsWorkbook, label } from '@/components/job-row'
+import { date, downloadCustomsWorkbook, label } from '@/components/job-row'
 import { jobContext } from '@/lib/job-context'
 import { jobLabel } from '@/domain/job/numbering'
 import { hasTabData, tabActionLabel } from '@/domain/job/tab-data'
@@ -105,7 +106,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   const [documentEdit, setDocumentEdit] = useState<EditableJobDocument | null>(null)
   const [billingOpen, setBillingOpen] = useState(false)
   const [headerOpen, setHeaderOpen] = useState(false)
-  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [cancelOpen, setCancelOpen] = useState(false)
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null)
 
   // Tab area kerja aktif disimpan di URL (?tab=muatan|transport|billing) agar bisa dibagikan dan
@@ -125,8 +126,9 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   }
   // Header job bukan tab: langkah kesiapan "No Job" membuka dialog ubah header.
   function navigateReadiness(target: JobReadinessTarget) {
-    if (target === 'header') setHeaderOpen(true)
-    else selectTab(target)
+    if (target === 'header') {
+      if (job?.status !== 'CANCELLED') setHeaderOpen(true)
+    } else selectTab(target)
   }
 
   async function exportWorkbook(kind: BcDocumentKind) {
@@ -183,6 +185,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
     return <JobDetailSkeleton />
   }
   const isEvent = context?.kind === 'EVENT'
+  const cancelled = job.status === 'CANCELLED'
   const details = getOperationalDetails(job)
   const invoiceItems = details.invoiceItems ?? []
   return (
@@ -204,33 +207,33 @@ export default function JobDetail({ params }: { params: { id: string } }) {
             </h1>
             <StatusBadge status={job.status} />
           </div>
-          {context && <JobContextSummary context={context} />}
-          <dl className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+          <dl className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
             <div className="flex items-center gap-1.5">
-              <dt className="text-slate-400">Jalur</dt>
-              <dd className="font-medium text-slate-800">
-                {job.transportMode ? transportModeLabels[job.transportMode] : '—'}
+              <dd>
+                <JobContextBadge job={job} />
               </dd>
             </div>
             <div className="flex items-center gap-1.5">
-              <dt className="text-slate-400">No. commercial invoice</dt>
-              <dd className="font-medium text-slate-800">{job.commercialInvoiceNumber || '—'}</dd>
+              <dd className="font-medium text-slate-800">
+                {job.party?.kind === 'AGENT' ? job.party.name : '—'}
+              </dd>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <dt className="text-slate-400">ETA</dt>
+              <dd className="font-medium text-slate-800">{date(details.inbound.scheduleAt)}</dd>
             </div>
           </dl>
-          {job.notes && (
-            <p className="mt-2 line-clamp-2 max-w-3xl whitespace-pre-wrap text-sm text-slate-500">
-              {job.notes}
-            </p>
-          )}
         </div>
         <div className="relative flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setHeaderOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-orange-50 hover:text-orange-700"
-          >
-            <Pencil size={14} aria-hidden="true" /> Ubah header
-          </button>
+          {!cancelled && (
+            <button
+              type="button"
+              onClick={() => setHeaderOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-orange-50 hover:text-orange-700"
+            >
+              <Pencil size={14} aria-hidden="true" /> Ubah header
+            </button>
+          )}
           <button
             type="button"
             onClick={(clickEvent) => {
@@ -279,23 +282,46 @@ export default function JobDetail({ params }: { params: { id: string } }) {
                     <div className="my-1 border-t border-black/10" />
                   </>
                 )}
-                <button
-                  role="menuitem"
-                  type="button"
-                  onClick={() => {
-                    setMenuAnchor(null)
-                    setDeleteOpen(true)
-                  }}
-                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
-                >
-                  <Trash2 size={15} /> Hapus job
-                </button>
+                {cancelled ? (
+                  <p className="px-3 py-2 text-sm text-slate-400">Job sudah dibatalkan</p>
+                ) : (
+                  <button
+                    role="menuitem"
+                    type="button"
+                    onClick={() => {
+                      setMenuAnchor(null)
+                      setCancelOpen(true)
+                    }}
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
+                  >
+                    <Ban size={15} /> Batalkan job
+                  </button>
+                )}
               </div>
             </>
           )}
         </div>
       </div>
-      <JobReadinessBar job={job} activeTab={tab} onNavigate={navigateReadiness} />
+      {cancelled && (
+        <section className="card flex items-start gap-3 border-rose-200 bg-rose-50/60 p-5" role="status">
+          <Ban size={20} className="mt-0.5 shrink-0 text-rose-600" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="font-semibold text-rose-800">
+              Job dibatalkan{job.cancellation ? ` pada ${date(job.cancellation.cancelledAt)}` : ''}
+            </p>
+            {job.cancellation && (
+              <p className="mt-1 text-sm whitespace-pre-wrap text-slate-700">
+                Alasan: {job.cancellation.reason}
+              </p>
+            )}
+            <p className="mt-1 text-xs text-slate-500">Job ini tidak dapat diubah lagi.</p>
+          </div>
+        </section>
+      )}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
+        <JobReadinessBar job={job} activeTab={tab} onNavigate={navigateReadiness} />
+        <JobNotesCard job={job} onSaved={setJob} />
+      </div>
       <Tabs value={tab} onValueChange={(value) => selectTab(value as JobDetailTab)}>
         <div className="sticky top-0 z-30 -mx-1 flex items-center justify-between gap-3 border-b bg-white/95 px-1 py-2 backdrop-blur">
           <TabsList className="h-auto gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
@@ -315,13 +341,15 @@ export default function JobDetail({ params }: { params: { id: string } }) {
               </TabsTrigger>
             ))}
           </TabsList>
-          <button
-            type="button"
-            onClick={openTabEditor}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-orange-50 hover:text-orange-700"
-          >
-            <Pencil size={14} aria-hidden="true" /> {tabActionLabel(tab, job)}
-          </button>
+          {!cancelled && (
+            <button
+              type="button"
+              onClick={openTabEditor}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-orange-50 hover:text-orange-700"
+            >
+              <Pencil size={14} aria-hidden="true" /> {tabActionLabel(tab, job)}
+            </button>
+          )}
         </div>
         <TabsContent value="muatan" className="space-y-6">
           {hasTabData('muatan', job) ? (
@@ -386,7 +414,11 @@ export default function JobDetail({ params }: { params: { id: string } }) {
         </TabsContent>
         <TabsContent value="billing">
           {hasTabData('billing', job) ? (
-            <JobPartyInvoiceCard job={job} exhibitors={isEvent ? exhibitors : null} onSaved={setJob} />
+            <JobPartyInvoiceCard
+              job={job}
+              exhibitors={isEvent ? exhibitors : null}
+              onSaved={setJob}
+            />
           ) : (
             <EmptyTabState tab="billing" />
           )}
@@ -426,13 +458,14 @@ export default function JobDetail({ params }: { params: { id: string } }) {
         onClose={() => setHeaderOpen(false)}
         onSaved={setJob}
       />
-      <DeleteJobDialog
+      <CancelJobDialog
         job={job}
-        open={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
-        onDeleted={() => {
-          toast(`Job ${jobLabel(job)} dihapus.`)
-          router.push('/jobs')
+        open={cancelOpen}
+        onClose={() => setCancelOpen(false)}
+        onCancelled={(saved) => {
+          setJob(saved)
+          setCancelOpen(false)
+          toast(`Job ${jobLabel(saved)} dibatalkan.`)
         }}
       />
     </div>

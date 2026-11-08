@@ -21,7 +21,7 @@ export type Capability =
   | 'job:read'
   | 'job:create'
   | 'job:update'
-  | 'job:delete'
+  | 'job:cancel'
   | 'exhibitor:write'
   | 'job:invoice:write'
   | 'event:access:manage'
@@ -66,7 +66,7 @@ const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     'job:read',
     'job:create',
     'job:update',
-    'job:delete',
+    'job:cancel',
     'exhibitor:write',
   ]),
   OPERATIONS: new Set<Capability>([
@@ -74,7 +74,7 @@ const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     'job:read',
     'job:create',
     'job:update',
-    'job:delete',
+    'job:cancel',
     'exhibitor:write',
   ]),
   DOCUMENT_ASSISTANT: new Set<Capability>([

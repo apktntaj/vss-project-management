@@ -26,7 +26,7 @@ import { PageSkeleton } from '@/components/loading-skeletons'
 import { ContextTicketList } from '@/components/context-ticket-list'
 import { JobCreateWizard } from '@/components/job-create-wizard'
 import { JobRow } from '@/components/job-row'
-import { DeleteJobDialog } from '@/components/delete-job-dialog'
+import { CancelJobDialog } from '@/components/cancel-job-dialog'
 import { jobLabel } from '@/domain/job/numbering'
 
 function formatDateRange(startsAt: string, endsAt: string) {
@@ -46,7 +46,7 @@ export default function EventDetailPage() {
   const [loading, setLoading] = useState(true)
   const [showNewJob, setShowNewJob] = useState(false)
   const [openJenis, setOpenJenis] = useState<Record<string, boolean>>({})
-  const [deletingJob, setDeletingJob] = useState<Job | null>(null)
+  const [cancellingJob, setCancellingJob] = useState<Job | null>(null)
 
   const nomorByJobId = useMemo(() => buildJobNomor(jobs), [jobs])
 
@@ -246,7 +246,7 @@ export default function EventDetailPage() {
                               nomor={nomorByJobId.get(job.id)}
                               actions={{
                                 onEdit: (editedJob) => router.push(`/jobs/${editedJob.id}`),
-                                onDelete: (deletedJob) => setDeletingJob(deletedJob),
+                                onCancel: (jobToCancel) => setCancellingJob(jobToCancel),
                               }}
                             />
                           ))}
@@ -265,14 +265,14 @@ export default function EventDetailPage() {
         )}
       </section>
       {/* <ContextTicketList contextKind="EVENT" contextId={event.id} /> */}
-      {deletingJob && (
-        <DeleteJobDialog
-          job={deletingJob}
+      {cancellingJob && (
+        <CancelJobDialog
+          job={cancellingJob}
           open
-          onClose={() => setDeletingJob(null)}
-          onDeleted={(deleted) => {
-            showToast(`${jobLabel(deleted)} dihapus.`)
-            setDeletingJob(null)
+          onClose={() => setCancellingJob(null)}
+          onCancelled={(cancelled) => {
+            showToast(`${jobLabel(cancelled)} dibatalkan.`)
+            setCancellingJob(null)
             loadData()
           }}
         />

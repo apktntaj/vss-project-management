@@ -93,10 +93,11 @@ StatusJob adalah salah satu dari DRAFT, IN_PROGRESS, COMPLETED, ON_HOLD.
 
 **Interpretasi** — keadaan pekerjaan: DRAFT belum dioperasikan; IN_PROGRESS sedang dikerjakan;
 COMPLETED selesai secara operasional; ON_HOLD sementara berhenti dan bisa kembali ke IN_PROGRESS.
-Status mati (cancel) dihapus dari produk 2026-10; penghapusan job bersifat hard delete oleh PIC.
+CANCELLED (keputusan 2026-11-08): job tidak pernah dihapus. Job dibatalkan dengan alasan wajib
+(tabel `job_cancellations`: alasan, pelaku, waktu); setelah batal tidak dapat diubah lagi dan tidak
+dapat diaktifkan kembali. Job batal tidak ikut hitungan tuntas event.
 
-**Contoh** — `DRAFT`; `ON_HOLD`. Open question: apakah diperlukan keadaan mati lain
-(mis. dibatalkan klien) yang berbeda dari hard delete.
+**Contoh** — `DRAFT`; `ON_HOLD`; `CANCELLED` ("Klien membatalkan pengiriman").
 
 ### `JenisInternational`
 
@@ -272,8 +273,8 @@ tolak — perbaiki mapping, bukan tambahi flag.
   milik klien bila agent kosong; total alokasi tidak melebihi quantity sumber (melanjutkan aturan
   B-2 requirements).
 - **I-4:** JobId unik di seluruh sistem; NomorJob tidak dijamin unik (referensi eksternal).
-- **I-5 (proposal):** penghapusan job (hard delete) hanya oleh PIC event atau admin; job tidak
-  punya status mati — penghapusan adalah satu-satunya keluar.
+- **I-5:** job tidak pernah dihapus. Keluar dari alur kerja hanya lewat pembatalan (alasan wajib);
+  job batal tidak menerima tulis apa pun (dijaga use-case dan trigger DB).
 
 ## 5. Fungsi turunan (signature, tanpa implementasi)
 
@@ -283,8 +284,8 @@ dokumenBcUmum : JenisInternational -> Daftar JenisDokumenBC
   // TEMPORARY → [BC_2_3, BC_2_5]; ROAD_SHIPMENT → [BC_2_7].
   // Bukan aturan mutlak — user tetap dapat menambah/mengurangi per job.
 
-bisaDihapus : Job -> Bool
-  // purpose: mengecek I-5 (pelaku) sebelum hard delete.
+bisaDibatalkan : Job -> Bool
+  // purpose: job belum CANCELLED; pelaku diperiksa oleh kapabilitas `job:cancel`.
 
 ringkasanMuatan : JobInternational -> RingkasanMuatan
   // purpose: total koli/berat/CBM; delegasi penuh ke template dokumen manifest.

@@ -255,7 +255,7 @@ export function JobPartyInvoiceCard({
     onSaved(next)
   }
   const editButton = (target: Exclude<Editing, null>, label: string) =>
-    editing === target ? null : (
+    editing === target || job.status === 'CANCELLED' ? null : (
       <button
         type="button"
         className="inline-flex items-center gap-1 text-xs font-semibold text-orange-700 hover:text-orange-800"

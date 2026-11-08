@@ -8,17 +8,16 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Download, MoreVertical } from 'lucide-react'
 
-import { getOperationalDetails, type Job } from '@/lib/data-client'
+import { type Job, getOperationalDetails } from '@/lib/data-client'
 import {
   invoiceStatusLabels,
   transportModeLabels,
   type BcDocumentKind,
 } from '@/domain/job/types'
 import { ciplStatusText, deriveCiplStatus, type CiplStatus } from '@/domain/job/cipl-status'
-import { jobJenisKey, jobJenisLabel } from '@/lib/job-jenis'
-import type { JobListEvent } from '@/lib/job-list'
+import { JobContextBadge } from '@/components/job-context-badge'
 import { StatusBadge } from '@/components/status-badge'
-import { date, label } from '@/components/job-row'
+import { label } from '@/components/job-row'
 import { jobLabel } from '@/domain/job/numbering'
 
 const INVOICE_BADGE: Record<Job['invoice']['status'], string> = {
@@ -37,68 +36,48 @@ const CIPL_BADGE: Record<CiplStatus, { text: string; className: string }> = {
 // Badge penanda konteks di bawah teks utama sel: jenis job, event, dan agent.
 const badge = 'inline-block max-w-full truncate rounded-full px-2 py-0.5 text-xs font-semibold'
 
-/** Exhibitor job: pihak (bila exhibitor) lebih dulu, lalu nama dari baris CIPL tanpa duplikat. */
-function exhibitorNames(job: Job): string[] {
-  const names = [
-    job.party?.kind === 'EXHIBITOR' ? job.party.name : null,
-    ...job.ciplLines.map((line) => line.exhibitor?.name ?? line.nameOnDocument),
-  ]
-  const seen = new Set<string>()
-  return names.filter((name): name is string => {
-    const key = name?.trim().toLowerCase()
-    if (!key || seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-}
-
-const th = 'sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2'
+const th = 'sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2 whitespace-nowrap'
 
 type JobTableProps = {
   jobs: Job[]
-  eventById: ReadonlyMap<string, JobListEvent>
   onGenerate: (job: Job, documentType: BcDocumentKind) => void
 }
 
-export function JobTable({ jobs, eventById, ...handlers }: JobTableProps) {
+export function JobTable({ jobs, ...handlers }: JobTableProps) {
   return (
     <div className="card max-h-[65vh] overflow-auto">
-      <table className="w-full min-w-[1100px] table-fixed text-left text-sm">
+      <table className="w-full min-w-[900px] table-fixed text-left text-sm">
         <colgroup>
-          <col className="w-[44px]" />
-          <col className="w-[140px]" />
-          <col className="w-[200px]" />
+          <col className="w-[40px]" />
+          <col className="w-[120px]" />
+          <col className="w-[96px]" />
           <col />
-          <col className="w-[110px]" />
-          <col className="w-[150px]" />
+          <col className="w-[70px]" />
           <col className="w-[100px]" />
-          <col className="w-[150px]" />
-          <col className="w-[48px]" />
+          <col className="w-[140px]" />
+          <col className="w-[100px]" />
+          <col className="w-[120px]" />
+          <col className="w-[44px]" />
         </colgroup>
         <thead className="text-xs font-semibold uppercase tracking-wider text-slate-400">
           <tr>
             <th className={`${th} px-2 text-right`}>No</th>
             <th className={th}>No Job</th>
-            <th className={th}>Exhibitor · Agent</th>
-            <th className={th}>Event · Venue</th>
+            <th className={th}>Jenis job</th>
+            <th className={th}>Agent</th>
+            <th className={th}>Moda</th>
             <th className={th}>CIPL</th>
             <th className={th}>B/L · AWB</th>
-            <th className={th}>ETA</th>
-            <th className={th}>Tagihan · Status</th>
-            <th className={th}>
+            <th className={th}>Tagihan</th>
+            <th className={th}>Status</th>
+            <th className="sticky right-0 top-0 z-20 border-b border-slate-200 bg-white px-2 py-2">
               <span className="sr-only">Aksi</span>
             </th>
           </tr>
         </thead>
         <tbody>
           {jobs.map((job, index) => (
-            <JobTableRow
-              key={job.id}
-              job={job}
-              index={index}
-              event={eventById.get(job.eventId)}
-              {...handlers}
-            />
+            <JobTableRow key={job.id} job={job} index={index} {...handlers} />
           ))}
         </tbody>
       </table>
@@ -109,25 +88,17 @@ export function JobTable({ jobs, eventById, ...handlers }: JobTableProps) {
 function JobTableRow({
   job,
   index,
-  event,
   onGenerate,
-}: Omit<JobTableProps, 'jobs' | 'eventById'> & {
+}: Omit<JobTableProps, 'jobs'> & {
   job: Job
   index: number
-  event: JobListEvent | undefined
 }) {
   const router = useRouter()
-  const operational = getOperationalDetails(job)
   const cipl = deriveCiplStatus(job)
-  const exhibitors = exhibitorNames(job)
   const agentName = job.party?.kind === 'AGENT' ? job.party.name : null
   const ciplBadge = CIPL_BADGE[cipl.status]
-  const documentLine = [
-    job.transportDocumentType === 'AWB' ? 'AWB' : job.transportDocumentType ? 'B/L' : null,
-    job.transportMode ? transportModeLabels[job.transportMode] : null,
-  ]
-    .filter(Boolean)
-    .join(' · ')
+  const documentType =
+    job.transportDocumentType === 'AWB' ? 'AWB' : job.transportDocumentType ? 'B/L' : null
 
   return (
     <tr
@@ -136,10 +107,10 @@ function JobTableRow({
         if ((clickEvent.target as HTMLElement).closest('a, button, [role="menu"], [role="presentation"]')) return
         router.push(`/jobs/${job.id}`)
       }}
-      className="cursor-pointer border-b border-slate-100 odd:bg-slate-50/70 last:border-0 hover:bg-orange-50/40"
+      className="group cursor-pointer border-b border-slate-100 odd:bg-slate-50/70 last:border-0 hover:bg-orange-50/40"
     >
-      <td className="px-2 py-3 text-right align-top tabular-nums text-slate-400">{index + 1}</td>
-      <td className="px-2 py-2 align-top">
+      <td className="px-2 py-1.5 text-right align-middle tabular-nums text-slate-400">{index + 1}</td>
+      <td className="px-2 py-1.5 align-middle">
         <Link
           href={`/jobs/${job.id}`}
           className="block truncate font-semibold text-slate-600 hover:text-orange-700"
@@ -147,78 +118,51 @@ function JobTableRow({
         >
           {jobLabel(job)}
         </Link>
-        <span className={`${badge} mt-1 bg-slate-100 text-slate-600`}>{jobJenisLabel(jobJenisKey(job))}</span>
       </td>
-      <td className="px-2 py-2 align-top">
-        {exhibitors.length ? (
-          <p className="flex gap-1 text-slate-500" title={exhibitors.join(', ')}>
-            <span className="truncate">{exhibitors[0]}</span>
-            {exhibitors.length > 1 ? (
-              <span className="flex-none text-slate-400">+{exhibitors.length - 1}</span>
-            ) : null}
-          </p>
-        ) : (
-          <p className="text-slate-300">{job.party ? 'Belum ada exhibitor' : 'Belum ditetapkan'}</p>
-        )}
+      <td className="px-2 py-1.5 align-middle">
+        <JobContextBadge job={job} />
+      </td>
+      <td className="px-2 py-1.5 align-middle">
         {agentName ? (
-          <span className={`${badge} mt-1 bg-violet-50 text-violet-700`} title={`Agent: ${agentName}`}>
+          <p className="truncate text-slate-500" title={agentName}>
             {agentName}
-          </span>
-        ) : null}
-      </td>
-      <td className="px-2 py-2 align-top">
-        {event ? (
-          <Link
-            href={`/events/${event.id}`}
-            className="block truncate text-slate-500 hover:text-orange-700"
-            title={event.name}
-          >
-            {event.name}
-          </Link>
+          </p>
         ) : (
           <p className="text-slate-300">—</p>
         )}
-        {event?.venueName ? (
-          <span className={`${badge} mt-1 bg-orange-50 text-orange-700`} title={`Venue: ${event.venueName}`}>
-            {event.venueName}
-          </span>
-        ) : null}
       </td>
-      <td className="px-2 py-2 align-top">
-        <span className={`${badge} ${ciplBadge.className}`} title={ciplStatusText(cipl)}>
-          {ciplBadge.text}
-        </span>
-      </td>
-      <td className="px-2 py-2 align-top">
-        {job.transportDocumentNumber ? (
-          <p className="truncate text-slate-500" title={job.transportDocumentNumber}>
-            {job.transportDocumentNumber}
-          </p>
-        ) : (
-          <p className="text-slate-300">Belum ada</p>
-        )}
-        {documentLine ? <p className="mt-0.5 text-xs text-slate-400">{documentLine}</p> : null}
-      </td>
-      <td className="px-2 py-2 align-top text-slate-500">
-        {operational.inbound.scheduleAt ? (
-          date(operational.inbound.scheduleAt)
+      <td className="px-2 py-1.5 align-middle text-slate-500">
+        {job.transportMode ? (
+          transportModeLabels[job.transportMode]
         ) : (
           <span className="text-slate-300">—</span>
         )}
       </td>
-      <td className="px-2 py-2 align-top">
-        <div className="flex flex-col items-start gap-1">
-          <span className={`${badge} ${INVOICE_BADGE[job.invoice.status]}`}>
-            {invoiceStatusLabels[job.invoice.status]}
-          </span>
-          <StatusBadge status={job.status} />
-        </div>
+      <td className="px-2 py-1.5 align-middle">
+        <span className={`${badge} ${ciplBadge.className}`} title={ciplStatusText(cipl)}>
+          {ciplBadge.text}
+        </span>
       </td>
-      <td className="px-2 py-2 text-right align-top">
-        <JobRowMenu
-          job={job}
-          onGenerate={onGenerate}
-        />
+      <td className="px-2 py-1.5 align-middle">
+        {job.transportDocumentNumber ? (
+          <p className="truncate text-slate-500" title={job.transportDocumentNumber}>
+            {job.transportDocumentNumber}
+            {documentType ? <span className="ml-1.5 text-xs text-slate-400">{documentType}</span> : null}
+          </p>
+        ) : (
+          <p className="text-slate-300">Belum ada</p>
+        )}
+      </td>
+      <td className="px-2 py-1.5 align-middle">
+        <span className={`${badge} ${INVOICE_BADGE[job.invoice.status]}`}>
+          {invoiceStatusLabels[job.invoice.status]}
+        </span>
+      </td>
+      <td className="px-2 py-1.5 align-middle">
+        <StatusBadge status={job.status} />
+      </td>
+      <td className="sticky right-0 bg-white px-2 py-1.5 text-right align-middle group-odd:bg-slate-50 group-hover:bg-orange-50">
+        <JobRowMenu job={job} onGenerate={onGenerate} />
       </td>
     </tr>
   )
@@ -227,7 +171,7 @@ function JobTableRow({
 function JobRowMenu({
   job,
   onGenerate,
-}: Omit<JobTableProps, 'jobs' | 'eventById'> & { job: Job }) {
+}: Omit<JobTableProps, 'jobs'> & { job: Job }) {
   // Menu di-anchor fixed dari getBoundingClientRect agar tidak terpotong wadah tabel yang overflow.
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null)
   const customs = getOperationalDetails(job).customs
@@ -258,7 +202,7 @@ function JobRowMenu({
         aria-label={`Menu aksi untuk ${name}`}
         aria-expanded={menuAnchor !== null}
         aria-haspopup="menu"
-        className="rounded-lg p-2 text-slate-500 hover:bg-orange-50 hover:text-orange-700"
+        className="rounded-lg p-1 text-slate-500 hover:bg-orange-50 hover:text-orange-700"
       >
         <MoreVertical size={18} />
       </button>

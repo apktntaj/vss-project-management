@@ -12,6 +12,8 @@ import {
 } from '@/features/jobs/repository'
 import type { Job } from '@/domain/job/types'
 
+const JOB_CANCELLED_MESSAGE = 'Job sudah dibatalkan dan tidak dapat diubah lagi.'
+
 const CONSTRAINT_MESSAGES: Record<string, [number, string]> = {
   jobs_event_id_fkey: [400, 'Event tidak ditemukan.'],
   jobs_agent_fk: [400, 'Agent tidak ditemukan.'],
@@ -26,6 +28,7 @@ const CONSTRAINT_MESSAGES: Record<string, [number, string]> = {
   jobs_invoice_paid_has_date: [400, 'Tanggal lunas wajib diisi.'],
   job_cipl_lines_exhibitor_key: [400, 'Satu exhibitor hanya boleh muncul sekali dalam satu job.'],
   job_cipl_lines_exhibitor_event: [400, 'Exhibitor pada baris CIPL harus terdaftar di event job ini.'],
+  job_cancelled: [409, JOB_CANCELLED_MESSAGE],
 }
 
 /** Ubah pelanggaran constraint yang dikenal menjadi ApiError; error lain diteruskan apa adanya. */
@@ -58,13 +61,20 @@ export async function writeJob(
   if (updated) return updated
   const current = await findJobById(jobId)
   if (!current) throw new ApiError(404, 'Job tidak ditemukan.')
+  assertNotCancelled(current)
   throw new ApiError(409, STALE_VERSION_MESSAGE)
+}
+
+/** Job batal tidak menerima perubahan apa pun; 409 agar klien tahu itu keadaan, bukan salah input. */
+export function assertNotCancelled(job: Pick<Job, 'status'>): void {
+  if (job.status === 'CANCELLED') throw new ApiError(409, JOB_CANCELLED_MESSAGE)
 }
 
 /** Muat job untuk perintah yang perlu membaca isinya dulu; 404 / 409 sama seperti `writeJob`. */
 export async function loadJobForWrite(jobId: string, expectedVersion: number): Promise<Job> {
   const job = await findJobById(jobId)
   if (!job) throw new ApiError(404, 'Job tidak ditemukan.')
+  assertNotCancelled(job)
   if (job.version !== expectedVersion) throw new ApiError(409, STALE_VERSION_MESSAGE)
   return job
 }

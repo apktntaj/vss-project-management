@@ -59,33 +59,6 @@ export async function uploadAttachment(input: {
   }
   return { id: input.id, fileName: input.file.name, mimeType: input.file.type || 'application/octet-stream', fileSize: input.file.size, createdAt: new Date().toISOString() }
 }
-
-/** Hapus seluruh lampiran milik satu pemilik: objek di bucket lalu baris metadatanya. */
-export async function removeAttachmentsOfOwner(ownerType: AttachmentOwner, ownerId: string) {
-  const workspace_id = await workspaceId()
-  const admin = getSupabaseAdmin()
-  const { data, error } = await admin
-    .from('attachments')
-    .select('id, storage_path')
-    .eq('workspace_id', workspace_id)
-    .eq('owner_type', ownerType)
-    .eq('owner_id', ownerId)
-    .returns<Array<Pick<AttachmentRow, 'id' | 'storage_path'>>>()
-  if (error) throw new Error(`Lampiran tidak dapat dimuat: ${error.message}`)
-  if (!data?.length) return
-  const { error: storageError } = await admin.storage
-    .from('attachments')
-    .remove(data.map((row) => row.storage_path))
-  if (storageError) throw new Error(`Berkas lampiran tidak dapat dihapus: ${storageError.message}`)
-  const { error: deleteError } = await admin
-    .from('attachments')
-    .delete()
-    .eq('workspace_id', workspace_id)
-    .eq('owner_type', ownerType)
-    .eq('owner_id', ownerId)
-  if (deleteError) throw new Error(`Metadata lampiran tidak dapat dihapus: ${deleteError.message}`)
-}
-
 export type AttachmentMeta = {
   id: string
   kind: string | null

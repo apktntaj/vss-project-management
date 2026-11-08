@@ -1,7 +1,7 @@
 import 'server-only'
 
-// I/O satu aggregate Job: muat, sisipkan, tulis-terjaga-versi, simpan CIPL (RPC atomik), hapus —
-// plus pengecekan rujukan ke aggregate lain. Tanpa aturan bisnis.
+// I/O satu aggregate Job: muat, sisipkan, tulis-terjaga-versi, simpan CIPL (RPC atomik), batalkan —
+// plus pengecekan rujukan ke aggregate lain. Tanpa aturan bisnis. Job tidak pernah dihapus.
 
 import { withWorkspace } from '@/lib/server/db'
 import type { Job, JobCiplLineInput, JobOperationalDetails } from '@/domain/job/types'
@@ -71,6 +71,8 @@ export async function updateJobGuarded(
     .eq('workspace_id', workspaceId)
     .eq('id', jobId)
     .eq('version', expectedVersion)
+    // Job batal tidak dapat diubah lagi; pembatalannya sendiri lewat `cancelJobGuarded`.
+    .neq('status', 'CANCELLED')
     .select(JOB_COLUMNS)
     .maybeSingle<JobRow>()
   if (error) raise('Gagal menyimpan job', error)
@@ -100,22 +102,27 @@ export async function saveJobCiplGuarded(
   return data !== null
 }
 
-/** Hapus baris job beserta rujukan polimorfik yang tak bisa dijaga FK (tiket berkonteks JOB). */
-export async function deleteJobRow(jobId: string): Promise<void> {
+/**
+ * Batalkan job + catat alasannya dalam satu transaksi terjaga versi (fungsi DB `cancel_job`).
+ * Mengembalikan false bila versi basi, job tidak ada, atau sudah batal.
+ */
+export async function cancelJobGuarded(
+  jobId: string,
+  expectedVersion: number,
+  userId: string,
+  reason: string,
+): Promise<boolean> {
+  if (!isUuid(jobId)) return false
   const { client, workspaceId } = await withWorkspace()
-  const { error: ticketsError } = await client
-    .from('tickets')
-    .delete()
-    .eq('workspace_id', workspaceId)
-    .eq('context_kind', 'JOB')
-    .eq('context_id', jobId)
-  if (ticketsError) raise('Gagal menghapus tiket job', ticketsError)
-  const { error } = await client
-    .from('jobs')
-    .delete()
-    .eq('workspace_id', workspaceId)
-    .eq('id', jobId)
-  if (error) raise('Gagal menghapus job', error)
+  const { data, error } = await client.rpc('cancel_job', {
+    p_workspace_id: workspaceId,
+    p_job_id: jobId,
+    p_expected_version: expectedVersion,
+    p_user_id: userId,
+    p_reason: reason,
+  })
+  if (error) raise('Gagal membatalkan job', error)
+  return data !== null
 }
 
 /** Nama agent (master data payload) atau null bila agent tidak ada di workspace. */
@@ -159,19 +166,4 @@ export async function ensureEventAgent(eventId: string, agentId: string, userId:
     { onConflict: 'workspace_id,event_id,agent_id', ignoreDuplicates: true },
   )
   if (error) raise('Gagal mendaftarkan agent ke event', error)
-}
-
-/** Urutan No Job yang sudah dipakai di satu event untuk satu awalan. */
-export async function listManifestSeqs(eventId: string, prefix: string): Promise<number[]> {
-  const { client, workspaceId } = await withWorkspace()
-  const { data, error } = await client
-    .from('jobs')
-    .select('manifest_seq')
-    .eq('workspace_id', workspaceId)
-    .eq('event_id', eventId)
-    .eq('manifest_prefix', prefix)
-    .not('manifest_seq', 'is', null)
-    .returns<Array<{ manifest_seq: number }>>()
-  if (error) raise('Gagal memuat nomor job', error)
-  return (data ?? []).map((row) => row.manifest_seq)
 }

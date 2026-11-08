@@ -1,14 +1,10 @@
-// Stepper "Kesiapan Job" halaman detail: derivasi murni dari aggregate Job (tanpa I/O, gaya
+// Stepper "Milestone Job" halaman detail: derivasi murni dari aggregate Job (tanpa I/O, gaya
 // `lib/manifest-view.ts`) sehingga bisa dites bun. Impor hanya dari domain — jangan dari
 // `@/lib/data-client` (modul itu `'use client'`).
 
 import { normalizeOperationalDetails } from '@/domain/job/operational'
 import { deriveCiplStatus, type CiplStatus, type CiplStatusSummary } from '@/domain/job/cipl-status'
-import {
-  invoiceStatusLabels,
-  type InvoiceStatus,
-  type Job,
-} from '@/domain/job/types'
+import { invoiceStatusLabels, type InvoiceStatus, type Job } from '@/domain/job/types'
 import { jobLabel } from '@/domain/job/numbering'
 
 /** Tab area kerja halaman detail job; state aktif disimpan di URL (`?tab=`). */
@@ -73,7 +69,7 @@ function customsStep(job: Job): JobReadinessStep {
   }
 }
 
-/** Lima langkah kesiapan job: nomor, dokumen angkut, CIPL, dokumen BC, tagihan. */
+/** Lima langkah milestone job: nomor, dokumen angkut, CIPL, dokumen BC, tagihan. */
 export function buildJobReadiness(job: Job): JobReadiness {
   const cipl = deriveCiplStatus(job)
   const steps: JobReadinessStep[] = [

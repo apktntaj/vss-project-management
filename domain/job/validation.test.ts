@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 
 import { emptyOperationalDetails } from './operational'
 import {
+  jobCancelSchema,
   jobCiplPutSchema,
   jobCreateSchema,
   jobDetailsPatchSchema,
@@ -38,6 +39,14 @@ assert.equal(ok(jobDetailsPatchSchema, { version: 1, party: { agentId: 'a', exhi
 const patch = jobDetailsPatchSchema.parse({ version: 3, notes: '  ', manifestSeq: 2, operational: emptyOperationalDetails() })
 assert.equal(patch.notes, null)
 assert.equal(patch.manifestSeq, 2)
+
+// Pembatalan: alasan wajib (di-trim); status CANCELLED tidak bisa dipasang lewat patch biasa.
+assert.equal(ok(jobDetailsPatchSchema, { version: 1, status: 'CANCELLED' }), false)
+assert.equal(ok(jobDetailsPatchSchema, { version: 1, status: 'ON_HOLD' }), true)
+assert.equal(ok(jobCancelSchema, { version: 1 }), false)
+assert.equal(ok(jobCancelSchema, { version: 1, reason: '   ' }), false)
+assert.equal(ok(jobCancelSchema, { version: 1, reason: 'x'.repeat(1001) }), false)
+assert.equal(jobCancelSchema.parse({ version: 2, reason: '  Klien membatalkan pengiriman  ' }).reason, 'Klien membatalkan pengiriman')
 
 // Tagihan.
 const invoice = { number: null, amount: null, currency: null, status: 'NOT_READY', sentAt: null, paidAt: null }

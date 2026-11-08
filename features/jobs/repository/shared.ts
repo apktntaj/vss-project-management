@@ -8,6 +8,7 @@ import type { JobTransportExtraction } from '@/domain/exhibition/source-document
 import {
   jobCiplSourceKinds,
   type Job,
+  type JobCancellation,
   type JobCiplLine,
   type JobCiplSource,
   type JobInvoice,
@@ -167,7 +168,7 @@ function toCiplLine(row: CiplLineRow): JobCiplLine {
   }
 }
 
-export function toJob(row: JobRow, ciplSources: JobCiplSource[]): Job {
+export function toJob(row: JobRow, ciplSources: JobCiplSource[], cancellation: JobCancellation | null): Job {
   const assignedTo = first(row.assigned_to)
   return {
     id: row.id,
@@ -177,6 +178,7 @@ export function toJob(row: JobRow, ciplSources: JobCiplSource[]): Job {
     internationalJenis: row.international_jenis,
     transportMode: row.transport_mode,
     status: row.status,
+    cancellation,
     agentId: row.agent_id,
     exhibitorId: row.exhibitor_id,
     party: toParty(row),
@@ -247,10 +249,43 @@ async function loadCiplSources(
   return sources
 }
 
-/** Petakan baris job ke aggregate, dengan satu query tambahan untuk lampiran CIPL. */
+type CancellationRow = { job_id: string; reason: string; cancelled_at: string; cancelled_by_id: string }
+
+/**
+ * Fakta pembatalan per job. Hanya job berstatus CANCELLED yang ditanyakan, jadi query ini tidak
+ * dijalankan sama sekali selama belum ada job batal.
+ */
+async function loadCancellations(
+  { client, workspaceId }: WorkspaceContext,
+  jobIds: string[],
+): Promise<Map<string, JobCancellation>> {
+  const cancellations = new Map<string, JobCancellation>()
+  if (!jobIds.length) return cancellations
+  const { data, error } = await client
+    .from('job_cancellations')
+    .select('job_id, reason, cancelled_at, cancelled_by_id')
+    .eq('workspace_id', workspaceId)
+    .in('job_id', jobIds)
+    .returns<CancellationRow[]>()
+  if (error) raise('Gagal memuat pembatalan job', error)
+  for (const row of data ?? []) {
+    cancellations.set(row.job_id, {
+      reason: row.reason,
+      cancelledAt: row.cancelled_at,
+      cancelledById: row.cancelled_by_id,
+    })
+  }
+  return cancellations
+}
+
+/** Petakan baris job ke aggregate, dengan query tambahan untuk lampiran CIPL dan pembatalan. */
 export async function toJobs(context: WorkspaceContext, rows: JobRow[]): Promise<Job[]> {
   const sources = await loadCiplSources(context, rows.map((row) => row.id))
-  return rows.map((row) => toJob(row, sources.get(row.id) ?? []))
+  const cancellations = await loadCancellations(
+    context,
+    rows.filter((row) => row.status === 'CANCELLED').map((row) => row.id),
+  )
+  return rows.map((row) => toJob(row, sources.get(row.id) ?? [], cancellations.get(row.id) ?? null))
 }
 
 export function toJobSummary(row: JobSummaryRow): JobSummary {

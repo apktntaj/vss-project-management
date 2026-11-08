@@ -1,54 +1,30 @@
 'use client'
 
 import { useEffect, useState, type FormEvent } from 'react'
-import { Save, Sparkles } from 'lucide-react'
+import { Save } from 'lucide-react'
 import {
-  getNextManifestSeq,
+  getOperationalDetails,
+  listAgents,
   saveJobOperationalDetails,
+  type Agent,
   type Job,
   type JobDetailsInput,
 } from '@/lib/data-client'
 import {
+  jobStatusLabels,
   jobStatuses,
   transportModeLabels,
   transportModes,
   type JobStatus,
   type TransportMode,
 } from '@/domain/job/types'
-import { formatJobNumber, formatManifestSequence } from '@/domain/job/numbering'
+import { parseJobNumber } from '@/domain/job/numbering'
 
 // Editor header job di halaman detail. Simpan selalu patch SEMPIT lewat `saveJobOperationalDetails`
 // lalu mengangkat job terbaru ke pemanggil (`onSaved` → `setJob`).
 
 function notify(message: string, tone: 'success' | 'error') {
   window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
-}
-
-const jobStatusLabels: Record<JobStatus, string> = {
-  DRAFT: 'Draf',
-  IN_PROGRESS: 'Sedang diproses',
-  ON_HOLD: 'Ditunda',
-  COMPLETED: 'Selesai',
-  CANCELLED: 'Dibatalkan',
-}
-
-/** Patch + simpan + angkat job baru; menutup editor saat sukses. */
-function useJobSave(job: Job, onSaved: (job: Job) => void, close: () => void) {
-  const [saving, setSaving] = useState(false)
-  async function save(patch: JobDetailsInput) {
-    setSaving(true)
-    try {
-      const next = await saveJobOperationalDetails(job, patch)
-      notify('Job diperbarui.', 'success')
-      onSaved(next)
-      close()
-    } catch (caught) {
-      notify(caught instanceof Error ? caught.message : 'Job tidak dapat disimpan.', 'error')
-    } finally {
-      setSaving(false)
-    }
-  }
-  return { saving, save }
 }
 
 function FormActions({ saving, onCancel }: { saving: boolean; onCancel: () => void }) {
@@ -65,60 +41,105 @@ function FormActions({ saving, onCancel }: { saving: boolean; onCancel: () => vo
 }
 
 // --------------------------------------------------------------------------------------------
-// Header job: No Job (jalur → awalan, urutan dengan saran, No. commercial invoice), status, dan
-// remark dalam satu form; dibuka sebagai dialog dari header halaman detail (bukan tab).
+// Header job: No Job (diketik pengguna, diurai jadi urutan + akhiran invoice), moda, agent, ETA,
+// dan status dalam satu form; dibuka sebagai dialog dari header halaman detail (bukan tab).
 // --------------------------------------------------------------------------------------------
 
 function HeaderForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job) => void; onCancel: () => void }) {
-  const { saving, save } = useJobSave(job, onSaved, onCancel)
+  const operational = getOperationalDetails(job)
+  const currentAgentId = job.party?.kind === 'AGENT' ? job.party.id : ''
+  // Agent dan exhibitor berbagi satu slot pihak: job berpihak exhibitor (atau Local) tidak diubah dari sini.
+  const agentLocked = job.kind === 'LOCAL' || job.party?.kind === 'EXHIBITOR'
+  const [jobNumberText, setJobNumberText] = useState(job.jobNumber ?? '')
   const [transportMode, setTransportMode] = useState<TransportMode | ''>(job.transportMode ?? '')
-  const [seq, setSeq] = useState(job.manifestSeq ? String(job.manifestSeq) : '')
-  const [invoiceNumber, setInvoiceNumber] = useState(job.commercialInvoiceNumber ?? '')
+  const [agentId, setAgentId] = useState(currentAgentId)
+  const [eta, setEta] = useState(operational.inbound.scheduleAt?.slice(0, 10) ?? '')
   const [status, setStatus] = useState<JobStatus>(job.status)
-  const [notes, setNotes] = useState(job.notes ?? '')
-  const [suggestion, setSuggestion] = useState<number | null>(null)
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [saving, setSaving] = useState(false)
   const modeChanged = (transportMode || null) !== job.transportMode
 
   useEffect(() => {
-    // Saran dihitung dari awalan yang tersimpan; bila jalur baru diubah, simpan dulu lalu minta saran.
-    if (modeChanged) {
-      setSuggestion(null)
-      return
-    }
-    getNextManifestSeq(job.id)
-      .then((result) => setSuggestion(result.suggestedSeq))
-      .catch(() => setSuggestion(null))
-  }, [job.id, job.version, modeChanged])
+    if (agentLocked) return
+    listAgents()
+      .then(setAgents)
+      .catch(() => notify('Daftar agent tidak dapat dimuat.', 'error'))
+  }, [agentLocked])
 
-  const preview = formatJobNumber(
-    modeChanged ? null : job.manifestPrefix,
-    seq.trim() ? Number(seq.trim()) : null,
-    invoiceNumber.trim() || null,
-  )
-
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const trimmedSeq = seq.trim()
-    const manifestSeq = trimmedSeq ? Number(trimmedSeq) : null
-    if (manifestSeq !== null && (!Number.isInteger(manifestSeq) || manifestSeq < 1)) {
-      notify('Urutan No Job harus bilangan bulat ≥ 1.', 'error')
+    const parsed = parseJobNumber(jobNumberText)
+    if (!parsed) {
+      notify('No Job tidak dikenali. Gunakan bentuk S.01/NOMOR-INVOICE.', 'error')
       return
     }
-    const patch: JobDetailsInput = {
-      status,
-      notes: notes.trim() || null,
-      commercialInvoiceNumber: invoiceNumber.trim() || null,
-      ...(modeChanged ? { transportMode: transportMode || null } : {}),
-      ...(modeChanged ? {} : { manifestSeq }),
+    setSaving(true)
+    let current = job
+    try {
+      // Awalan No Job diturunkan database dari moda + jenis job, jadi moda disimpan lebih dulu
+      // agar awalan yang diketik bisa diperiksa terhadap awalan yang berlaku.
+      if (modeChanged) {
+        current = await saveJobOperationalDetails(current, { transportMode: transportMode || null })
+        onSaved(current)
+      }
+      const patch: JobDetailsInput = {}
+      if (status !== current.status) patch.status = status
+
+      if (jobNumberText.trim() !== (job.jobNumber ?? '')) {
+        const savedHint = modeChanged ? ' Moda sudah tersimpan.' : ''
+        if (parsed.prefix && parsed.prefix !== current.manifestPrefix) {
+          notify(
+            current.manifestPrefix
+              ? `Awalan ${parsed.prefix} tidak sesuai; awalan job ini ${current.manifestPrefix}.${savedHint}`
+              : `Isi moda dulu untuk mendapatkan awalan No Job.${savedHint}`,
+            'error',
+          )
+          return
+        }
+        if (parsed.seq !== current.manifestSeq) patch.manifestSeq = parsed.seq
+        if (parsed.invoice !== null && parsed.invoice !== current.commercialInvoiceNumber) {
+          patch.commercialInvoiceNumber = parsed.invoice
+        }
+      }
+      if (!agentLocked && agentId !== currentAgentId) {
+        patch.party = { agentId: agentId || null, exhibitorId: null }
+      }
+      if ((eta || null) !== (operational.inbound.scheduleAt?.slice(0, 10) ?? null)) {
+        const base = getOperationalDetails(current)
+        patch.operational = { ...base, inbound: { ...base.inbound, scheduleAt: eta || null } }
+      }
+
+      if (Object.keys(patch).length) current = await saveJobOperationalDetails(current, patch)
+      if (current !== job) {
+        notify('Job diperbarui.', 'success')
+        onSaved(current)
+      }
+      onCancel()
+    } catch (caught) {
+      notify(caught instanceof Error ? caught.message : 'Job tidak dapat disimpan.', 'error')
+    } finally {
+      setSaving(false)
     }
-    void save(patch)
   }
 
   return (
     <form onSubmit={submit} className="mt-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="label">
-          Jalur
+          No Job
+          <input
+            className="input mt-1"
+            value={jobNumberText}
+            placeholder={`${job.manifestPrefix ?? 'S'}.01/NOMOR-INVOICE`}
+            onChange={(event) => setJobNumberText(event.target.value)}
+          />
+          <span className="mt-1 block text-xs font-normal text-slate-500">
+            Urutan mengikuti barang yang datang lebih dulu, diisi manual.
+            {job.manifestPrefix ? ` Awalan job ini: ${job.manifestPrefix}.` : ' Isi moda untuk mendapatkan awalan.'}
+          </span>
+        </label>
+        <label className="label">
+          Moda
           <select
             className="input mt-1"
             value={transportMode}
@@ -134,35 +155,33 @@ function HeaderForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job) 
           </select>
         </label>
         <label className="label">
-          Urutan No Job
-          <div className="mt-1 flex gap-2">
-            <input
-              type="number"
-              min="1"
-              className="input"
-              value={seq}
-              disabled={modeChanged || !job.manifestPrefix}
-              onChange={(event) => setSeq(event.target.value)}
-            />
-            {suggestion !== null && !modeChanged && (
-              <button
-                type="button"
-                className="btn-secondary shrink-0"
-                title="Urutan berikutnya untuk awalan ini di event ini"
-                onClick={() => setSeq(String(suggestion))}
-              >
-                <Sparkles size={14} /> {job.manifestPrefix}.{formatManifestSequence(suggestion)}
-              </button>
-            )}
-          </div>
+          Agent
+          <select
+            className="input mt-1"
+            value={agentId}
+            disabled={agentLocked}
+            onChange={(event) => setAgentId(event.target.value)}
+          >
+            <option value="">Tanpa agent</option>
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.name}
+              </option>
+            ))}
+          </select>
+          {agentLocked ? (
+            <span className="mt-1 block text-xs font-normal text-slate-500">
+              Pihak tagih job ini adalah exhibitor, jadi agent tidak dapat dipilih.
+            </span>
+          ) : null}
         </label>
         <label className="label">
-          No. commercial invoice
+          ETA
           <input
+            type="date"
             className="input mt-1"
-            value={invoiceNumber}
-            placeholder="234YFN"
-            onChange={(event) => setInvoiceNumber(event.target.value)}
+            value={eta}
+            onChange={(event) => setEta(event.target.value)}
           />
         </label>
         <label className="label">
@@ -172,30 +191,14 @@ function HeaderForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job) 
             value={status}
             onChange={(event) => setStatus(event.target.value as JobStatus)}
           >
-            {jobStatuses.map((value) => (
+            {jobStatuses.filter((value) => value !== 'CANCELLED').map((value) => (
               <option key={value} value={value}>
                 {jobStatusLabels[value]}
               </option>
             ))}
           </select>
         </label>
-        <label className="label sm:col-span-2">
-          Remark
-          <textarea
-            className="input mt-1 min-h-24"
-            value={notes}
-            placeholder="Catatan operasional job"
-            onChange={(event) => setNotes(event.target.value)}
-          />
-        </label>
       </div>
-      <p className="mt-2 text-xs text-slate-500">
-        {modeChanged
-          ? 'Simpan jalur dulu — awalan No Job ditentukan jalur + jenis job. Urutan bisa diisi setelah itu.'
-          : !job.manifestPrefix
-            ? 'Isi jalur dulu untuk mendapatkan awalan No Job.'
-            : `Pratinjau: ${preview ?? `${job.manifestPrefix}.-`}. Urutan mengikuti barang yang datang lebih dulu.`}
-      </p>
       <FormActions saving={saving} onCancel={onCancel} />
     </form>
   )

@@ -10,7 +10,7 @@ import {
   type JobReadinessStepState,
 } from '@/lib/job-readiness'
 
-// Stepper kesiapan job di header halaman detail: lima langkah progres (bukan form), tiap langkah
+// Stepper milestone job di header halaman detail: lima langkah progres (bukan form), tiap langkah
 // menuju tab area kerja (atau dialog header) yang memuat datanya. Klik langkah pada tab aktif
 // tidak melakukan apa pun.
 
@@ -32,7 +32,7 @@ export function JobReadinessBar({
   const readiness = buildJobReadiness(job)
   return (
     <section className="card p-5">
-      <p className="text-sm font-semibold">Kesiapan Job</p>
+      <p className="text-sm font-semibold">Milestone Job</p>
       <div className="mt-3 flex flex-wrap gap-x-6 gap-y-3">
         {readiness.steps.map((step) => (
           <button

@@ -9,7 +9,7 @@ export {
   saveJobInvoice,
   saveJobInward,
   saveJobKepulangan,
-  suggestManifestSeq,
   updateJobDetails,
 } from '@/features/jobs/use-cases/update-job'
-export { deleteJob } from '@/features/jobs/use-cases/delete-job'
+export { cancelJob } from '@/features/jobs/use-cases/cancel-job'
+export { assertJobAcceptsAttachments } from '@/features/jobs/use-cases/job-guards'

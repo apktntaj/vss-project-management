@@ -9,6 +9,8 @@ import type { EventTuntasStatus } from '@/domain/event/types'
  * datanya payload jsonb yang bisa berasal dari beberapa generasi bentuk job.
  */
 export type TuntasJobShape = {
+  /** Job batal tidak ikut hitungan tuntas (tidak ada lagi pekerjaan yang diharapkan). */
+  status?: string | null
   kind?: string | null
   internationalJenis?: string | null
   /** Blok kepulangan (JobReturn) — cukup diketahui terisi atau kosong. */
@@ -52,13 +54,17 @@ export function jobTuntas(job: TuntasJobShape): boolean {
   return semuaDokumenSelesai && (!wajibKepulangan || kepulanganTercatat)
 }
 
-/** Rollup event: TANPA_JOB bila tanpa job; BELUM_TUNTAS bila ada yang belum; TUNTAS bila semua. */
+// Job batal tidak ikut rollup: tidak ada lagi pekerjaan yang diharapkan darinya.
+const aktif = (jobs: readonly TuntasJobShape[]) => jobs.filter((job) => job.status !== 'CANCELLED')
+
+/** Rollup event: TANPA_JOB bila tanpa job aktif; BELUM_TUNTAS bila ada yang belum; TUNTAS bila semua. */
 export function eventTuntas(jobs: readonly TuntasJobShape[]): EventTuntasStatus {
-  if (jobs.length === 0) return 'TANPA_JOB'
-  return jobs.every(jobTuntas) ? 'TUNTAS' : 'BELUM_TUNTAS'
+  const active = aktif(jobs)
+  if (active.length === 0) return 'TANPA_JOB'
+  return active.every(jobTuntas) ? 'TUNTAS' : 'BELUM_TUNTAS'
 }
 
 /** Jumlah job yang belum tuntas — dipakai peringatan arsip ("masih ada N job belum tuntas"). */
 export function hitungJobBelumTuntas(jobs: readonly TuntasJobShape[]): number {
-  return jobs.filter((job) => !jobTuntas(job)).length
+  return aktif(jobs).filter((job) => !jobTuntas(job)).length
 }

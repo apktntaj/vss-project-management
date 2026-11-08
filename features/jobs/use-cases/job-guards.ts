@@ -9,10 +9,11 @@ import { can, type Capability } from '@/features/auth'
 import { findEventById } from '@/features/events/repository'
 import { eventManagerGuard } from '@/features/events/use-cases/event-guards'
 import { findJobById } from '@/features/jobs/repository'
+import { assertNotCancelled } from '@/features/jobs/use-cases/errors'
 import { ApiError } from '@/lib/server/errors'
 import type { CurrentUser } from '@/domain/auth/types'
 
-export type JobWriteCapability = Extract<Capability, 'job:create' | 'job:update' | 'job:delete'>
+export type JobWriteCapability = Extract<Capability, 'job:create' | 'job:update' | 'job:cancel'>
 
 /** Otorisasi tulis job pada event tertentu (dipakai saat job belum ada: create). */
 export async function authorizeJobWriteInEvent(
@@ -36,4 +37,13 @@ export async function authorizeJobWrite(
   const job = await findJobById(jobId)
   if (!job) throw new ApiError(404, 'Job tidak ditemukan.')
   await authorizeJobWriteInEvent(currentUser, capability, job.eventId)
+}
+
+/**
+ * Lampiran baru tidak boleh ditambahkan ke job yang sudah batal. Job yang tak ditemukan dibiarkan
+ * lolos di sini; pemeriksaan keberadaan milik penyimpanan lampiran.
+ */
+export async function assertJobAcceptsAttachments(jobId: string): Promise<void> {
+  const job = await findJobById(jobId)
+  if (job) assertNotCancelled(job)
 }

@@ -9,19 +9,18 @@ import {
   findAgentName,
   findJobById,
   ensureEventAgent,
-  listManifestSeqs,
   saveJobCiplGuarded,
   type JobWritableColumns,
 } from '@/features/jobs/repository'
 import {
   STALE_VERSION_MESSAGE,
+  assertNotCancelled,
   loadJobForWrite,
   translateConstraint,
   writeJob,
 } from '@/features/jobs/use-cases/errors'
 import { authorizeJobWrite } from '@/features/jobs/use-cases/job-guards'
 import { applyDocumentExtraction, normalizeOperationalDetails } from '@/domain/job/operational'
-import { suggestNextManifestSeq } from '@/domain/job/numbering'
 import { exhibitorOnlyJob } from '@/domain/job/validation'
 import { ApiError } from '@/lib/server/errors'
 import type { CurrentUser } from '@/domain/auth/types'
@@ -141,6 +140,9 @@ export async function saveJobCipl(
   input: JobCiplPut,
 ): Promise<Job> {
   await authorizeJobWrite(currentUser, 'job:update', jobId)
+  const current = await findJobById(jobId)
+  if (!current) throw new ApiError(404, 'Job tidak ditemukan.')
+  assertNotCancelled(current)
   let saved: boolean
   try {
     saved = await saveJobCiplGuarded(jobId, input.version, input.ciplDocument, input.lines)
@@ -175,17 +177,4 @@ export async function saveJobKepulangan(
 ): Promise<Job> {
   await authorizeJobWrite(currentUser, 'job:update', jobId)
   return writeJob(jobId, version, { kepulangan })
-}
-
-/** Saran urutan No Job berikutnya untuk awalan job ini di event-nya; null bila awalan belum ada. */
-export async function suggestManifestSeq(
-  currentUser: CurrentUser,
-  jobId: string,
-): Promise<{ prefix: string | null; suggestedSeq: number | null }> {
-  await authorize(currentUser, 'job:read')
-  const job = await findJobById(jobId)
-  if (!job) throw new ApiError(404, 'Job tidak ditemukan.')
-  if (!job.manifestPrefix) return { prefix: null, suggestedSeq: null }
-  const used = await listManifestSeqs(job.eventId, job.manifestPrefix)
-  return { prefix: job.manifestPrefix, suggestedSeq: suggestNextManifestSeq(used) }
 }

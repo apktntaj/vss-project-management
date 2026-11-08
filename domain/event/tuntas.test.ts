@@ -103,4 +103,11 @@ describe('eventTuntas', () => {
   test('hitungJobBelumTuntas menghitung hanya yang belum', () => {
     expect(hitungJobBelumTuntas([tuntas, belum, belum])).toBe(2)
   })
+
+  test('job batal tidak ikut hitungan: belum tuntas yang dibatalkan tidak menggantung', () => {
+    const batal = { ...belum, status: 'CANCELLED' }
+    expect(eventTuntas([tuntas, batal])).toBe('TUNTAS')
+    expect(hitungJobBelumTuntas([batal, belum])).toBe(1)
+    expect(eventTuntas([batal])).toBe('TANPA_JOB')
+  })
 })

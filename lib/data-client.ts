@@ -903,13 +903,16 @@ export async function deleteEvent(eventId: string) {
   })
 }
 
-/** Hapus permanen job beserta lampiran dan ticket yang terikat padanya. */
-export async function deleteJob(jobId: string) {
-  await jobsRequest<void>(jobPath(jobId), { method: 'DELETE' })
-}
-
 /** Rujukan minimal untuk menulis aggregate Job: id + versi yang terakhir dibaca. */
 export type JobRef = Pick<Job, 'id' | 'version'>
+
+/** Batalkan job dengan alasan wajib. Job tidak pernah dihapus; setelah batal tidak dapat diubah lagi. */
+export function cancelJob(job: JobRef, reason: string): Promise<Job> {
+  return jobsRequest<Job>(jobPath(job.id, '/cancel'), {
+    method: 'POST',
+    body: JSON.stringify({ version: job.version, reason }),
+  })
+}
 
 const jobDocumentMimeTypes: Record<string, JobDocumentMimeType> = {
   pdf: 'application/pdf',
@@ -1056,13 +1059,6 @@ export function saveJobInvoice(job: JobRef, invoice: JobInvoice): Promise<Job> {
     method: 'PUT',
     body: JSON.stringify({ version: job.version, invoice }),
   })
-}
-
-/** Saran urutan No Job berikutnya untuk awalan job ini di event-nya. */
-export function getNextManifestSeq(
-  jobId: string,
-): Promise<{ prefix: string | null; suggestedSeq: number | null }> {
-  return jobsRequest(jobPath(jobId, '/next-manifest-seq'))
 }
 
 /** Simpan blok inward manifest (dokumen angkut, konfigurasi muatan, milestone, catatan). */

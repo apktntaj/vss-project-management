@@ -102,6 +102,7 @@ function computeAttention(rows: AttentionRow[]): EventListAttention {
 // dipakai `TuntasJobShape` yang diambil — bukan seluruh aggregate.
 type TuntasJobRow = {
   event_id: string
+  status: string
   kind: string
   international_jenis: string | null
   kepulangan: unknown
@@ -114,7 +115,7 @@ async function fetchJobsGroupedByEvent(
 ): Promise<Map<string, TuntasJobShape[]>> {
   const { data, error } = await client
     .from('jobs')
-    .select('event_id, kind, international_jenis, kepulangan, operational')
+    .select('event_id, status, kind, international_jenis, kepulangan, operational')
     .eq('workspace_id', workspaceId)
     .returns<TuntasJobRow[]>()
 
@@ -125,6 +126,7 @@ async function fetchJobsGroupedByEvent(
   for (const row of data ?? []) {
     const list = grouped.get(row.event_id) ?? []
     list.push({
+      status: row.status,
       kind: row.kind,
       internationalJenis: row.international_jenis,
       kepulangan: row.kepulangan,

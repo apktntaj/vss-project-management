@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { auth } from '@/auth'
+import { assertJobAcceptsAttachments } from '@/features/jobs'
+import { ApiError, toErrorResponse } from '@/lib/server/errors'
 import {
   attachmentOwners,
   downloadAttachment,
@@ -26,8 +28,10 @@ export async function POST(request: NextRequest) {
     if (typeof id !== 'string' || typeof ownerId !== 'string' || typeof ownerType !== 'string' || !owners.has(ownerType) || !(file instanceof File)) {
       return NextResponse.json({ error: 'Lampiran tidak valid.' }, { status: 400 })
     }
+    if (ownerType === 'JOB') await assertJobAcceptsAttachments(ownerId)
     return NextResponse.json(await uploadAttachment({ id, ownerId, ownerType: ownerType as AttachmentOwner, kind: typeof kind === 'string' ? kind : null, file }))
   } catch (error) {
+    if (error instanceof ApiError) return toErrorResponse(error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Lampiran tidak dapat diunggah.' }, { status: 503 })
   }
 }

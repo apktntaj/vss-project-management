@@ -19,10 +19,23 @@ export function formatJobNumber(
   return suffix ? `${base}/${suffix}` : base
 }
 
-/** Saran urutan berikutnya: satu di atas urutan terbesar yang sudah dipakai. */
-export function suggestNextManifestSeq(usedSeqs: ReadonlyArray<number | null>): number {
-  const used = usedSeqs.filter((seq): seq is number => typeof seq === 'number' && seq > 0)
-  return used.length ? Math.max(...used) + 1 : 1
+/** Hasil membaca No Job yang diketik pengguna; semua bagian bisa kosong (nomor dikosongkan). */
+export type ParsedJobNumber = { prefix: string | null; seq: number | null; invoice: string | null }
+
+/**
+ * Membaca `<awalan>.<urut>/<no. commercial invoice>` (mis. `S.01/234YFN`). Teks kosong atau
+ * `S.-` berarti urutan dikosongkan. null bila bentuknya tidak dikenali. Penomoran sepenuhnya
+ * ditentukan pengguna (mengikuti barang datang), jadi tidak ada saran/otomatisasi urutan.
+ */
+export function parseJobNumber(input: string): ParsedJobNumber | null {
+  const text = input.trim()
+  if (!text) return { prefix: null, seq: null, invoice: null }
+  const match = /^([A-Za-z]+)\.(-|\d{1,4})(?:\s*\/\s*(.*\S))?$/.exec(text)
+  if (!match) return null
+  const [, prefix, rawSeq, invoice] = match
+  const seq = rawSeq === '-' ? null : Number(rawSeq)
+  if (seq === 0) return null
+  return { prefix: prefix.toUpperCase(), seq, invoice: invoice?.trim() || null }
 }
 
 /**

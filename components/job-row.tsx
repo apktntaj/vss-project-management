@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { CircleAlert, MoreVertical, Pencil, Plane, Ship, Trash2, Truck } from 'lucide-react'
+import { Ban, CircleAlert, MoreVertical, Pencil, Plane, Ship, Truck } from 'lucide-react'
 
 import { getOperationalDetails, type Job } from '@/lib/data-client'
 import { transportModeLabels } from '@/domain/job/types'
@@ -74,10 +74,10 @@ export function JobRow({
   nomor?: string
   /** Bila diisi, tampil kolom Event · Jenis · Jalur (tabel lintas event di /jobs). */
   event?: { id: string; name: string } | null
-  /** Bila diisi, kolom terakhir menampilkan menu titik tiga (Edit/Hapus) alih-alih PIC. */
+  /** Bila diisi, kolom terakhir menampilkan menu titik tiga (Edit/Batalkan) alih-alih PIC. */
   actions?: {
     onEdit: (job: Job) => void
-    onDelete: (job: Job) => void
+    onCancel: (job: Job) => void
   }
 }) {
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null)
@@ -206,17 +206,19 @@ export function JobRow({
                   >
                     <Pencil size={15} /> Edit
                   </button>
-                  <button
-                    role="menuitem"
-                    type="button"
-                    onClick={() => {
-                      setMenuAnchor(null)
-                      actions.onDelete(job)
-                    }}
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
-                  >
-                    <Trash2 size={15} /> Hapus
-                  </button>
+                  {job.status !== 'CANCELLED' && (
+                    <button
+                      role="menuitem"
+                      type="button"
+                      onClick={() => {
+                        setMenuAnchor(null)
+                        actions.onCancel(job)
+                      }}
+                      className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
+                    >
+                      <Ban size={15} /> Batalkan
+                    </button>
+                  )}
                 </div>
               </>
             )}
