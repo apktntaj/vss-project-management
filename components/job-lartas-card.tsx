@@ -87,7 +87,7 @@ export function JobLartasCard({
       {valid.length === 0 && (
         <p className="mt-2 text-sm text-slate-500">
           Belum ada HS code 8 digit pada barang job ini. Lengkapi CIPL atau cek manual di{' '}
-          <Link href="/lartas" className="font-medium text-primary hover:underline">
+          <Link href="/tools?tab=lartas" className="font-medium text-primary hover:underline">
             halaman Cek LARTAS
           </Link>
           .

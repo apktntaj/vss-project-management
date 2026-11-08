@@ -15,7 +15,7 @@ import { LartasResultCard } from '@/components/lartas-result-card'
 import { numberID } from '@/components/job-exhibitor-summary'
 import { buildManifestView, type ManifestPeserta } from '@/lib/manifest-view'
 import { checkLartas, getOperationalDetails, type Job } from '@/lib/data-client'
-import { chunkHsCodes, collectJobHsCodes, formatHsCode } from '@/lib/job-lartas'
+import { chunkHsCodes, collectJobHsCodes, formatHsCode, normalizeHsCode } from '@/lib/job-lartas'
 import type { BarisBarang } from '@/domain/exhibition/cipl-document'
 import type { KoliDimension } from '@/domain/job/manifest'
 import type { LartasResult } from '@/domain/lartas/types'
@@ -86,8 +86,7 @@ function groupByCase(pesertaList: ReadonlyArray<ManifestPeserta>): CaseGroup[] {
 }
 
 function hsDigits(value: string | null | undefined): string | null {
-  const digits = value?.replace(/\D/g, '') ?? ''
-  return /^\d{8}$/.test(digits) ? digits : null
+  return normalizeHsCode(value)?.digits ?? null
 }
 
 function lookupChip(result: LartasResult): { text: string; tone: string } {
@@ -161,7 +160,7 @@ export function JobBarangCard({
     }
   }
 
-  const { valid, invalid, missingCount } = collection
+  const { valid, invalid, truncated, missingCount } = collection
   const itemCount = groups.reduce((sum, group) => sum + group.items.length, 0)
 
   return (
@@ -296,7 +295,7 @@ export function JobBarangCard({
       {valid.length === 0 && (
         <p className="mt-3 text-sm text-slate-500">
           Belum ada HS code 8 digit pada barang job ini. Lengkapi CIPL atau cek manual di{' '}
-          <Link href="/lartas" className="font-medium text-primary hover:underline">
+          <Link href="/tools?tab=lartas" className="font-medium text-primary hover:underline">
             halaman Cek LARTAS
           </Link>
           .
@@ -306,11 +305,17 @@ export function JobBarangCard({
         <div className="mt-3 flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <p>
-            Barang tanpa HS atau dengan HS bukan 8 digit
+            Barang tanpa HS atau dengan HS bukan 8/10 digit
             {invalid.length > 0 && <> ({invalid.join(', ')})</>} tidak ikut diperiksa, sehingga
             LARTAS-nya belum diketahui.
           </p>
         </div>
+      )}
+      {truncated.length > 0 && (
+        <p className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
+          {truncated.length} pos tarif 10 digit diperiksa memakai 8 digit pertamanya (
+          {truncated.join(', ')}).
+        </p>
       )}
       {notice && (
         <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">

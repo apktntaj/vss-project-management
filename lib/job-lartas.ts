@@ -17,14 +17,37 @@ export type JobHsCode = {
 export type JobHsCodeCollection = {
   /** HS 8 digit unik, siap dicek. */
   valid: JobHsCode[]
-  /** Nilai HS yang terisi tetapi bukan 8 digit (apa adanya, unik). */
+  /** Nilai HS yang terisi tetapi bukan 8/10 digit (apa adanya, unik). */
   invalid: string[]
+  /** Nilai 10 digit (pos tarif nasional) yang dipakai 8 digit pertamanya (apa adanya, unik). */
+  truncated: string[]
   /** Jumlah baris barang tanpa HS code. */
   missingCount: number
 }
 
 export function formatHsCode(hsCode: string): string {
   return /^\d{8}$/.test(hsCode) ? hsCode.replace(/(\d{4})(\d{2})(\d{2})/, '$1.$2.$3') : hsCode
+}
+
+export type NormalizedHsCode = {
+  /** 8 digit siap dikirim ke INSW. */
+  digits: string
+  /** Nilai asli bila kode 10 digit dipotong; null bila memang sudah 8 digit. */
+  truncatedFrom: string | null
+}
+
+/**
+ * Kunci pencarian INSW adalah HS Indonesia 8 digit. Dokumen sering menulis pos tarif 10 digit
+ * (8 digit BTKI + 2 digit fasilitas/statistik), jadi 8 digit pertamanya yang dipakai. Kode lain
+ * (mis. 6 digit) tidak bisa ditebak dan dikembalikan null.
+ */
+export function normalizeHsCode(raw: string | null | undefined): NormalizedHsCode | null {
+  const trimmed = raw?.trim() ?? ''
+  if (!trimmed) return null
+  const digits = trimmed.replace(/\D/g, '')
+  if (/^\d{8}$/.test(digits)) return { digits, truncatedFrom: null }
+  if (/^\d{10}$/.test(digits)) return { digits: digits.slice(0, 8), truncatedFrom: trimmed }
+  return null
 }
 
 type HsInput = { raw: string | null | undefined; usage: JobHsUsage }
@@ -49,6 +72,7 @@ export function collectJobHsCodes(
 
   const valid = new Map<string, JobHsCode>()
   const invalid = new Set<string>()
+  const truncated = new Set<string>()
   let missingCount = 0
   for (const { raw, usage } of inputs) {
     const trimmed = raw?.trim() ?? ''
@@ -56,16 +80,22 @@ export function collectJobHsCodes(
       missingCount += 1
       continue
     }
-    const digits = trimmed.replace(/\D/g, '')
-    if (!/^\d{8}$/.test(digits)) {
+    const normalized = normalizeHsCode(trimmed)
+    if (!normalized) {
       invalid.add(trimmed)
       continue
     }
-    const existing = valid.get(digits)
+    if (normalized.truncatedFrom) truncated.add(normalized.truncatedFrom)
+    const existing = valid.get(normalized.digits)
     if (existing) existing.usages.push(usage)
-    else valid.set(digits, { hsCode: digits, formatted: formatHsCode(digits), usages: [usage] })
+    else
+      valid.set(normalized.digits, {
+        hsCode: normalized.digits,
+        formatted: formatHsCode(normalized.digits),
+        usages: [usage],
+      })
   }
-  return { valid: [...valid.values()], invalid: [...invalid], missingCount }
+  return { valid: [...valid.values()], invalid: [...invalid], truncated: [...truncated], missingCount }
 }
 
 export function chunkHsCodes(codes: readonly string[], size = LARTAS_MAX_CODES_PER_REQUEST): string[][] {

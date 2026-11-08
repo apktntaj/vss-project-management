@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-import { chunkHsCodes, collectJobHsCodes, formatHsCode } from './job-lartas'
+import { chunkHsCodes, collectJobHsCodes, formatHsCode, normalizeHsCode } from './job-lartas'
 
 const item = (uraian: string, kodeHs: string | null) => ({ uraian, kodeHs })
 const line = (...items: ReturnType<typeof item>[]) => ({ items }) as Parameters<typeof collectJobHsCodes>[0][number]
@@ -41,4 +41,27 @@ assert.equal(formatHsCode('8471'), '8471')
   const codes = Array.from({ length: 45 }, (_, index) => String(index).padStart(8, '0'))
   assert.deepEqual(chunkHsCodes(codes).map((chunk) => chunk.length), [20, 20, 5])
   assert.deepEqual(chunkHsCodes([]), [])
+}
+
+// (6) Pos tarif 10 digit (8 digit BTKI + 2 digit fasilitas) diperiksa memakai 8 digit pertama,
+// dan digabung dengan baris yang sudah menulis 8 digit.
+{
+  const result = collectJobHsCodes([
+    line(item('Mesin A', '8428.33.00.00'), item('Mesin B', '84283300'), item('Mesin C', '8428 33 00 90')),
+    line(item('Enam digit', '842833')),
+  ])
+  assert.deepEqual(result.valid.map((code) => code.hsCode), ['84283300'])
+  assert.equal(result.valid[0].usages.length, 3)
+  assert.deepEqual(result.truncated, ['8428.33.00.00', '8428 33 00 90'])
+  assert.deepEqual(result.invalid, ['842833'])
+  assert.equal(result.missingCount, 0)
+}
+
+// (7) normalizeHsCode: 8 digit apa adanya, 10 digit dipotong, sisanya null.
+{
+  assert.deepEqual(normalizeHsCode('8471.30.90'), { digits: '84713090', truncatedFrom: null })
+  assert.deepEqual(normalizeHsCode('3920109090'), { digits: '39201090', truncatedFrom: '3920109090' })
+  assert.equal(normalizeHsCode('847130'), null)
+  assert.equal(normalizeHsCode('   '), null)
+  assert.equal(normalizeHsCode(null), null)
 }

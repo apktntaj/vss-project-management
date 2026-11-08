@@ -222,7 +222,7 @@ export function DashboardOverview({ insightsSlot }: { insightsSlot?: ReactNode }
                 detail: 'Tindak lanjuti tugas dan koordinasi tim',
               },
               {
-                href: '/lartas',
+                href: '/tools?tab=lartas',
                 icon: ShieldCheck,
                 title: 'Cek ketentuan LARTAS',
                 detail: 'Telusuri persyaratan barang kiriman',

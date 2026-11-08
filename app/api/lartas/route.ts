@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { auth } from '@/auth'
 import { lookupHsCodes } from '@/lib/insw-lartas'
+import { normalizeHsCode } from '@/lib/job-lartas'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -31,7 +32,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Masukkan 1 sampai 20 kode HS.' }, { status: 400 })
   }
 
-  const hsCodes = [...new Set(parsed.data.hsCodes.map((value) => value.replace(/\D/g, '')))]
+  // Pos tarif 10 digit dipakai 8 digit pertamanya; kode lain diteruskan apa adanya agar INSW
+  // menandainya `invalid` alih-alih diam-diam dianggap valid.
+  const hsCodes = [
+    ...new Set(
+      parsed.data.hsCodes.map((value) => normalizeHsCode(value)?.digits ?? value.replace(/\D/g, '')),
+    ),
+  ]
   const results = await lookupHsCodes(hsCodes, lookupConfig())
   return NextResponse.json({
     notice: "Status LARTAS hanya boleh disimpulkan 'Tidak Ada' jika verification bernilai 'verified'.",
