@@ -4,7 +4,6 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import {
   LayoutDashboard,
-  BookOpenText,
   BriefcaseBusiness,
   CalendarDays,
   ChevronsLeft,
@@ -15,7 +14,7 @@ import {
   Settings,
   Menu,
   ChevronRight,
-  Landmark,
+  Wrench,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -30,13 +29,12 @@ import {
 import { logoutAction } from '@/app/(dashboard)/actions'
 const links = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/events', label: 'Events', icon: CalendarDays },
   { href: '/jobs', label: 'Jobs', icon: BriefcaseBusiness },
-  { href: '/it-inventory', label: 'IT Inventory', icon: BookOpenText },
+  { href: '/events', label: 'Events', icon: CalendarDays },
+  { href: '/general-cargo', label: 'General Cargo', icon: Package },
+  { href: '/projects', label: 'Projects', icon: FolderKanban },
   { href: '/kanban', label: 'Tickets', icon: FolderKanban },
-  { href: '/ceisa', label: 'CEISA', icon: Landmark, available: false },
-  { href: '/general-cargo', label: 'General Cargo', icon: Package, available: false },
-  { href: '/projects', label: 'Projects', icon: FolderKanban, available: false },
+  { href: '/tools', label: 'Tools', icon: Wrench },
 ]
 export function AppShell({
   children,
@@ -131,33 +129,14 @@ export function AppShell({
           </p>
         )}
         <nav className="flex flex-col gap-1 px-3 pb-3">
-          {links.map(({ href, label, icon: Icon, available = true }) => {
+          {links.map(({ href, label, icon: Icon }) => {
             const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
             const content = (
               <>
                 <Icon size={18} />
                 <span className={collapsed ? 'md:hidden' : ''}>{label}</span>
-                {!available && (
-                  <span
-                    className={`rounded-full bg-orange-200 px-1.5 py-px text-[8px] font-semibold uppercase tracking-wide text-orange-900 ${collapsed ? 'md:hidden' : ''}`}
-                  >
-                    Soon
-                  </span>
-                )}
               </>
             )
-            if (!available) {
-              return (
-                <span
-                  key={href}
-                  aria-disabled="true"
-                  title={`${label} segera hadir`}
-                  className={`flex shrink-0 cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/35 ${collapsed ? 'md:justify-center' : ''}`}
-                >
-                  {content}
-                </span>
-              )
-            }
             return (
               <Link
                 key={href}
@@ -216,7 +195,6 @@ export function AppShell({
                 </DialogHeader>
                 <nav aria-label="Navigasi mobile" className="flex flex-col gap-1">
                   {links
-                    .filter((link) => link.available !== false)
                     .map(({ href, label, icon: Icon }) => {
                       const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
                       return (

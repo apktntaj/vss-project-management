@@ -15,7 +15,7 @@ import type { JournalEntry } from '@/domain/it-inventory/types'
 
 const numberFormat = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 })
 
-export default function ItInventoryPage() {
+export function ItInventoryView() {
   const [entries, setEntries] = useState<JournalEntry[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -62,7 +62,7 @@ export default function ItInventoryPage() {
     <div className="space-y-8">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">IT Inventory</h1>
+          <h2 className="text-2xl font-bold tracking-tight">IT Inventory</h2>
           <p className="mt-2 text-sm text-slate-500">
             Jurnal arus barang — setiap entry adalah satu perpindahan; saldo selalu dihitung dari
             jurnal, tidak ada stok yang diedit langsung.
