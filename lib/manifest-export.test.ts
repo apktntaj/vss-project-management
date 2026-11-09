@@ -65,6 +65,7 @@ assert.equal(
 
 const s1 = job({
   manifestSeq: 1,
+  notes: 'Jangan lupa makan',
   commercialInvoiceNumber: 'INV-1',
   ciplLines: [
     line({
@@ -74,10 +75,10 @@ const s1 = job({
     }),
   ],
 })
-// Kepala job = identitas kiriman saja: PIHAK / DOKUMEN / MUATAN (angka total ada di subtotal).
+// Kepala job = nilai saja, tanpa label "B/L": PIHAK / NOMOR DOKUMEN / MUATAN.
 assert.equal(
   blockHeaderText(buildManifestView(s1)),
-  'SHENZHEN BOBON LOGISTICS CO.,LTD / B/L SHFPSJKT26026454 / LCL',
+  'SHENZHEN BOBON LOGISTICS CO.,LTD / SHFPSJKT26026454 / LCL',
 )
 const fcl = job({
   manifestSeq: 2,
@@ -121,7 +122,7 @@ const workbook = buildEventManifestWorkbook(
   [local, road, fcl, s1],
   new Map([['x9', 'Bpk. Charles']]),
 )
-assert.deepEqual(workbook.sheets.map((sheet) => sheet.name), ['Inward Manifest', 'Return List Container', 'Return List LCL'])
+assert.deepEqual(workbook.sheets.map((sheet) => sheet.name), ['Inward Manifest'])
 
 const sheet = workbook.sheets[0]
 const rows = sheet.rows
@@ -150,32 +151,44 @@ const tppbHeader = rows.findIndex((row) => row.kind === 'BLOCK_HEADER')
 assert.equal(rows[tppbHeader].tone, 'YELLOW')
 assert.equal(rows.find((row) => String(row.cells[0]).startsWith('EASYGO'))?.tone, 'LIGHT_GREEN')
 
-// Blok S.01: tiga baris koli saja (remark tidak lagi menambah baris kosong).
+// Blok S.01: tiga baris koli dipadatkan jadi tujuh baris supaya semua butir Remark muat.
 const start = tppbHeader + 1
 const first = rows[start].cells
 assert.equal(first[col('Job No')], 'S.01')
 assert.equal(first[col('Exhibitor Name')], 'WUHU CHURUI')
 assert.equal(first[col('Total Package')], 3)
 assert.equal(first[col('CASE')], 'PK 1')
-assert.equal(first[col('Bare Case')], null)
 assert.equal(first[col('Booth No')], 'C302')
+// Kolom Bare Case, Empty Storage, dan Re-export tidak diekspor.
+for (const removed of ['Bare Case', 'Empty Storage', 'Re-export']) assert.ok(!(INWARD_COLUMNS as readonly string[]).includes(removed))
 const excelRow = start + 1
-assert.deepEqual(first[col('CBM')], { formula: `(F${excelRow}*G${excelRow}*H${excelRow}/1000000)` })
-// Remark milik job: satu sel berisi semua baris, disorot karena ada catatan BC 2.7.
-assert.equal(first[col('Remark')], 'Eta : 28/09/2026\nSkep : S-622/WBC.08/2026\nSPPB : 02/09/2026\nBC.27 TO NICE KRISTA INTERFOOD')
-assert.deepEqual(rows[start].highlight, [col('Remark')])
-assert.equal(rows[start + 3].kind, 'SUBTOTAL')
-assert.deepEqual(rows[start + 3].cells[col('Total Package')], { formula: `SUM(C${excelRow}:C${excelRow + 2})` })
-assert.deepEqual(rows[start + 3].cells[col('CBM')], { formula: `SUM(I${excelRow}:I${excelRow + 2})` })
-// Sel milik job & exhibitor digabung sepanjang tiga baris koli.
-const merges = sheet.rangeMerges ?? []
-for (const name of ['Job No', 'Remark', 'Empty Storage', 'Re-export', 'Exhibitor Name', 'Total Package', 'Hall', 'Booth No'] as const) {
-  assert.ok(
-    merges.some((m) => m.fromRow === start && m.toRow === start + 2 && m.fromColumn === col(name)),
-    `kolom ${name} digabung sepanjang blok`,
-  )
+assert.deepEqual(first[col('CBM')], { formula: `(E${excelRow}*F${excelRow}*G${excelRow}/1000000)` })
+// Remark: daftar isian tetap; butir bermilestone (ETA, SPPB) diisi, sisanya label saja.
+assert.deepEqual(
+  rows.slice(start, start + 7).map((row) => row.cells[col('Remark')]),
+  ['ETA: 28/09/2026', 'Nopen:', 'SPPB: 02/09/2026', 'Bonded:', 'BC 2.5:', 'BC 3.0:', 'Return:'],
+)
+// Notes: satu catatan per baris (catatan job lalu catatan manifest); hanya baris catatan BC 2.7 yang disorot.
+assert.deepEqual(rows.slice(start, start + 3).map((row) => row.cells[col('Notes')]), ['Jangan lupa makan', 'BC.27 TO NICE KRISTA INTERFOOD', null])
+assert.equal(rows[start].highlight, undefined)
+assert.deepEqual(rows[start + 1].highlight, [col('Notes')])
+assert.equal(rows[start + 7].kind, 'SUBTOTAL')
+assert.deepEqual(rows[start + 7].cells[col('Total Package')], { formula: `SUM(C${excelRow}:C${excelRow + 6})` })
+assert.deepEqual(rows[start + 7].cells[col('CBM')], { formula: `SUM(H${excelRow}:H${excelRow + 6})` })
+// Tanpa sel gabungan: data job/exhibitor hanya di baris pertama, baris lain kosong tetapi tetap berupa sel bergaris.
+assert.ok(!('rangeMerges' in sheet))
+for (const name of ['Job No', 'Exhibitor Name', 'Total Package', 'Hall', 'Booth No'] as const) {
+  assert.equal(rows[start + 1].cells[col(name)], null, `${name} hanya di baris pertama`)
 }
-assert.ok(!merges.some((m) => m.fromColumn === col('CASE')), 'kolom koli tidak digabung')
+
+// Catatan banyak baris memperpanjang blok melebihi tujuh baris Remark.
+const manyNotes = buildEventManifestWorkbook(
+  { name: 'x', venueName: null, startsOn: null, endsOn: null },
+  [job({ manifestSeq: 9, notes: Array.from({ length: 9 }, (_, i) => `catatan ${i + 1}`).join('\n'), inward: null, ciplLines: [] })],
+).sheets[0].rows
+const manyStart = manyNotes.findIndex((row) => row.kind === 'BLOCK_HEADER') + 1
+assert.equal(manyNotes[manyStart + 9].kind, 'SUBTOTAL')
+assert.equal(manyNotes[manyStart + 8].cells[col('Notes')], 'catatan 9')
 
 // Road shipment tanpa No Job: nomor VSS sebagai pengenal; baris "Belum ada baris CIPL".
 const roadStart = rows.findIndex((row) => String(row.cells[0]).startsWith('EASYGO')) + 1
@@ -189,12 +202,5 @@ assert.equal(rows[localHeader + 1].cells[col('Exhibitor Name')], 'PT. REPASSA\nP
 const total = rows[rows.length - 1]
 assert.equal(total.kind, 'TOTAL')
 assert.equal(total.cells[col('Exhibitor Name')], 'TOTAL')
-
-// Return list: LCL dari kepulangan job Local; container kosong (tidak ada kepulangan FCL).
-const lcl = workbook.sheets[2]
-assert.equal(lcl.rows[0].cells[0], 'RETURN LIST LCL ALLPACK INDONESIA')
-assert.deepEqual(lcl.rows[2].cells.slice(0, 5), [1, null, 'PT. Repassa', '1 Pkg', 'Jakarta'])
-assert.equal(lcl.rows[2].cells[8], '10/11/2026')
-assert.equal(workbook.sheets[1].rows.length, 2)
 
 console.log('event manifest export passed')

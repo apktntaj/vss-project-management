@@ -2,18 +2,18 @@
 // ALLPACK": satu blok per kiriman — pengirim, dokumen, isi per exhibitor s.d. koli, status, posisi
 // di venue) dengan perbaikan kolom yang disetujui pengguna 2026-11-02:
 //   - kolom "No" dibuang; Job No (S.01, L.01, …) kolom pertama,
-//   - data milik JOB (Job No, Empty Storage, Re-export, Remark) = satu sel digabung per blok,
-//     data milik EXHIBITOR (nama, Total Package, Bare Case, Hall, Booth) = satu sel per exhibitor,
-//     sehingga milestone tidak lagi tampak seolah milik koli tertentu,
+//   - data milik JOB (Job No, Notes) dan EXHIBITOR (nama, Total Package, Hall, Booth) hanya ditulis di
+//     baris pertamanya; sel TIDAK digabung supaya garis sel tetap muncul di setiap baris (seperti
+//     dokumen klien), sehingga milestone tidak tampak seolah milik koli tertentu,
 //   - Total Package berupa angka (dapat dijumlah); subtotal & total juga menjumlah paket,
-//   - baris kepala job hanya identitas kiriman `PIHAK / B/L / muatan`; angka total di subtotal,
-//   - label koli di kolom CASE, Bare Case hanya jumlah.
+//   - baris kepala job hanya nilai identitas kiriman `PIHAK / nomor B/L / muatan` (tanpa label); angka total di subtotal,
+//   - label koli di kolom CASE; kolom Bare Case, Empty Storage, dan Re-export tidak diekspor.
 //
-//   Sheet "Inward Manifest": judul (nama pameran) · "Exhibits Details For Inward Movement" · venue
+//   Sheet tunggal "Inward Manifest": judul (nama pameran) · "Exhibits Details For Inward Movement" · venue
 //     (tanggal) · kepala kolom merah 2 baris · bagian per jenis (TPPB tanpa judul, lalu baris merah
-//     ROAD SHIPMENT / PERMANENT IMPORT / …) · per job: kepala berwarna, baris per koli (CBM = rumus
-//     L*W*H), subtotal =SUM.
-//   Sheet "Return List Container" & "Return List LCL" — dari data kepulangan job.
+//     ROAD SHIPMENT / PERMANENT IMPORT / …) · per job: kepala berwarna (nilai saja, tanpa label),
+//     baris per koli (CBM = rumus L*W*H) dengan Remark berisi daftar isian tetap ETA / Nopen / SPPB /
+//     Bonded / BC 2.5 / BC 3.0 / Return, subtotal =SUM. Sheet Return List tidak lagi diekspor.
 //
 // Fungsi murni: menghasilkan model baris + gaya semantik, tanpa pustaka spreadsheet, agar dapat
 // diuji. Perender (exceljs) ada di `lib/server/manifest-workbook.ts`.
@@ -57,15 +57,10 @@ export type ManifestRow = {
   highlight?: number[]
 }
 
-/** Penggabungan sel lintas baris (0-based, inklusif). */
-export type ManifestRangeMerge = { fromRow: number; toRow: number; fromColumn: number; toColumn: number }
-
 export type ManifestSheetModel = {
   name: string
   columnWidths: number[]
   rows: ManifestRow[]
-  /** Sel digabung vertikal (data milik job / exhibitor yang membentang beberapa baris koli). */
-  rangeMerges?: ManifestRangeMerge[]
   /** Format angka Excel per kolom (0-based). */
   columnFormats?: Record<number, string>
 }
@@ -115,57 +110,53 @@ function loadLabel(view: ManifestBlockView): string | null {
     .join(' + ')
 }
 
-/** Baris kepala job = identitas kiriman: PIHAK / DOKUMEN / MUATAN. Angka total ada di subtotal. */
+/** Baris kepala job = nilai saja tanpa label, urutan tetap: PIHAK / NOMOR B/L atau AWB / MUATAN. */
 export function blockHeaderText(view: ManifestBlockView): string {
   const parts = [view.partyName.toUpperCase()]
-  if (view.transportDocument) {
-    parts.push(`${view.transportDocument.type === 'BL' ? 'B/L' : 'AWB'} ${view.transportDocument.number}`)
-  }
+  if (view.transportDocument) parts.push(view.transportDocument.number)
   const load = loadLabel(view)
   if (load) parts.push(load)
   return parts.join(' / ')
 }
 
-/** Ejaan label Remark mengikuti dokumen klien (bukan label aplikasi). */
-const REMARK_LABELS: Record<MilestoneKind, string> = {
-  ETA: 'Eta',
-  SKEP: 'Skep',
-  SPPB: 'SPPB',
-  STRIPPING_SELESAI: 'Selesai stripping',
-  MASUK_BONDED: 'Masuk Bonded',
-  BAHANDLE_SELESAI: 'Selesai Bahandle',
-  PERIKSA_SELESAI: 'Selesai periksa',
-  DO_READY: 'DO ready',
-}
-
-const REMARK_ORDER: MilestoneKind[] = [
-  'ETA',
-  'SKEP',
-  'SPPB',
-  'STRIPPING_SELESAI',
-  'MASUK_BONDED',
-  'BAHANDLE_SELESAI',
-  'PERIKSA_SELESAI',
-  'DO_READY',
+/**
+ * Kolom Remark: daftar isian tetap, satu butir per baris. Butir yang punya milestone di job
+ * (ETA, SPPB, Bonded) diisi nilainya; sisanya hanya label untuk dilengkapi operator.
+ */
+const REMARK_SLOTS: ReadonlyArray<{ label: string; milestone: MilestoneKind | null }> = [
+  { label: 'ETA', milestone: 'ETA' },
+  { label: 'Nopen', milestone: null },
+  { label: 'SPPB', milestone: 'SPPB' },
+  { label: 'Bonded', milestone: 'MASUK_BONDED' },
+  { label: 'BC 2.5', milestone: null },
+  { label: 'BC 3.0', milestone: null },
+  { label: 'Return', milestone: null },
 ]
 
-/** Kolom Remark: "Eta : 28/09/2026", "Skep : S-622/WBC.08/2026", lalu catatan apa adanya. */
-export function remarkLines(view: ManifestBlockView): Array<{ text: string; highlight: boolean }> {
-  const inward = view.inward
-  if (!inward) return []
-  const milestones = REMARK_ORDER.flatMap((kind) => {
-    const milestone = findMilestone(inward.milestones, kind)
-    if (!milestone) return []
-    // Skep/SPPB bernomor menampilkan nomor suratnya (seperti dokumen klien), selain itu tanggal.
-    const value = milestone.documentNumber ?? ddmmyyyy(milestone.date)
-    return [{ text: `${REMARK_LABELS[kind]} : ${value}`, highlight: false }]
+export function remarkRows(view: ManifestBlockView): string[] {
+  return REMARK_SLOTS.map(({ label, milestone }) => {
+    const found = milestone && view.inward ? findMilestone(view.inward.milestones, milestone) : null
+    // SPPB bernomor menampilkan nomor suratnya (seperti dokumen klien), selain itu tanggal.
+    const value = found ? (found.documentNumber ?? ddmmyyyy(found.date)) : ''
+    return value ? `${label}: ${value}` : `${label}:`
   })
-  const notes = inward.notes.map((note) => ({
+}
+
+/** Kolom Notes: catatan job (`job.notes`), lalu catatan manifest apa adanya; satu entri per baris teks. */
+export function noteLines(job: Job, view: ManifestBlockView): Array<{ text: string; highlight: boolean }> {
+  const own = job.notes ? [{ text: job.notes, highlight: false }] : []
+  const manifest = (view.inward?.notes ?? []).map((note) => ({
     text: note.text,
     // Catatan pengalihan (BC 2.7) & penahanan disorot merah seperti di dokumen klien.
     highlight: note.kind !== 'ANOMALI_BARANG' && /BC\s*\.?\s*2\.?7|HOLD/i.test(note.text),
   }))
-  return [...milestones, ...notes]
+  return [...own, ...manifest].flatMap((entry) =>
+    entry.text
+      .split('\n')
+      .map((text) => text.trim())
+      .filter(Boolean)
+      .map((text) => ({ text, highlight: entry.highlight })),
+  )
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -176,42 +167,34 @@ export const INWARD_COLUMNS = [
   'Job No',
   'Exhibitor Name',
   'Total Package',
-  'Bare Case',
   'CASE',
   'L',
   'W',
   'H',
   'CBM',
   'Weight Kgs',
-  'Empty Storage',
-  'Re-export',
   'Remark',
   'Hall',
   'Booth No',
+  'Notes',
 ] as const
 const COL = {
   jobNo: 0,
   exhibitor: 1,
   totalPackage: 2,
-  bareCase: 3,
-  caseLabel: 4,
-  length: 5,
-  width: 6,
-  height: 7,
-  cbm: 8,
-  weight: 9,
-  emptyStorage: 10,
-  reExport: 11,
-  remark: 12,
-  hall: 13,
-  booth: 14,
+  caseLabel: 3,
+  length: 4,
+  width: 5,
+  height: 6,
+  cbm: 7,
+  weight: 8,
+  remark: 9,
+  hall: 10,
+  booth: 11,
+  notes: 12,
 } as const
 const LAST = INWARD_COLUMNS.length - 1
 const letter = (column: number) => String.fromCharCode(65 + column)
-
-/** Kolom milik job (satu sel per blok) dan milik exhibitor (satu sel per exhibitor). */
-const JOB_COLUMNS = [COL.jobNo, COL.emptyStorage, COL.reExport, COL.remark]
-const EXHIBITOR_COLUMNS = [COL.exhibitor, COL.totalPackage, COL.bareCase, COL.hall, COL.booth]
 
 type SectionKey = InternationalJobJenis | 'LOCAL'
 
@@ -237,15 +220,10 @@ function inwardSheet(
   exhibitorPic: ReadonlyMap<string, string>,
 ): ManifestSheetModel {
   const rows: ManifestRow[] = []
-  const rangeMerges: ManifestRangeMerge[] = []
   const merged = (kind: ManifestRowKind, text: string, tone?: BlockTone): ManifestRow => {
     const cells = emptyCells()
     cells[0] = text
     return { kind, cells, merges: fullWidth, tone }
-  }
-  const mergeDown = (fromRow: number, toRow: number, columns: ReadonlyArray<number>) => {
-    if (toRow <= fromRow) return
-    for (const column of columns) rangeMerges.push({ fromRow, toRow, fromColumn: column, toColumn: column })
   }
 
   rows.push(merged('TITLE', event.name.toUpperCase()))
@@ -283,14 +261,12 @@ function inwardSheet(
       for (const peserta of view.peserta) {
         const koli = peserta.logistics.koli
         const details = koli.details.length ? koli.details : [null]
-        const exhibitorStart = rows.length
         details.forEach((detail, index) => {
           const cells = emptyCells()
           if (index === 0) {
             const pic = peserta.line.exhibitorId ? exhibitorPic.get(peserta.line.exhibitorId) : undefined
             cells[COL.exhibitor] = pic && section.key === 'LOCAL' ? `${peserta.name}\nPIC : ${pic}` : peserta.name
             cells[COL.totalPackage] = summarizeKoli(koli).totalCount
-            cells[COL.bareCase] = koli.bareCaseCount
             cells[COL.hall] = peserta.logistics.hall
             cells[COL.booth] = peserta.logistics.booth
           }
@@ -306,7 +282,6 @@ function inwardSheet(
           cells[COL.weight] = detail?.weightKg ?? null
           rows.push({ kind: 'DATA', cells })
         })
-        mergeDown(exhibitorStart, rows.length - 1, EXHIBITOR_COLUMNS)
       }
       if (rows.length === blockStart) {
         const cells = emptyCells()
@@ -314,16 +289,24 @@ function inwardSheet(
         rows.push({ kind: 'DATA', cells })
       }
 
-      // Data milik job: satu sel per blok, digabung sepanjang baris kolinya.
+      // Data milik job hanya ditulis di baris pertama blok; sel tidak digabung supaya garis sel tetap ada di tiap baris.
       const first = rows[blockStart]
       first.cells[COL.jobNo] =
         formatJobNumber(job.manifestPrefix, job.manifestSeq, null) ?? jobLabel(job)
-      first.cells[COL.emptyStorage] = job.emptyStorage
-      first.cells[COL.reExport] = job.reExport
-      const remarks = remarkLines(view)
-      first.cells[COL.remark] = remarks.length ? remarks.map((remark) => remark.text).join('\n') : null
-      if (remarks.some((remark) => remark.highlight)) first.highlight = [COL.remark]
-      mergeDown(blockStart, rows.length - 1, JOB_COLUMNS)
+      // Notes: satu baris catatan per baris tabel (catatan job lalu catatan manifest).
+      const notes = noteLines(job, view)
+      // Blok dipadatkan agar semua butir Remark (daftar isian tetap) dan semua baris Notes muat.
+      while (rows.length - blockStart < Math.max(REMARK_SLOTS.length, notes.length)) {
+        rows.push({ kind: 'DATA', cells: emptyCells() })
+      }
+      remarkRows(view).forEach((text, index) => {
+        rows[blockStart + index].cells[COL.remark] = text
+      })
+      notes.forEach((note, index) => {
+        const row = rows[blockStart + index]
+        row.cells[COL.notes] = note.text
+        if (note.highlight) row.highlight = [COL.notes]
+      })
 
       const firstRow = blockStart + 1
       const lastRow = rows.length
@@ -350,109 +333,10 @@ function inwardSheet(
 
   return {
     name: 'Inward Manifest',
-    columnWidths: [16, 52, 10, 9, 12, 8, 8, 8, 10, 12, 16, 16, 42, 8, 12],
+    columnWidths: [16, 52, 10, 12, 8, 8, 8, 10, 12, 22, 8, 12, 36],
     rows,
-    rangeMerges,
     columnFormats: { [COL.cbm]: '0.000', [COL.weight]: '#,##0.00', [COL.totalPackage]: '0' },
   }
-}
-
-// ---------------------------------------------------------------------------------------------
-// Sheet 2 & 3 — Return List (kepulangan)
-// ---------------------------------------------------------------------------------------------
-
-/** "JS LOGISTICS (Shunde Huaji + …)" — pihak lalu exhibitor di baris CIPL. */
-function returnParty(job: Job): string {
-  const party = job.party?.name ?? 'Pihak belum ditetapkan'
-  const same = (left: string, right: string) => left.trim().toLowerCase() === right.trim().toLowerCase()
-  const exhibitors = job.ciplLines
-    // Exhibitor yang sekaligus pihak job tidak diulang di dalam kurung.
-    .filter((line) => !(job.party?.kind === 'EXHIBITOR' && line.exhibitorId === job.party.id))
-    .map((line) => line.exhibitor?.name ?? line.nameOnDocument)
-    .filter((name) => name && !same(name, party))
-  return exhibitors.length ? `${party} (${exhibitors.join(' + ')})` : party
-}
-
-function returnRows(jobs: ReadonlyArray<Job>, kind: 'FCL' | 'LCL') {
-  return sortJobsForTable(
-    jobs.filter((job) => job.kepulangan?.mode.kind === kind),
-    new Map(),
-  )
-}
-
-const dateOrNull = (value: string | null) => (value ? ddmmyyyy(value) : null)
-
-function returnContainerSheet(event: ManifestEventInfo, jobs: ReadonlyArray<Job>): ManifestSheetModel {
-  const columns = ['No.', 'Doc.', 'Agent / Exhibitor', 'Package', "20'", "40'", "40'HQ", 'Destination', 'Shipping Line', 'Booking No.', 'Vessel', 'ETD', 'ETA', 'Note']
-  const rows: ManifestRow[] = []
-  const title = columns.map(() => null) as ManifestCellValue[]
-  title[0] = `RETURN LIST CONTAINER ${event.name.toUpperCase()}`
-  rows.push({ kind: 'TITLE', cells: title, merges: [[0, columns.length - 1]] })
-  rows.push({ kind: 'COLUMN_HEADER', cells: [...columns] })
-  const items = returnRows(jobs, 'FCL')
-  items.forEach((job, index) => {
-    const ret = job.kepulangan!
-    const containers = ret.mode.kind === 'FCL' ? ret.mode.containers : []
-    const count = (size: ContainerSize) => containers.filter((item) => item.size === size).length || null
-    const view = buildManifestView(job)
-    rows.push({
-      kind: 'DATA',
-      cells: [
-        index + 1,
-        formatJobNumber(job.manifestPrefix, job.manifestSeq, null),
-        returnParty(job),
-        `${view.totals.totalCount} Pkg`,
-        count('K20'),
-        count('K40'),
-        count('K40HQ'),
-        ret.destination,
-        ret.shippingLine,
-        ret.bookingNumber,
-        ret.vessel,
-        dateOrNull(ret.etd),
-        dateOrNull(ret.eta),
-        ret.notes.map((note) => note.text).join('; ') || null,
-      ],
-    })
-  })
-  if (items.length) {
-    const first = 3
-    const last = 2 + items.length
-    rows.push({
-      kind: 'TOTAL',
-      cells: [null, null, null, null, ...['E', 'F', 'G'].map((column) => ({ formula: `SUM(${column}${first}:${column}${last})` })), null, null, null, null, null, null, null],
-    })
-  }
-  return { name: 'Return List Container', columnWidths: [5.5, 10, 39.5, 13.5, 8.4, 8.4, 8.4, 14.5, 17.1, 14, 14, 11, 11, 24], rows }
-}
-
-function returnLclSheet(event: ManifestEventInfo, jobs: ReadonlyArray<Job>): ManifestSheetModel {
-  const columns = ['No.', 'Doc.', 'Agent / Exhibitor', 'Package', 'Destination', 'Forwarder', 'Booking No.', 'Vessel', 'ETD', 'ETA', 'Note']
-  const rows: ManifestRow[] = []
-  const title = columns.map(() => null) as ManifestCellValue[]
-  title[0] = `RETURN LIST LCL ${event.name.toUpperCase()}`
-  rows.push({ kind: 'TITLE', cells: title, merges: [[0, columns.length - 1]] })
-  rows.push({ kind: 'COLUMN_HEADER', cells: [...columns] })
-  returnRows(jobs, 'LCL').forEach((job, index) => {
-    const ret = job.kepulangan!
-    rows.push({
-      kind: 'DATA',
-      cells: [
-        index + 1,
-        formatJobNumber(job.manifestPrefix, job.manifestSeq, null),
-        returnParty(job),
-        ret.mode.kind === 'LCL' ? `${ret.mode.koliCount} Pkg` : null,
-        ret.destination,
-        ret.shippingLine,
-        ret.bookingNumber,
-        ret.vessel,
-        dateOrNull(ret.etd),
-        dateOrNull(ret.eta),
-        ret.notes.map((note) => note.text).join('; ') || null,
-      ],
-    })
-  })
-  return { name: 'Return List LCL', columnWidths: [5.5, 10, 39.5, 13.5, 14.5, 17.1, 14, 14, 11, 11, 24], rows }
 }
 
 /**
@@ -464,11 +348,5 @@ export function buildEventManifestWorkbook(
   jobs: ReadonlyArray<Job>,
   exhibitorPic: ReadonlyMap<string, string> = new Map(),
 ): ManifestWorkbookModel {
-  return {
-    sheets: [
-      inwardSheet(event, jobs, exhibitorPic),
-      returnContainerSheet(event, jobs),
-      returnLclSheet(event, jobs),
-    ],
-  }
+  return { sheets: [inwardSheet(event, jobs, exhibitorPic)] }
 }

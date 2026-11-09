@@ -8,7 +8,9 @@ import {
   CalendarDays,
   ChevronDown,
   ChevronRight,
+  Download,
   FileSpreadsheet,
+  Loader2,
   MapPin,
   Plus,
 } from 'lucide-react'
@@ -128,10 +130,11 @@ export default function EventDetailPage() {
           type="button"
           onClick={exportManifest}
           disabled={exporting}
-          className="btn-secondary shrink-0"
+          className="btn-secondary shrink-0 gap-2"
           title="Unduh inward manifest event ini (Excel, format dokumen klien)"
         >
-          <FileSpreadsheet size={16} /> {exporting ? 'Mengekspor…' : 'Export manifest (Excel)'}
+          {exporting ? <Loader2 className="animate-spin" size={16} aria-hidden="true" /> : <Download size={16} aria-hidden="true" />}
+          {exporting ? 'Mengekspor…' : 'Export Manifest'}
         </button>
       </div>
 
