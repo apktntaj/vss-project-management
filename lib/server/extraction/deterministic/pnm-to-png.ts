@@ -46,8 +46,7 @@ function downscale(pixels: Buffer, width: number, height: number, channels: numb
   return out
 }
 
-/** Mengubah PNM (P5 grayscale / P6 RGB) dari extractPageImages menjadi PNG; sisi terpanjang dibatasi maxEdge. */
-export function pnmToPng(ppm: Buffer, maxEdge = 1600): Buffer {
+function parsePnmHeader(ppm: Buffer): { channels: number; width: number; height: number; dataOffset: number } {
   const header = ppm.toString('ascii', 0, 64).match(/^P([56])\n(\d+) (\d+)\n255\n/)
   if (!header) throw new Error('Bukan PNM P5/P6 yang valid.')
   const channels = header[1] === '5' ? 1 : 3
@@ -55,18 +54,30 @@ export function pnmToPng(ppm: Buffer, maxEdge = 1600): Buffer {
   const height = Number(header[3])
   // String match regex sudah mencakup baris baru terakhir header, jadi offset = panjang match.
   const dataOffset = Buffer.byteLength(header[0])
-  let pixels = ppm.subarray(dataOffset)
-  if (pixels.length < width * height * channels) throw new Error('Data piksel PNM tidak lengkap.')
+  if (ppm.length - dataOffset < width * height * channels) throw new Error('Data piksel PNM tidak lengkap.')
+  return { channels, width, height, dataOffset }
+}
 
-  let outWidth = width
-  let outHeight = height
+/** Membatasi sisi terpanjang PNM (P5/P6) ke maxEdge; tanpa salinan bila sudah cukup kecil. */
+export function limitPnmLongEdge(ppm: Buffer, maxEdge: number): { width: number; height: number; ppm: Buffer } {
+  const { channels, width, height, dataOffset } = parsePnmHeader(ppm)
   const longEdge = Math.max(width, height)
-  if (longEdge > maxEdge) {
-    const scale = maxEdge / longEdge
-    outWidth = Math.max(1, Math.round(width * scale))
-    outHeight = Math.max(1, Math.round(height * scale))
-    pixels = downscale(pixels, width, height, channels, outWidth, outHeight)
+  if (longEdge <= maxEdge) return { width, height, ppm }
+  const scale = maxEdge / longEdge
+  const outWidth = Math.max(1, Math.round(width * scale))
+  const outHeight = Math.max(1, Math.round(height * scale))
+  const pixels = downscale(ppm.subarray(dataOffset), width, height, channels, outWidth, outHeight)
+  return {
+    width: outWidth,
+    height: outHeight,
+    ppm: Buffer.concat([Buffer.from(`P${channels === 1 ? 5 : 6}\n${outWidth} ${outHeight}\n255\n`), pixels]),
   }
+}
+
+/** Mengubah PNM (P5 grayscale / P6 RGB) menjadi PNG. Ukuran dibatasi lebih dulu lewat limitPnmLongEdge. */
+export function pnmToPng(ppm: Buffer): Buffer {
+  const { channels, width: outWidth, height: outHeight, dataOffset } = parsePnmHeader(ppm)
+  const pixels = ppm.subarray(dataOffset)
 
   const scanlines = Buffer.alloc((outWidth * channels + 1) * outHeight)
   for (let y = 0; y < outHeight; y++) {

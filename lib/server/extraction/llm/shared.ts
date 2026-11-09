@@ -1,9 +1,12 @@
 import 'server-only'
 
-import { CONFIDENCE_THRESHOLD } from '../config'
+import { CONFIDENCE_THRESHOLD, LLM_MAX_IMAGE_BYTES, LLM_MAX_IMAGE_PAGES, LLM_PAGE_MAX_EDGE } from '../config'
 import { DocumentExtractionError, LLM_FAILED_MESSAGE, LLM_UNAVAILABLE_MESSAGE } from '../errors'
 import { isPdf } from '../file-guard'
 import { parseSpreadsheet } from '../deterministic/xlsx-parser'
+import { parsePdfTextLayer } from '../deterministic/pdf-text-parser'
+import { extractPageImages } from '../deterministic/pdf-images'
+import { pnmToPng } from '../deterministic/pnm-to-png'
 import { flattenExtractionFields } from '../deterministic/field-extractor'
 import { normalizeInvoice, normalizeTransport } from '@/lib/server/document-extraction'
 import {
@@ -47,11 +50,33 @@ export const EXTRACTION_PROMPT =
 export const EXTRACTION_USER_PROMPT =
   'Classify and extract this document. Return only the JSON object described.'
 
-/** Input dokumen utk provider LLM: PDF native (base64) atau teks (spreadsheet CSV). */
-export async function documentInputForLlm(file: File): Promise<{ pdfBase64: string } | { text: string }> {
-  if (isPdf(file)) return { pdfBase64: Buffer.from(await file.arrayBuffer()).toString('base64') }
-  const parsed = await parseSpreadsheet(file)
-  return { text: parsed.text }
+export type LlmDocumentInput =
+  | { pdfBase64: string }
+  | { pagePngsBase64: string[] }
+  | { text: string }
+
+/** Input dokumen utk provider LLM: gambar halaman (PDF image-only), PDF native (base64), atau teks (spreadsheet CSV). */
+export async function documentInputForLlm(file: File): Promise<LlmDocumentInput> {
+  if (!isPdf(file)) return { text: (await parseSpreadsheet(file)).text }
+  const pagePngsBase64 = await rasterizeImageOnlyPdf(file)
+  if (pagePngsBase64) return { pagePngsBase64 }
+  return { pdfBase64: Buffer.from(await file.arrayBuffer()).toString('base64') }
+}
+
+/** PDF tanpa lapisan teks → PNG per halaman (≤ LLM_PAGE_MAX_EDGE). null = kirim PDF asli. */
+async function rasterizeImageOnlyPdf(file: File): Promise<string[] | null> {
+  try {
+    if ((await parsePdfTextLayer(file)).hasTextLayer) return null
+    const { images, pageCount } = await extractPageImages(file, LLM_MAX_IMAGE_PAGES, LLM_PAGE_MAX_EDGE)
+    if (!images.length || pageCount > LLM_MAX_IMAGE_PAGES || images.length < pageCount) return null
+    const pngs = images.map((image) => pnmToPng(image.ppm))
+    const total = pngs.reduce((sum, png) => sum + png.length, 0)
+    if (total >= file.size || pngs.some((png) => png.length > LLM_MAX_IMAGE_BYTES)) return null
+    return pngs.map((png) => png.toString('base64'))
+  } catch (error) {
+    console.warn('Rasterisasi PDF untuk LLM gagal; mengirim PDF asli.', { message: error instanceof Error ? error.message : 'unknown' })
+    return null
+  }
 }
 
 export function parseJsonPayload(rawText: string): Record<string, unknown> {

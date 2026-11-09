@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { limitPnmLongEdge } from './pnm-to-png'
+
 /** Satu halaman hasil rasterisasi dalam format PNM (P5/P6) yang dibaca leptonica (tesseract.js). */
 export type PageImage = { width: number; height: number; ppm: Buffer }
 
@@ -46,12 +48,13 @@ type InternalPage = {
  * tanpa rasterisasi native. pdfjs sudah mendekode gambar ke piksel mentah saat operator list
  * dibangun; data itu diubah ke PNM untuk tesseract.js yang tidak menerima PDF langsung.
  */
-export async function extractPageImages(file: File, maxPages: number): Promise<PageImage[]> {
+export async function extractPageImages(file: File, maxPages: number, maxEdge: number): Promise<{ images: PageImage[]; pageCount: number }> {
   const buffer = Buffer.from(await file.arrayBuffer())
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
   const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer), useWorkerFetch: false })
   const doc = await loadingTask.promise
   const images: PageImage[] = []
+  const pageCount = doc.numPages
   try {
     for (let pageNumber = 1; pageNumber <= Math.min(doc.numPages, maxPages); pageNumber++) {
       const page = (await doc.getPage(pageNumber)) as unknown as InternalPage
@@ -68,7 +71,7 @@ export async function extractPageImages(file: File, maxPages: number): Promise<P
         })
         if (!image?.data || !image.width || !image.height) continue
         const pnm = toPnm(image.width, image.height, image.kind ?? 0, image.data)
-        if (pnm) images.push({ width: image.width, height: image.height, ppm: pnm })
+        if (pnm) images.push(limitPnmLongEdge(pnm, maxEdge))
         break
       }
       page.cleanup()
@@ -76,5 +79,5 @@ export async function extractPageImages(file: File, maxPages: number): Promise<P
   } finally {
     await loadingTask.destroy()
   }
-  return images
+  return { images, pageCount }
 }

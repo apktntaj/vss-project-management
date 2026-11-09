@@ -30,8 +30,8 @@ export async function classifyJobDocument(file: File): Promise<ExtractionResult>
   if (provider) {
     try {
       return await provider.extract(file)
-    } catch {
-      // Timeout, PDF tanpa lapisan teks, layanan down — jatuh ke deterministik.
+    } catch (error) {
+      console.warn('Klasifikasi LLM gagal; memakai ekstraksi deterministik.', { code: error instanceof DocumentExtractionError ? error.code : 'UNKNOWN' })
     }
   }
   try {
