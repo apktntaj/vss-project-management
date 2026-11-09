@@ -33,6 +33,7 @@ import {
   type EditableJobDocument,
 } from '@/components/job-document-editor-dialog'
 import { JobTransportDocumentCard } from '@/components/job-transport-document-card'
+import { JobDocumentsCard } from '@/components/job-documents-card'
 import { JobLartasCard } from '@/components/job-lartas-card'
 import { JobBillingDialog, JobPartyInvoiceCard } from '@/components/job-party-invoice-card'
 import { JobContextBadge } from '@/components/job-context-badge'
@@ -50,6 +51,10 @@ import { StatusBadge } from '@/components/status-badge'
 
 // Sementara disembunyikan dari tab Muatan atas permintaan; kartu, komponen, dan alurnya tetap ada.
 const SHOW_MUATAN_EXTRAS = false
+
+// Jenis lampiran yang ditampilkan per tab. BC_* dan OTHER belum punya tempat di halaman ini.
+const MUATAN_DOCUMENT_KINDS = ['CIPL', 'PACKING_LIST', 'COMMERCIAL_INVOICE', 'SOURCE'] as const
+const TRANSPORT_DOCUMENT_KINDS = ['BILL_OF_LADING', 'AIR_WAYBILL', 'INBOUND_TRANSPORT', 'OUTBOUND_TRANSPORT'] as const
 
 const toast = (message: string, tone: 'info' | 'error' = 'info') =>
   window.dispatchEvent(
@@ -408,9 +413,11 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           ) : (
             <EmptyTabState tab="muatan" />
           )}
+          <JobDocumentsCard job={job} kinds={MUATAN_DOCUMENT_KINDS} />
         </TabsContent>
         <TabsContent value="transport" className="space-y-6">
           <JobTransportDocumentCard job={job} />
+          <JobDocumentsCard job={job} kinds={TRANSPORT_DOCUMENT_KINDS} />
         </TabsContent>
         <TabsContent value="billing">
           {hasTabData('billing', job) ? (

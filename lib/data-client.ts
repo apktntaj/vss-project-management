@@ -287,6 +287,28 @@ export async function getAttachmentContent(attachmentId: string): Promise<Blob |
   return response.ok ? response.blob() : null
 }
 
+/** Metadata lampiran job (tanpa isi file); isi file lewat `getAttachmentContent`. */
+export type JobAttachment = {
+  id: string
+  kind: JobDocumentKind | null
+  fileName: string
+  mimeType: string
+  fileSize: number
+  createdAt: string
+}
+
+/** Daftar dokumen yang sudah diunggah untuk satu job, terbaru dulu. */
+export async function listJobAttachments(jobId: string): Promise<JobAttachment[]> {
+  const response = await fetch(`/api/attachments?ownerType=JOB&ownerId=${encodeURIComponent(jobId)}`, {
+    cache: 'no-store',
+  })
+  const body = (await response.json().catch(() => null)) as JobAttachment[] | { error?: string } | null
+  if (!response.ok || !Array.isArray(body)) {
+    throw new Error((body && !Array.isArray(body) ? body.error : null) ?? 'Dokumen tidak dapat dimuat.')
+  }
+  return body
+}
+
 async function ensureSeeded() {
   return readAll<LocalUser>('users')
 }
