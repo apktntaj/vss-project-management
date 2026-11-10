@@ -23,11 +23,13 @@ import {
   type Job,
 } from '@/lib/data-client'
 import { groupJobsByJenis, jobJenisLabel } from '@/lib/job-jenis'
+import { buildHallGroups } from '@/lib/hall-view'
 import { buildJobNomor } from '@/lib/job-number'
 import { PageSkeleton } from '@/components/loading-skeletons'
 import { ContextTicketList } from '@/components/context-ticket-list'
 import { JobCreateWizard } from '@/components/job-create-wizard'
 import { JobRow } from '@/components/job-row'
+import { EventHallView } from '@/components/event-hall-view'
 import { CancelJobDialog } from '@/components/cancel-job-dialog'
 import { jobLabel } from '@/domain/job/numbering'
 
@@ -45,6 +47,7 @@ export default function EventDetailPage() {
   const router = useRouter()
   const [event, setEvent] = useState<LocalEvent | null>(null)
   const [jobs, setJobs] = useState<Job[]>([])
+  const [view, setView] = useState<'jenis' | 'hall'>('jenis')
   const [loading, setLoading] = useState(true)
   const [showNewJob, setShowNewJob] = useState(false)
   const [openJenis, setOpenJenis] = useState<Record<string, boolean>>({})
@@ -53,6 +56,7 @@ export default function EventDetailPage() {
   const nomorByJobId = useMemo(() => buildJobNomor(jobs), [jobs])
 
   const jenisGroups = useMemo(() => groupJobsByJenis(jobs), [jobs])
+  const hallGroups = useMemo(() => buildHallGroups(jobs), [jobs])
 
   const loadData = useCallback(() => {
     setLoading(true)
@@ -193,7 +197,23 @@ export default function EventDetailPage() {
             </button>
           )}
         </div>
-        {jobs.length ? (
+        <div className="inline-flex rounded-lg bg-slate-100 p-1 text-sm font-medium" role="tablist" aria-label="Tampilan job">
+          {([['jenis', 'Per Jenis Job'], ['hall', 'Per Hall']] as const).map(([value, text]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={view === value}
+              onClick={() => setView(value)}
+              className={`rounded-md px-3 py-1.5 ${view === value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+            >
+              {text}
+            </button>
+          ))}
+        </div>
+        {view === 'hall' ? (
+          <EventHallView groups={hallGroups} />
+        ) : jobs.length ? (
           <div className="space-y-4">
             {jenisGroups.map((group) => {
               const isOpen = openJenis[group.key] ?? false
