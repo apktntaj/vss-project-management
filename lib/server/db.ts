@@ -41,12 +41,12 @@ export function getServiceRoleClient(): SupabaseClient {
   return serviceRoleClient
 }
 
-/**
- * Me-resolve workspace single-tenant lewat `slug = 'default'` dan mengembalikan konteks
- * (client + workspaceId). Setiap query entitas menyaring `workspace_id` dari konteks ini.
- */
-export async function withWorkspace(): Promise<WorkspaceContext> {
-  const client = getServiceRoleClient()
+// Workspace single-tenant: id untuk slug tetap tidak berubah selama proses hidup, jadi lookup
+// dilakukan sekali per proses dan dibagi lewat promise (pemanggil paralel ikut menunggu hasil yang
+// sama). Kegagalan tidak di-cache agar percobaan berikutnya mengulang lookup.
+let workspaceIdLookup: Promise<string> | null = null
+
+async function lookupWorkspaceId(client: SupabaseClient): Promise<string> {
   const { data, error } = await client
     .from('workspaces')
     .select('id')
@@ -57,5 +57,18 @@ export async function withWorkspace(): Promise<WorkspaceContext> {
       `Workspace tidak dapat dimuat: ${error?.message ?? 'tidak ditemukan'}`,
     )
   }
-  return { client, workspaceId: data.id }
+  return data.id
+}
+
+/**
+ * Me-resolve workspace single-tenant lewat `slug = 'default'` dan mengembalikan konteks
+ * (client + workspaceId). Setiap query entitas menyaring `workspace_id` dari konteks ini.
+ */
+export async function withWorkspace(): Promise<WorkspaceContext> {
+  const client = getServiceRoleClient()
+  workspaceIdLookup ??= lookupWorkspaceId(client).catch((error) => {
+    workspaceIdLookup = null
+    throw error
+  })
+  return { client, workspaceId: await workspaceIdLookup }
 }

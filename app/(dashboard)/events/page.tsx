@@ -8,7 +8,6 @@ import {
   listUserReferences,
   listVenueReferences,
 } from '@/features/events'
-import type { EventListPage } from '@/domain/event/types'
 import type { CurrentUser } from '@/domain/auth/types'
 import { ApiError } from '@/lib/server/errors'
 
@@ -34,6 +33,39 @@ function toQuery(searchParams: EventsPageProps['searchParams']) {
   return parseEventListQuery((key) => singleParam(searchParams?.[key]))
 }
 
+type ReferenceOption = { id: string; name: string }
+
+// Opsi master data untuk form buat/edit event (venue/EO/PIC) — sekaligus opsi filter PIC.
+// Kegagalan memuat opsi TIDAK mematikan halaman: EventFormModal memang dirancang menerima
+// daftar kosong dan jatuh ke input id teks, jadi daftar event tetap tampil.
+async function loadReferenceOptions(currentUser: CurrentUser): Promise<{
+  venues?: ReferenceOption[]
+  organizers?: ReferenceOption[]
+  pics?: ReferenceOption[]
+}> {
+  try {
+    const [venueRecords, organizerRecords, users] = await Promise.all([
+      listVenueReferences(currentUser),
+      listEventOrganizerReferences(currentUser),
+      listUserReferences(currentUser),
+    ])
+    return {
+      venues: venueRecords.map((venue) => ({
+        id: venue.id,
+        name: venue.aliasName ? `${venue.legalName} (${venue.aliasName})` : venue.legalName,
+      })),
+      organizers: organizerRecords.map((organizer) => ({
+        id: organizer.id,
+        name: organizer.legalName,
+      })),
+      pics: users.map((user) => ({ id: user.id, name: user.fullName })),
+    }
+  } catch {
+    // Opsi dibiarkan undefined — form tetap fungsional dengan input id.
+    return {}
+  }
+}
+
 export default async function EventsPage({ searchParams }: EventsPageProps) {
   // Sesi basi (cookie pra-cutover tanpa role/workspaceId) → arahkan ke login ulang, bukan
   // biarkan ApiError(401) meledak jadi halaman error.
@@ -46,42 +78,14 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
   }
   const query = toQuery(searchParams)
 
-  // Indikator error (Req 16.8): bila query daftar gagal, use-case MELEMPAR. Kita tangkap di sini
-  // dan render keadaan error yang jelas — BUKAN daftar kosong seolah valid. Laporan insight hidup
-  // di dashboard; halaman ini fokus pada daftar.
-  let page: EventListPage | null = null
-  let loadFailed = false
-  try {
-    page = await listEventsForDashboard(currentUser, query)
-  } catch {
-    loadFailed = true
-  }
-
-  // Opsi master data untuk form buat/edit event (venue/EO/PIC) — sekaligus opsi filter PIC.
-  // Kegagalan memuat opsi TIDAK mematikan halaman: EventFormModal memang dirancang menerima
-  // daftar kosong dan jatuh ke input id teks, jadi daftar event tetap tampil.
-  let venues: { id: string; name: string }[] | undefined
-  let organizers: { id: string; name: string }[] | undefined
-  let pics: { id: string; name: string }[] | undefined
-
-  try {
-    const [venueRecords, organizerRecords, users] = await Promise.all([
-      listVenueReferences(currentUser),
-      listEventOrganizerReferences(currentUser),
-      listUserReferences(currentUser),
-    ])
-    venues = venueRecords.map((venue) => ({
-      id: venue.id,
-      name: venue.aliasName ? `${venue.legalName} (${venue.aliasName})` : venue.legalName,
-    }))
-    organizers = organizerRecords.map((organizer) => ({
-      id: organizer.id,
-      name: organizer.legalName,
-    }))
-    pics = users.map((user) => ({ id: user.id, name: user.fullName }))
-  } catch {
-    // Opsi dibiarkan undefined — form tetap fungsional dengan input id.
-  }
+  // Daftar dan opsi master data tidak saling bergantung, jadi dimuat paralel. Indikator error
+  // (Req 16.8): bila query daftar gagal, use-case MELEMPAR; kita tangkap dan render keadaan error
+  // yang jelas (`page === null`) — BUKAN daftar kosong seolah valid. Laporan insight hidup di
+  // dashboard; halaman ini fokus pada daftar.
+  const [page, { venues, organizers, pics }] = await Promise.all([
+    listEventsForDashboard(currentUser, query).catch(() => null),
+    loadReferenceOptions(currentUser),
+  ])
 
   return (
     <div className="flex flex-col gap-4 lg:-mb-10 lg:h-[calc(100dvh-104px)]">
@@ -95,7 +99,7 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
           </div>
         </EventFilters>
 
-        {loadFailed || !page ? (
+        {!page ? (
           <div className="card border-rose-200 p-8 text-center" role="alert">
             <AlertTriangle className="mx-auto text-rose-500" size={28} aria-hidden="true" />
             <p className="mt-3 font-semibold text-rose-700">Data gagal dimuat.</p>

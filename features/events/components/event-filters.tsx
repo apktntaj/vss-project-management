@@ -6,9 +6,13 @@
 // filter tetap milik server (bukan membaca seluruh tabel ke browser lalu menyaring). Leaf ini tak
 // mengimpor modul server-only apa pun.
 
-import { useCallback, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Search } from 'lucide-react'
+
+// Jeda sebelum ketikan pencarian ditulis ke URL. Tiap penulisan memicu render ulang server penuh,
+// jadi satu render per jeda mengetik — bukan satu per huruf.
+const SEARCH_DEBOUNCE_MS = 300
 
 // Pilihan filter status yang diekspos ke UI. `all`/`active` memetakan ke filter lifecycle; sisanya
 // ke display-status (turunan tanggal, diterjemahkan ke predikat tanggal oleh repository).
@@ -61,6 +65,24 @@ export function EventFilters({
     [pathname, router, searchParams],
   )
 
+  // Nilai kotak dipegang lokal agar ketikan langsung tampil; URL baru ditulis setelah jeda.
+  const [searchInput, setSearchInput] = useState(currentSearch)
+  const debounceTimer = useRef<number | undefined>(undefined)
+  // `applyParams` berganti tiap URL berubah; timer harus memakai versi terbaru agar tidak menimpa
+  // perubahan filter lain yang terjadi selama jeda.
+  const latestApplyParams = useRef(applyParams)
+  latestApplyParams.current = applyParams
+  useEffect(() => () => window.clearTimeout(debounceTimer.current), [])
+
+  const changeSearch = (value: string) => {
+    setSearchInput(value)
+    window.clearTimeout(debounceTimer.current)
+    debounceTimer.current = window.setTimeout(
+      () => latestApplyParams.current({ search: value }),
+      SEARCH_DEBOUNCE_MS,
+    )
+  }
+
   const hasFilters = currentSearch.length > 0 || currentStatus !== 'all' || currentPic !== ''
 
   return (
@@ -75,8 +97,8 @@ export function EventFilters({
           />
           <input
             type="search"
-            defaultValue={currentSearch}
-            onChange={(inputEvent) => applyParams({ search: inputEvent.target.value })}
+            value={searchInput}
+            onChange={(inputEvent) => changeSearch(inputEvent.target.value)}
             className="input m-0 pl-10 shadow-none focus-visible:outline-none"
             placeholder="Cari event..."
           />
@@ -117,7 +139,11 @@ export function EventFilters({
       {hasFilters ? (
         <button
           type="button"
-          onClick={() => applyParams({ search: null, status: null, pic: null })}
+          onClick={() => {
+            window.clearTimeout(debounceTimer.current)
+            setSearchInput('')
+            applyParams({ search: null, status: null, pic: null })
+          }}
           className="mt-3 text-sm font-semibold text-orange-700 hover:text-orange-800"
         >
           Reset filter

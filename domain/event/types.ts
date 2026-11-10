@@ -44,46 +44,11 @@ export type EventListItem = {
   unfinishedJobs: number
 }
 
-// Agregat ringkasan yang ditampilkan di atas daftar (Requirement 16.1). Dihitung sisi-server;
-// di sini hanya bentuknya.
-export type EventListSummary = {
-  totalEvents: number
-  ongoingEvents: number
-  totalExhibitors: number
-  totalCiplItems: number
-}
-
-// Dua baris bentrok jadwal/venue untuk Attention_Panel (Requirement 16.6). Disimpan sebagai pasangan
-// id + nama agar panel dapat menautkan tanpa query ulang.
-export type EventScheduleOverlap = {
-  firstEventId: string
-  firstEventName: string
-  secondEventId: string
-  secondEventName: string
-}
-
-export type EventVenueConflict = {
-  venueId: string
-  venueName: string
-  firstEventId: string
-  firstEventName: string
-  secondEventId: string
-  secondEventName: string
-}
-
-// Data "perhatian" untuk Attention_Panel (Requirement 16.6): jadwal yang tumpang tindih dan venue
-// yang dipakai dua event pada rentang yang beririsan.
-export type EventListAttention = {
-  scheduleOverlaps: EventScheduleOverlap[]
-  venueConflicts: EventVenueConflict[]
-}
-
-// Hasil daftar utuh: baris + ringkasan agregat + data perhatian (Requirement 16.1/16.6). Satu objek
-// agar Server Component dapat me-render seluruh dashboard dari satu kali baca.
+// Hasil daftar: baris yang sudah tersaring. Halaman events hanya membutuhkan daftar ini; ringkasan
+// agregat dan panel "perhatian" tidak dibaca siapa pun dan dihapus agar tiap render tidak membayar
+// query yang tak terpakai.
 export type EventListPage = {
   items: EventListItem[]
-  summary: EventListSummary
-  attention: EventListAttention
 }
 
 // ── Insight operasional (turunan event ACTIVE × jobs) ─────────────────────────────────────────

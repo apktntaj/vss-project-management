@@ -1,8 +1,8 @@
 import 'server-only'
 
-// Query bentuk daftar/agregat untuk halaman events: daftar tersaring sisi-server, ringkasan count,
-// panel attention (overlap jadwal + konflik venue), insight operasional, dan bentuk legacy untuk
-// klien lama. Bagian dari repository slice event — lihat `./index.ts` untuk batas publiknya.
+// Query bentuk daftar untuk halaman events: daftar tersaring sisi-server, insight operasional,
+// dan bentuk legacy untuk klien lama. Bagian dari repository slice event — lihat `./index.ts`
+// untuk batas publiknya.
 
 import { withWorkspace } from '@/lib/server/db'
 import {
@@ -13,14 +13,10 @@ import {
 import type {
   EventInsightItem,
   EventInsights,
-  EventListAttention,
   EventListItem,
   EventListPage,
   EventListQuery,
-  EventListSummary,
   EventNameCount,
-  EventScheduleOverlap,
-  EventVenueConflict,
 } from '@/domain/event/types'
 import {
   deriveDisplayStatus,
@@ -29,17 +25,6 @@ import {
   EVENT_WITH_RELATIONS,
   type EventJoinedRow,
 } from './shared'
-
-// Baris minimal untuk perhitungan attention (overlap jadwal + konflik venue). Hanya kolom yang
-// dibutuhkan agar input komputasi pairwise tetap kecil.
-type AttentionRow = {
-  id: string
-  name: string
-  venue_id: string | null
-  starts_on: string | null
-  ends_on: string | null
-  venue: { legal_name: string } | { legal_name: string }[] | null
-}
 
 // Dua rentang tanggal inklusif beririsan bila masing-masing mulai tidak setelah akhir yang lain.
 function rangesOverlap(aStart: string, aEnd: string, bStart: string, bEnd: string): boolean {
@@ -51,49 +36,6 @@ function addDays(iso: string, days: number): string {
   const date = new Date(`${iso}T00:00:00Z`)
   date.setUTCDate(date.getUTCDate() + days)
   return date.toISOString().slice(0, 10)
-}
-
-// Hitung overlap jadwal dan konflik venue dari kumpulan event AKTIF yang sudah tersaring server-side
-// ke workspace ini. Pairwise overlap bersifat O(n^2) dan tidak bisa diekspresikan sebagai filter
-// SQL sederhana; karena itu komputasi dilakukan di JS DI ATAS hasil yang sudah dibatasi server
-// (hanya event ACTIVE workspace ini), bukan dengan membaca seluruh tabel lalu memfilter di browser.
-// Ini membentuk panel turunan (Attention_Panel), bukan memfilter daftar.
-function computeAttention(rows: AttentionRow[]): EventListAttention {
-  const scheduleOverlaps: EventScheduleOverlap[] = []
-  const venueConflicts: EventVenueConflict[] = []
-
-  for (let i = 0; i < rows.length; i += 1) {
-    for (let j = i + 1; j < rows.length; j += 1) {
-      const a = rows[i]
-      const b = rows[j]
-      // Event tanpa tanggal (belum dijadwalkan) tidak bisa beririsan dengan apa pun.
-      if (!a.starts_on || !a.ends_on || !b.starts_on || !b.ends_on) continue
-      if (!rangesOverlap(a.starts_on, a.ends_on, b.starts_on, b.ends_on)) continue
-
-      // Rentang beririsan → overlap jadwal.
-      scheduleOverlaps.push({
-        firstEventId: a.id,
-        firstEventName: a.name,
-        secondEventId: b.id,
-        secondEventName: b.name,
-      })
-
-      // Venue sama pada rentang beririsan → konflik venue (sub-kasus overlap jadwal). Dua event
-      // sama-sama tanpa venue bukan konflik — konflik butuh venue yang sama.
-      if (a.venue_id && a.venue_id === b.venue_id) {
-        venueConflicts.push({
-          venueId: a.venue_id,
-          venueName: firstRelation(a.venue)?.legal_name ?? '',
-          firstEventId: a.id,
-          firstEventName: a.name,
-          secondEventId: b.id,
-          secondEventName: b.name,
-        })
-      }
-    }
-  }
-
-  return { scheduleOverlaps, venueConflicts }
 }
 
 // ── Insight operasional (panel "Perlu tindakan" + statistik) ─────────────────────────────────
@@ -303,7 +245,7 @@ export async function queryEventInsights(): Promise<EventInsights> {
 /**
  * Daftar event untuk dashboard dengan filter SEPENUHNYA sisi-server (Req 16.1–16.7): join
  * venue/EO/PIC, pencarian substring `ilike`, filter lifecycle, filter display-status diterjemahkan
- * ke predikat tanggal terhadap hari ini, agregat ringkasan lewat count query, dan panel attention.
+ * ke predikat tanggal terhadap hari ini.
  * Tidak pernah membaca seluruh tabel ke memori lalu memfilter di browser.
  */
 export async function queryEventList(q: EventListQuery): Promise<EventListPage> {
@@ -418,69 +360,8 @@ export async function queryEventList(q: EventListQuery): Promise<EventListPage> 
     item.tuntasStatus = eventTuntas(jobs)
     item.unfinishedJobs = hitungJobBelumTuntas(jobs)
   }
-  // ── Agregat ringkasan (Req 16.1) ─────────────────────────────────────────────────────────────
-  // Count query dengan `head: true` — hanya menghitung, tidak menarik baris ke memori.
-  const summary = await queryEventSummary(client, workspaceId, today)
 
-  // ── Attention (Req 16.6) ─────────────────────────────────────────────────────────────────────
-  const attention = await queryEventAttention(client, workspaceId)
-
-  return { items: visibleItems, summary, attention }
-}
-
-// Hitung agregat ringkasan lewat count query tanpa menarik baris. exhibitors/ciplItems = 0 karena
-// tabel entitas hilir belum ada di slice ini ("entitas hilir akan menggantung di bawah events pada
-// spec domain berikutnya") — mengkueri tabel yang belum ada akan memutus build.
-async function queryEventSummary(
-  client: Awaited<ReturnType<typeof withWorkspace>>['client'],
-  workspaceId: string,
-  today: string,
-): Promise<EventListSummary> {
-  const { count: totalCount, error: totalError } = await client
-    .from('events')
-    .select('id', { count: 'exact', head: true })
-    .eq('workspace_id', workspaceId)
-  if (totalError) {
-    throw new Error(`Gagal menghitung total event: ${totalError.message}`)
-  }
-
-  // "Ongoing" = sedang berlangsung hari ini DAN masih aktif administratif.
-  const { count: ongoingCount, error: ongoingError } = await client
-    .from('events')
-    .select('id', { count: 'exact', head: true })
-    .eq('workspace_id', workspaceId)
-    .eq('status', 'ACTIVE')
-    .lte('starts_on', today)
-    .gte('ends_on', today)
-  if (ongoingError) {
-    throw new Error(`Gagal menghitung event berjalan: ${ongoingError.message}`)
-  }
-
-  return {
-    totalEvents: totalCount ?? 0,
-    ongoingEvents: ongoingCount ?? 0,
-    // Placeholder sampai slice exhibitor/CIPL mendarat (lihat hasDerivedData).
-    totalExhibitors: 0,
-    totalCiplItems: 0,
-  }
-}
-
-// Ambil kumpulan event ACTIVE (kolom minimal) sisi-server, lalu hitung overlap/konflik di JS. Input
-// sudah dibatasi server ke event aktif workspace ini — bukan membaca seluruh tabel lalu memfilter.
-async function queryEventAttention(
-  client: Awaited<ReturnType<typeof withWorkspace>>['client'],
-  workspaceId: string,
-): Promise<EventListAttention> {
-  const { data, error } = await client
-    .from('events')
-    .select('id, name, venue_id, starts_on, ends_on, venue:venues!inner(legal_name)')
-    .eq('workspace_id', workspaceId)
-    .eq('status', 'ACTIVE')
-    .returns<AttentionRow[]>()
-  if (error) {
-    throw new Error(`Gagal memuat data perhatian event: ${error.message}`)
-  }
-  return computeAttention(data ?? [])
+  return { items: visibleItems }
 }
 
 /**
