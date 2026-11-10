@@ -124,11 +124,11 @@ export default function EventDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="-mt-3 space-y-4 lg:-mt-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h1 className="mt-2 text-3xl font-bold tracking-tight">{event.officialName}</h1>
-          {event.alias && <p className="mt-2 text-sm text-slate-500">{event.alias}</p>}
+          <h1 className="text-3xl font-bold tracking-tight">{event.officialName}</h1>
+          {event.alias && <p className="mt-1 text-sm text-slate-500">{event.alias}</p>}
         </div>
         <button
           type="button"
@@ -137,19 +137,23 @@ export default function EventDetailPage() {
           className="btn-secondary shrink-0 gap-2"
           title="Unduh inward manifest event ini (Excel, format dokumen klien)"
         >
-          {exporting ? <Loader2 className="animate-spin" size={16} aria-hidden="true" /> : <Download size={16} aria-hidden="true" />}
+          {exporting ? (
+            <Loader2 className="animate-spin" size={16} aria-hidden="true" />
+          ) : (
+            <Download size={16} aria-hidden="true" />
+          )}
           {exporting ? 'Mengekspor…' : 'Export Manifest'}
         </button>
       </div>
 
-      <section className="card p-6 sm:p-8">
-        <h2 className="text-lg font-semibold">Informasi event</h2>
-        <dl className="mt-5 grid gap-5 text-sm md:grid-cols-3">
+      <section className="card px-5 py-3.5">
+        <h2 className="sr-only">Informasi event</h2>
+        <dl className="grid gap-3 text-sm md:grid-cols-3">
           <div className="flex items-start gap-3">
             <CalendarDays className="mt-0.5 shrink-0 text-orange-600" size={18} />
             <div>
               <dt className="text-slate-500">Tanggal event</dt>
-              <dd className="mt-1 font-medium text-slate-900">
+              <dd className="mt-0.5 font-medium text-slate-900">
                 {formatDateRange(event.startsAt, event.endsAt)}
               </dd>
             </div>
@@ -158,24 +162,26 @@ export default function EventDetailPage() {
             <MapPin className="mt-0.5 shrink-0 text-blue-600" size={18} />
             <div>
               <dt className="text-slate-500">Venue</dt>
-              <dd className="mt-1 font-medium text-slate-900">
+              <dd className="mt-0.5 font-medium text-slate-900">
                 {event.venue?.officialName || 'Venue belum diinput'}
               </dd>
-              {event.venue?.address && <p className="mt-1 text-slate-500">{event.venue.address}</p>}
+              {event.venue?.address && (
+                <p className="mt-0.5 text-slate-500">{event.venue.address}</p>
+              )}
             </div>
           </div>
           <div className="flex items-start gap-3">
             <Building2 className="mt-0.5 shrink-0 text-emerald-600" size={18} />
             <div>
               <dt className="text-slate-500">Event organizer</dt>
-              <dd className="mt-1 font-medium text-slate-900">
+              <dd className="mt-0.5 font-medium text-slate-900">
                 {event.eventOrganizer?.legalName || 'Belum diinput'}
               </dd>
             </div>
           </div>
         </dl>
         {event.status === 'CANCELLED' && (
-          <div className="mt-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+          <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
             <p className="font-semibold">Event dibatalkan</p>
             <p className="mt-1">Alasan: {event.cancellationReason}</p>
           </div>
@@ -197,8 +203,17 @@ export default function EventDetailPage() {
             </button>
           )}
         </div>
-        <div className="inline-flex rounded-lg bg-slate-100 p-1 text-sm font-medium" role="tablist" aria-label="Tampilan job">
-          {([['jenis', 'Per Jenis Job'], ['hall', 'Per Hall']] as const).map(([value, text]) => (
+        <div
+          className="inline-flex rounded-lg bg-slate-100 p-1 text-sm font-medium"
+          role="tablist"
+          aria-label="Tampilan job"
+        >
+          {(
+            [
+              ['jenis', 'Grouped By Job'],
+              ['hall', 'By Hall'],
+            ] as const
+          ).map(([value, text]) => (
             <button
               key={value}
               type="button"

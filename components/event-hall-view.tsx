@@ -39,7 +39,7 @@ export function EventHallView({ groups }: { groups: HallGroup[] }) {
                 {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
               </span>
               <span className="min-w-0 flex-1 truncate font-semibold text-slate-900">
-                {group.label === null ? 'Tanpa hall' : `Hall ${group.label}`}
+                {group.label === null ? 'Hall belum terisi/diketahui' : `Hall ${group.label}`}
               </span>
               <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600">
                 {`${group.exhibitorCount} exhibitor · ${numberID(totals.totalCount)} pkg · ${numberID(totals.volumeCbm)} CBM · ${numberID(totals.weightKg)} Kg`}
