@@ -15,9 +15,9 @@ import { EventStatistics } from '@/features/events/components/event-statistics'
 export const dynamic = 'force-dynamic'
 
 /**
- * Dashboard = overview client (metrik, timeline via data-client) + laporan insight server-side.
+ * Dashboard = overview client (metrik via data-client) + laporan insight server-side.
  * Susunan mengikuti prioritas urgensi: metrik ringkas → "Perlu tindakan" (disisipkan lewat
- * insightsSlot agar posisinya tepat di bawah metrik) → timeline → statistik perencanaan dan
+ * insightsSlot agar posisinya tepat di bawah metrik) → statistik perencanaan dan
  * kandidat arsip (informatif, paling bawah). Gagal memuat insight TIDAK mematikan overview —
  * seksi insight diganti pemberitahuan agar tidak terbaca sebagai "tidak ada masalah".
  */

@@ -3,16 +3,14 @@
 import Link from 'next/link'
 import { useEffect, useState, type ReactNode } from 'react'
 import { ArrowUpRight, BriefcaseBusiness, CalendarDays, Clock3, MapPin, Plus } from 'lucide-react'
-import { EventTimeline } from '@/components/event-timeline'
 import { PageSkeleton } from '@/components/loading-skeletons'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { listEvents, listJobs, type LocalEvent, type Job } from '@/lib/data-client'
 
 /**
- * Konten overview dashboard (client): metrik dan timeline — data event/job via data-client.
- * `insightsSlot` adalah slot server-rendered (panel "Perlu tindakan") yang disisipkan DI ANTARA
- * metrik dan timeline agar urutan halaman mengikuti prioritas urgensi, tanpa memecah pemilikan
- * data client.
+ * Konten overview dashboard (client): metrik — data event/job via data-client.
+ * `insightsSlot` adalah slot server-rendered (panel "Perlu tindakan") yang disisipkan DI BAWAH
+ * metrik agar urutan halaman mengikuti prioritas urgensi, tanpa memecah pemilikan data client.
  */
 export function DashboardOverview({ insightsSlot }: { insightsSlot?: ReactNode }) {
   const [events, setEvents] = useState<LocalEvent[]>([])
@@ -130,9 +128,6 @@ export function DashboardOverview({ insightsSlot }: { insightsSlot?: ReactNode }
         ))}
       </section>
       {insightsSlot}
-      <section aria-label="Timeline operasional" className="min-w-0">
-        <EventTimeline events={activeEvents} jobs={jobs} />
-      </section>
     </div>
   )
 }

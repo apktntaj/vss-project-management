@@ -6,6 +6,7 @@ import Link from 'next/link'
 
 import type { EventListItem } from '@/domain/event/types'
 
+import { ClickableRow } from '@/features/events/components/clickable-row'
 import { EventCardActions } from '@/features/events/components/event-card-actions'
 import {
   DISPLAY_STATUS_BADGE,
@@ -79,8 +80,9 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
             const lifecycle = lifecycleBadge(item.lifecycle)
             const isInactive = lifecycle !== null
             return (
-              <tr
+              <ClickableRow
                 key={item.id}
+                href={`/events/${item.id}`}
                 className={`border-b border-slate-100 odd:bg-slate-50/70 last:border-0 hover:bg-orange-50/40 ${
                   isInactive ? 'opacity-80' : ''
                 }`}
@@ -155,7 +157,7 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
                     <span className="text-sm text-slate-300">—</span>
                   )}
                 </td>
-                <td className="px-2 py-2 align-top text-right">
+                <td className="px-2 py-2 align-top text-right" data-row-click-ignore>
                   <EventCardActions
                     event={{
                       id: item.id,
@@ -175,7 +177,7 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
                     pics={pics}
                   />
                 </td>
-              </tr>
+              </ClickableRow>
             )
           })}
         </tbody>
