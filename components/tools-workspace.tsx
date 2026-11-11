@@ -5,9 +5,11 @@ import { BarChart3, BookOpenText, Calculator, FileStack, Scissors, ShieldCheck }
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ItInventoryView } from '@/components/it-inventory/it-inventory-view'
+import { ToolsCbmCalculator } from '@/components/tools-cbm-calculator'
 import { ToolsLartasChecker } from '@/components/tools-lartas-checker'
+import { ToolsPdf } from '@/components/tools-pdf'
 
-// Alat bantu operasional PPJK. Cek LARTAS dan IT Inventory sudah berjalan; sisanya kerangka
+// Alat bantu operasional PPJK. Cek LARTAS, Kalkulator CBM, PDF, dan IT Inventory sudah berjalan; sisanya kerangka
 // pilihan supaya tempat tool berikutnya sudah jelas.
 
 const tabs = [
@@ -80,16 +82,7 @@ export function ToolsWorkspace({ initialTab }: { initialTab?: string }) {
         <ToolsLartasChecker />
       </TabsContent>
       <TabsContent value="cbm" className="mt-4">
-        <PlannedTool
-          icon={<Calculator size={20} />}
-          title="Kalkulator CBM"
-          description="Hitung volume dan berat volumetrik kiriman langsung dari dimensi koli."
-          items={[
-            'Input banyak koli sekaligus (P × L × T, cm) dengan total CBM otomatis',
-            'Pembanding berat aktual vs berat volumetrik untuk laut dan udara',
-            'Simpan hasil sebagai lampiran catatan job',
-          ]}
-        />
+        <ToolsCbmCalculator />
       </TabsContent>
       <TabsContent value="analitik" className="mt-4">
         <PlannedTool
@@ -104,16 +97,7 @@ export function ToolsWorkspace({ initialTab }: { initialTab?: string }) {
         />
       </TabsContent>
       <TabsContent value="pdf" className="mt-4">
-        <PlannedTool
-          icon={<Scissors size={20} />}
-          title="PDF"
-          description="Potong dan gabung berkas PDF dokumen kepabeanan tanpa aplikasi tambahan."
-          items={[
-            'Pisahkan halaman tertentu dari satu PDF (mis. lampiran per BC)',
-            'Gabungkan beberapa PDF menjadi satu berkas berurutan',
-            'Semua proses di browser; berkas tidak disimpan di server',
-          ]}
-        />
+        <ToolsPdf />
       </TabsContent>
       <TabsContent value="it-inventory" className="mt-4">
         <ItInventoryView />
