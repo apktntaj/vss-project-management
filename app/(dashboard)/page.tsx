@@ -6,17 +6,20 @@ import type { EventInsights } from '@/domain/event/types'
 import { ApiError } from '@/lib/server/errors'
 
 import { DashboardOverview } from '@/app/(dashboard)/dashboard-overview'
-import { EventInsightsPanel } from '@/features/events/components/event-insights-panel'
+import {
+  EventArchiveCandidates,
+  EventInsightsPanel,
+} from '@/features/events/components/event-insights-panel'
 import { EventStatistics } from '@/features/events/components/event-statistics'
 
 export const dynamic = 'force-dynamic'
 
 /**
- * Dashboard = overview client (metrik, agenda, timeline via data-client) + laporan insight
- * server-side. Susunan mengikuti prioritas urgensi: metrik ringkas → "Perlu tindakan" (mendesak,
- * disisipkan lewat insightsSlot agar posisinya tepat di bawah metrik) → agenda & timeline →
- * statistik perencanaan (informatif, paling bawah). Gagal memuat insight TIDAK mematikan
- * overview — seksi insight dilewati saja.
+ * Dashboard = overview client (metrik, timeline via data-client) + laporan insight server-side.
+ * Susunan mengikuti prioritas urgensi: metrik ringkas → "Perlu tindakan" (disisipkan lewat
+ * insightsSlot agar posisinya tepat di bawah metrik) → timeline → statistik perencanaan dan
+ * kandidat arsip (informatif, paling bawah). Gagal memuat insight TIDAK mematikan overview —
+ * seksi insight diganti pemberitahuan agar tidak terbaca sebagai "tidak ada masalah".
  */
 export default async function DashboardPage() {
   let insights: EventInsights | null = null
@@ -30,9 +33,25 @@ export default async function DashboardPage() {
   return (
     <div className="flex flex-col gap-7">
       <DashboardOverview
-        insightsSlot={insights ? <EventInsightsPanel insights={insights} /> : null}
+        insightsSlot={
+          insights ? (
+            <EventInsightsPanel insights={insights} />
+          ) : (
+            <section className="card p-5 sm:p-6" role="alert" aria-label="Perlu tindakan">
+              <h2 className="text-lg font-semibold tracking-tight">Perlu tindakan</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Daftar tindakan belum dapat dimuat. Muat ulang halaman untuk mencoba lagi.
+              </p>
+            </section>
+          )
+        }
       />
-      {insights ? <EventStatistics insights={insights} /> : null}
+      {insights ? (
+        <>
+          <EventStatistics insights={insights} />
+          <EventArchiveCandidates insights={insights} />
+        </>
+      ) : null}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-// Sub-komponen SERVER untuk statistik perencanaan di bawah tabel events: ranking EO, jumlah event
+// Sub-komponen SERVER untuk statistik perencanaan di bagian bawah dashboard: ranking EO, jumlah event
 // per bulan, dan venue terpadat. Murni informasi (tanpa drill-down); seluruh agregat sudah
 // dihitung repository.
 
@@ -15,8 +15,8 @@ function CountList({ items, unit }: { items: EventNameCount[]; unit: string }) {
           className="flex min-w-0 items-baseline justify-between gap-3"
           title={item.name}
         >
-          <span className="min-w-0 truncate text-slate-600">{item.name}</span>
-          <span className="shrink-0 text-xs font-semibold text-slate-700">
+          <span className="min-w-0 truncate text-muted-foreground">{item.name}</span>
+          <span className="shrink-0 text-xs font-semibold">
             {item.count} {unit}
           </span>
         </li>
@@ -31,58 +31,58 @@ export function EventStatistics({ insights }: { insights: EventInsights }) {
   return (
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Statistik">
       <article className="card p-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           EO terbanyak
         </h2>
         {insights.eoRanking.length > 0 ? (
           <CountList items={insights.eoRanking} unit="event" />
         ) : (
-          <p className="mt-2 text-sm text-slate-500">Belum ada data.</p>
+          <p className="mt-2 text-sm text-muted-foreground">Belum ada data.</p>
         )}
       </article>
       <article className="card p-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           Event per bulan
         </h2>
         {insights.perMonth.length > 0 ? (
           <ul className="mt-2 flex flex-col gap-1.5 text-sm">
             {insights.perMonth.map((month) => (
               <li key={month.month} className="flex items-center gap-3">
-                <span className="w-20 shrink-0 text-slate-600">{formatMonth(month.month)}</span>
-                <span className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+                <span className="w-20 shrink-0 text-muted-foreground">{formatMonth(month.month)}</span>
+                <span className="h-2 flex-1 overflow-hidden rounded-full bg-secondary">
                   <span
-                    className="block h-full rounded-full bg-orange-400"
+                    className="block h-full rounded-full bg-primary"
                     style={{ width: `${Math.round((month.count / maxMonth) * 100)}%` }}
                   />
                 </span>
-                <span className="shrink-0 text-xs font-semibold text-slate-700">
+                <span className="shrink-0 text-xs font-semibold">
                   {month.count}
                 </span>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="mt-2 text-sm text-slate-500">Belum ada data.</p>
+          <p className="mt-2 text-sm text-muted-foreground">Belum ada data.</p>
         )}
       </article>
       <article className="card p-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           Venue terpadat
         </h2>
         {insights.venueRanking.length > 0 ? (
           <CountList items={insights.venueRanking} unit="event" />
         ) : (
-          <p className="mt-2 text-sm text-slate-500">Belum ada data.</p>
+          <p className="mt-2 text-sm text-muted-foreground">Belum ada data.</p>
         )}
       </article>
       <article className="card p-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           PIC dengan event terbanyak
         </h2>
         {insights.picLoad.length > 0 ? (
           <CountList items={insights.picLoad.slice(0, 5)} unit="event" />
         ) : (
-          <p className="mt-2 text-sm text-slate-500">Belum ada data.</p>
+          <p className="mt-2 text-sm text-muted-foreground">Belum ada data.</p>
         )}
       </article>
     </section>
