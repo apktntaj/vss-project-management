@@ -13,3 +13,4 @@ export {
 } from '@/features/jobs/use-cases/update-job'
 export { cancelJob } from '@/features/jobs/use-cases/cancel-job'
 export { assertJobAcceptsAttachments } from '@/features/jobs/use-cases/job-guards'
+export { loadKanwilDocumentContext } from '@/features/jobs/use-cases/kanwil-documents'

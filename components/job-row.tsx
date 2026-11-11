@@ -2,7 +2,17 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Ban, CircleAlert, MoreVertical, Pencil, Plane, Ship, Truck } from 'lucide-react'
+import {
+  Ban,
+  CircleAlert,
+  FileSpreadsheet,
+  FileText,
+  MoreVertical,
+  Pencil,
+  Plane,
+  Ship,
+  Truck,
+} from 'lucide-react'
 
 import { getOperationalDetails, type Job } from '@/lib/data-client'
 import { transportModeLabels } from '@/domain/job/types'
@@ -74,10 +84,12 @@ export function JobRow({
   nomor?: string
   /** Bila diisi, tampil kolom Event · Jenis · Jalur (tabel lintas event di /jobs). */
   event?: { id: string; name: string } | null
-  /** Bila diisi, kolom terakhir menampilkan menu titik tiga (Edit/Batalkan) alih-alih PIC. */
+  /** Bila diisi, kolom terakhir menampilkan menu titik tiga (Edit/Kanwil/Batalkan) alih-alih PIC. */
   actions?: {
     onEdit: (job: Job) => void
     onCancel: (job: Job) => void
+    onKanwilLetter: (job: Job) => void
+    onTppbGoodsForm: (job: Job) => void
   }
 }) {
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null)
@@ -171,7 +183,7 @@ export function JobRow({
                 clickEvent.stopPropagation()
                 const rect = clickEvent.currentTarget.getBoundingClientRect()
                 setMenuAnchor((current) =>
-                  current ? null : { top: rect.bottom + 4, left: rect.right - 176 },
+                  current ? null : { top: rect.bottom + 4, left: rect.right - 256 },
                 )
               }}
               aria-label={`Menu aksi untuk ${nomor || jobLabel(job)}`}
@@ -192,7 +204,7 @@ export function JobRow({
                 <div
                   role="menu"
                   aria-label={`Aksi untuk ${nomor || jobLabel(job)}`}
-                  className="fixed z-50 w-44 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg"
+                  className="fixed z-50 w-64 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg"
                   style={{ top: menuAnchor.top, left: menuAnchor.left }}
                 >
                   <button
@@ -206,6 +218,32 @@ export function JobRow({
                   >
                     <Pencil size={15} /> Edit
                   </button>
+                  {job.kind === 'INTERNATIONAL' && job.status !== 'CANCELLED' && (
+                    <>
+                      <button
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          setMenuAnchor(null)
+                          actions.onKanwilLetter(job)
+                        }}
+                        className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                      >
+                        <FileText size={15} /> Surat permohonan Kanwil (PDF)
+                      </button>
+                      <button
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          setMenuAnchor(null)
+                          actions.onTppbGoodsForm(job)
+                        }}
+                        className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                      >
+                        <FileSpreadsheet size={15} /> Form rincian barang (Excel)
+                      </button>
+                    </>
+                  )}
                   {job.status !== 'CANCELLED' && (
                     <button
                       role="menuitem"

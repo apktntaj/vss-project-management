@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { auth } from '@/features/auth'
 import { hashPassword } from '@/lib/auth/password'
 import { UserSchema } from '@/domain/user/validation'
-import { referenceEventOrganizerInputSchema, referenceVenueInputSchema } from '@/domain/event/validation'
+import { referenceEventOrganizerInputSchema, venueSettingsInputSchema, type VenueSettingsInput } from '@/domain/event/validation'
 import { isSupabaseConfigured, getSupabaseAdmin } from '@/lib/supabase/admin'
 import { addDemoUser, listDemoUsers, updateDemoUser } from '@/lib/demo-users'
 
@@ -13,6 +13,57 @@ export const dynamic = 'force-dynamic'
 
 const userUpdateSchema = UserSchema.extend({ password: z.string().min(1, 'Password wajib diisi.').optional() })
 const resourceSchema = z.enum(['users', 'venues', 'organizers'])
+
+const VENUE_SELECT =
+  'id, legal_name, alias_name, city, tppb_operator_name, tppb_operator_npwp, tppb_operator_address, customs_regional_office, signatory_1_name, signatory_1_title, signatory_2_name, signatory_2_title'
+
+type VenueRow = {
+  id: string
+  legal_name: string
+  alias_name: string | null
+  city: string | null
+  tppb_operator_name: string | null
+  tppb_operator_npwp: string | null
+  tppb_operator_address: string | null
+  customs_regional_office: string | null
+  signatory_1_name: string | null
+  signatory_1_title: string | null
+  signatory_2_name: string | null
+  signatory_2_title: string | null
+}
+
+function venueResponse(row: VenueRow) {
+  return {
+    id: row.id,
+    legalName: row.legal_name,
+    aliasName: row.alias_name,
+    city: row.city,
+    tppbOperatorName: row.tppb_operator_name,
+    tppbOperatorNpwp: row.tppb_operator_npwp,
+    tppbOperatorAddress: row.tppb_operator_address,
+    customsRegionalOffice: row.customs_regional_office,
+    signatory1Name: row.signatory_1_name,
+    signatory1Title: row.signatory_1_title,
+    signatory2Name: row.signatory_2_name,
+    signatory2Title: row.signatory_2_title,
+  }
+}
+
+function venueColumns(input: VenueSettingsInput) {
+  return {
+    legal_name: input.legalName,
+    alias_name: input.aliasName,
+    city: input.city,
+    tppb_operator_name: input.tppbOperatorName,
+    tppb_operator_npwp: input.tppbOperatorNpwp,
+    tppb_operator_address: input.tppbOperatorAddress,
+    customs_regional_office: input.customsRegionalOffice,
+    signatory_1_name: input.signatory1Name,
+    signatory_1_title: input.signatory1Title,
+    signatory_2_name: input.signatory2Name,
+    signatory_2_title: input.signatory2Title,
+  }
+}
 
 // Mengapa: fallback demo-user (penyimpanan in-memory) hanya sah di luar produksi. Di produksi,
 // Supabase yang tak terkonfigurasi adalah kesalahan deploy (mis. env var hilang di container) —
@@ -54,14 +105,14 @@ export async function GET() {
     // Skema redesign: venues/legal_name+alias_name+city, event_organizers/legal_name (lihat
     // migration 20261101020000). Respons dipetakan snake→camel agar konsisten dengan VenueRecord.
     const [{ data: venues, error: venuesError }, { data: organizers, error: organizersError }] = await Promise.all([
-      client.from('venues').select('id, legal_name, alias_name, city').eq('workspace_id', workspace.id).order('legal_name'),
+      client.from('venues').select(VENUE_SELECT).eq('workspace_id', workspace.id).order('legal_name').returns<VenueRow[]>(),
       client.from('event_organizers').select('id, legal_name').eq('workspace_id', workspace.id).order('legal_name'),
     ])
     if (venuesError) throw new Error(`Venue tidak dapat dimuat: ${venuesError.message}`)
     if (organizersError) throw new Error(`Event organizer tidak dapat dimuat: ${organizersError.message}`)
     return NextResponse.json({
       users: (users ?? []).map((user) => ({ id: user.id, nama: user.full_name, email: user.email, role: user.role, isAdmin: user.access_level === 'ADMIN', isActive: user.is_active })),
-      venues: (venues ?? []).map((venue) => ({ id: venue.id, legalName: venue.legal_name, aliasName: venue.alias_name, city: venue.city })),
+      venues: (venues ?? []).map(venueResponse),
       organizers: (organizers ?? []).map((organizer) => ({ id: organizer.id, legalName: organizer.legal_name })),
     })
   } catch (error) {
@@ -97,12 +148,12 @@ export async function POST(request: NextRequest) {
     const { data: workspace, error: workspaceError } = await client.from('workspaces').select('id').eq('slug', 'default').single<{ id: string }>()
     if (workspaceError || !workspace) throw new Error(`Workspace tidak dapat dimuat: ${workspaceError?.message ?? 'tidak ditemukan'}`)
     if (resource === 'venues') {
-      const input = referenceVenueInputSchema.parse(body.input)
+      const input = venueSettingsInputSchema.parse(body.input)
       const { data, error } = await client.from('venues').insert({
-        workspace_id: workspace.id, legal_name: input.legalName, alias_name: input.aliasName, city: input.city,
-      }).select('id, legal_name, alias_name, city').single()
+        workspace_id: workspace.id, ...venueColumns(input),
+      }).select(VENUE_SELECT).single<VenueRow>()
       if (error || !data) throw new Error(`Venue tidak dapat dibuat: ${error?.message ?? 'tidak ada data'}`)
-      return NextResponse.json({ id: data.id, legalName: data.legal_name, aliasName: data.alias_name, city: data.city })
+      return NextResponse.json(venueResponse(data))
     }
     const input = referenceEventOrganizerInputSchema.parse(body.input)
     const { data, error } = await client.from('event_organizers').insert({
@@ -139,12 +190,12 @@ export async function PATCH(request: NextRequest) {
     }
     if (!isSupabaseConfigured()) throw new Error('Supabase wajib dikonfigurasi untuk mengelola venue dan event organizer.')
     if (resource === 'venues') {
-      const input = referenceVenueInputSchema.parse(body.input)
+      const input = venueSettingsInputSchema.parse(body.input)
       const { data, error } = await getSupabaseAdmin().from('venues').update({
-        legal_name: input.legalName, alias_name: input.aliasName, city: input.city, updated_at: new Date().toISOString(),
-      }).eq('id', id).select('id, legal_name, alias_name, city').single()
+        ...venueColumns(input), updated_at: new Date().toISOString(),
+      }).eq('id', id).select(VENUE_SELECT).single<VenueRow>()
       if (error || !data) throw new Error(`Venue tidak dapat diperbarui: ${error?.message ?? 'tidak ditemukan'}`)
-      return NextResponse.json({ id: data.id, legalName: data.legal_name, aliasName: data.alias_name, city: data.city })
+      return NextResponse.json(venueResponse(data))
     }
     const input = referenceEventOrganizerInputSchema.parse(body.input)
     const { data, error } = await getSupabaseAdmin().from('event_organizers').update({

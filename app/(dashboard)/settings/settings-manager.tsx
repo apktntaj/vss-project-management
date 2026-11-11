@@ -40,6 +40,29 @@ function nullable(form: FormData, name: string) {
   return value || null
 }
 
+// Data pengusaha TPPB venue: pemohon surat Kanwil & form rincian barang (menu /jobs).
+function VenueTppbFields({ venue }: { venue: SettingsVenue | undefined }) {
+  return (
+    <fieldset className="space-y-3 rounded-xl border border-black/10 p-4">
+      <legend className="px-1 text-sm font-semibold">
+        Pengusaha TPPB <span className="font-normal text-slate-400">(untuk surat &amp; form Kanwil)</span>
+      </legend>
+      <label className="label">Nama badan usaha<input name="tppbOperatorName" defaultValue={venue?.tppbOperatorName ?? ''} className="input" /></label>
+      <label className="label">NPWP<input name="tppbOperatorNpwp" defaultValue={venue?.tppbOperatorNpwp ?? ''} className="input" /></label>
+      <label className="label">Alamat<textarea name="tppbOperatorAddress" rows={2} defaultValue={venue?.tppbOperatorAddress ?? ''} className="input" /></label>
+      <label className="label">Kanwil DJBC tujuan<input name="customsRegionalOffice" placeholder="mis. Banten" defaultValue={venue?.customsRegionalOffice ?? ''} className="input" /></label>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="label">Penandatangan 1 — nama<input name="signatory1Name" defaultValue={venue?.signatory1Name ?? ''} className="input" /></label>
+        <label className="label">Penandatangan 1 — jabatan<input name="signatory1Title" defaultValue={venue?.signatory1Title ?? ''} className="input" /></label>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="label">Penandatangan 2 — nama<input name="signatory2Name" defaultValue={venue?.signatory2Name ?? ''} className="input" /></label>
+        <label className="label">Penandatangan 2 — jabatan<input name="signatory2Title" defaultValue={venue?.signatory2Title ?? ''} className="input" /></label>
+      </div>
+    </fieldset>
+  )
+}
+
 export function SettingsManager({ currentUserId }: { currentUserId: string }) {
   const [data, setData] = useState<SettingsData | null>(null)
   const [editor, setEditor] = useState<Editor>(null)
@@ -72,7 +95,19 @@ export function SettingsManager({ currentUserId }: { currentUserId: string }) {
           role: text(form, 'role') as Role,
         }
       : editor.resource === 'venues'
-        ? { legalName: text(form, 'legalName'), aliasName: nullable(form, 'aliasName'), city: nullable(form, 'city') }
+        ? {
+            legalName: text(form, 'legalName'),
+            aliasName: nullable(form, 'aliasName'),
+            city: nullable(form, 'city'),
+            tppbOperatorName: nullable(form, 'tppbOperatorName'),
+            tppbOperatorNpwp: nullable(form, 'tppbOperatorNpwp'),
+            tppbOperatorAddress: nullable(form, 'tppbOperatorAddress'),
+            customsRegionalOffice: nullable(form, 'customsRegionalOffice'),
+            signatory1Name: nullable(form, 'signatory1Name'),
+            signatory1Title: nullable(form, 'signatory1Title'),
+            signatory2Name: nullable(form, 'signatory2Name'),
+            signatory2Title: nullable(form, 'signatory2Title'),
+          }
         : { legalName: text(form, 'legalName') }
     if (isUser && !editor.id && !input.password) {
       setError('Password wajib diisi untuk user baru.')
@@ -136,7 +171,7 @@ export function SettingsManager({ currentUserId }: { currentUserId: string }) {
         <div className="divide-y divide-black/5">{data.organizers.length ? data.organizers.map((organizer) => <div key={organizer.id} className="flex items-center justify-between gap-4 px-5 py-4"><div><p className="font-medium">{organizer.legalName}</p></div><div className="flex items-center justify-end gap-1"><button aria-label={`Edit ${organizer.legalName}`} title="Edit" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" onClick={() => setEditor({ resource: 'organizers', id: organizer.id })}><Pencil size={16} /></button><button aria-label={`Hapus ${organizer.legalName}`} title="Hapus" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" onClick={() => setPendingDelete({ resource: 'organizers', id: organizer.id, name: organizer.legalName })}><Trash2 size={16} /></button></div></div>) : <p className="px-5 py-6 text-sm text-slate-500">Belum ada event organizer.</p>}</div>
       </section>
       <CeisaConnectionSettings />
-      {editor && <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"><form onSubmit={submit} className="card w-full max-w-xl space-y-4 p-6"><div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-bold">{editor.id ? 'Edit' : 'Tambah'} {editor.resource === 'users' ? 'user' : editor.resource === 'venues' ? 'venue' : 'event organizer'}</h2><p className="mt-1 text-sm text-slate-500">Field bertanda wajib harus diisi.</p></div><button type="button" className="btn-secondary" onClick={() => { setEditor(null); setError('') }}>Tutup</button></div>{editor.resource === 'users' ? <><label className="label">Nama<input name="nama" required defaultValue={selectedUser?.nama} className="input" /></label><label className="label">Email<input name="email" type="email" required defaultValue={selectedUser?.email} className="input" /></label><label className="label">Password<input name="password" type="password" required={!editor.id} className="input" /></label><label className="label">Peran<select name="role" required defaultValue={selectedUser?.role ?? 'OPERATIONS'} className="input">{ROLES.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}</select></label><label className="flex items-center gap-3 text-sm font-medium"><input name="isAdmin" type="checkbox" defaultChecked={selectedUser?.isAdmin} />Akses admin</label></> : editor.resource === 'venues' ? <><label className="label">Nama venue<input name="legalName" required defaultValue={selectedVenue?.legalName} className="input" /></label><label className="label">Alias <span className="font-normal text-slate-400">(opsional)</span><input name="aliasName" defaultValue={selectedVenue?.aliasName ?? ''} className="input" /></label><label className="label">Kota<input name="city" defaultValue={selectedVenue?.city ?? ''} className="input" /></label></> : <><label className="label">Nama organizer<input name="legalName" required defaultValue={selectedOrganizer?.legalName} className="input" /></label></>}{error && <p className="text-sm font-medium text-rose-700">{error}</p>}<div className="flex justify-end gap-3"><button type="button" className="btn-secondary" onClick={() => { setEditor(null); setError('') }}>Batal</button><button disabled={saving} className="btn-primary">{saving ? 'Menyimpan…' : 'Simpan'}</button></div></form></div>}
+      {editor && <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"><form onSubmit={submit} className="card max-h-[90vh] w-full max-w-xl space-y-4 overflow-y-auto p-6"><div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-bold">{editor.id ? 'Edit' : 'Tambah'} {editor.resource === 'users' ? 'user' : editor.resource === 'venues' ? 'venue' : 'event organizer'}</h2><p className="mt-1 text-sm text-slate-500">Field bertanda wajib harus diisi.</p></div><button type="button" className="btn-secondary" onClick={() => { setEditor(null); setError('') }}>Tutup</button></div>{editor.resource === 'users' ? <><label className="label">Nama<input name="nama" required defaultValue={selectedUser?.nama} className="input" /></label><label className="label">Email<input name="email" type="email" required defaultValue={selectedUser?.email} className="input" /></label><label className="label">Password<input name="password" type="password" required={!editor.id} className="input" /></label><label className="label">Peran<select name="role" required defaultValue={selectedUser?.role ?? 'OPERATIONS'} className="input">{ROLES.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}</select></label><label className="flex items-center gap-3 text-sm font-medium"><input name="isAdmin" type="checkbox" defaultChecked={selectedUser?.isAdmin} />Akses admin</label></> : editor.resource === 'venues' ? <><label className="label">Nama venue<input name="legalName" required defaultValue={selectedVenue?.legalName} className="input" /></label><label className="label">Alias <span className="font-normal text-slate-400">(opsional)</span><input name="aliasName" defaultValue={selectedVenue?.aliasName ?? ''} className="input" /></label><label className="label">Kota<input name="city" defaultValue={selectedVenue?.city ?? ''} className="input" /></label><VenueTppbFields venue={selectedVenue} /></> : <><label className="label">Nama organizer<input name="legalName" required defaultValue={selectedOrganizer?.legalName} className="input" /></label></>}{error && <p className="text-sm font-medium text-rose-700">{error}</p>}<div className="flex justify-end gap-3"><button type="button" className="btn-secondary" onClick={() => { setEditor(null); setError('') }}>Batal</button><button disabled={saving} className="btn-primary">{saving ? 'Menyimpan…' : 'Simpan'}</button></div></form></div>}
       <Dialog open={pendingDelete !== null} onOpenChange={(next) => { if (!next) setPendingDelete(null) }}>
         <DialogContent className="max-w-md">
           <DialogHeader>

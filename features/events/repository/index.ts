@@ -41,6 +41,7 @@ export {
 } from './event-access'
 export { listLegacyEventRows, queryEventInsights, queryEventList } from './event-queries'
 export {
+  findVenueTppbProfile,
   insertEventOrganizer,
   insertVenue,
   listEventOrganizers,

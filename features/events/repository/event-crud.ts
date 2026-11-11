@@ -44,6 +44,7 @@ export type EventSummary = {
   id: string
   name: string
   alias: string | null
+  venueId: string | null
   venueName: string
   eventOrganizerName: string
   picName: string
@@ -249,6 +250,7 @@ export async function findEventSummary(id: string): Promise<EventSummary | null>
     id: data.id,
     name: data.name,
     alias: data.alias,
+    venueId: data.venue_id,
     venueName: firstRelation(data.venue)?.legal_name ?? '',
     eventOrganizerName: firstRelation(data.organizer)?.legal_name ?? '',
     picName: firstRelation(data.pic)?.full_name ?? '',

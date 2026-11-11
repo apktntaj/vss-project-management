@@ -11,6 +11,7 @@ import type {
   EventOrganizerRecord,
   VenueInput,
   VenueRecord,
+  VenueTppbProfile,
 } from '@/domain/event/types'
 
 const VENUE_COLUMNS = 'id, legal_name, alias_name, city'
@@ -92,6 +93,59 @@ export async function listVenues(): Promise<VenueRecord[]> {
     throw new Error(`Gagal memuat daftar venue: ${error.message}`)
   }
   return (data ?? []).map(toVenueRecord)
+}
+
+const VENUE_TPPB_COLUMNS =
+  'legal_name, city, tppb_operator_name, tppb_operator_npwp, tppb_operator_address, customs_regional_office, signatory_1_name, signatory_1_title, signatory_2_name, signatory_2_title'
+
+type VenueTppbDbRow = {
+  legal_name: string
+  city: string | null
+  tppb_operator_name: string | null
+  tppb_operator_npwp: string | null
+  tppb_operator_address: string | null
+  customs_regional_office: string | null
+  signatory_1_name: string | null
+  signatory_1_title: string | null
+  signatory_2_name: string | null
+  signatory_2_title: string | null
+}
+
+/**
+ * Data pengusaha TPPB satu venue (pemohon surat Kanwil & form rincian barang). Null bila venue
+ * tidak ada di workspace. Penandatangan hanya yang namanya terisi, urut 1 lalu 2.
+ */
+export async function findVenueTppbProfile(venueId: string): Promise<VenueTppbProfile | null> {
+  const { client, workspaceId } = await withWorkspace()
+
+  const { data, error } = await client
+    .from('venues')
+    .select(VENUE_TPPB_COLUMNS)
+    .eq('workspace_id', workspaceId)
+    .eq('id', venueId)
+    .maybeSingle<VenueTppbDbRow>()
+
+  if (error) {
+    throw new Error(`Gagal memuat venue: ${error.message}`)
+  }
+  if (!data) return null
+
+  const signatories = [
+    { name: data.signatory_1_name, title: data.signatory_1_title },
+    { name: data.signatory_2_name, title: data.signatory_2_title },
+  ].flatMap(({ name, title }) =>
+    name?.trim() ? [{ name: name.trim(), title: title?.trim() || null }] : [],
+  )
+
+  return {
+    venueName: data.legal_name,
+    city: data.city,
+    operatorName: data.tppb_operator_name,
+    operatorNpwp: data.tppb_operator_npwp,
+    operatorAddress: data.tppb_operator_address,
+    customsRegionalOffice: data.customs_regional_office,
+    signatories,
+  }
 }
 
 /**

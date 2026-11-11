@@ -263,6 +263,40 @@ export async function downloadEventManifest(eventId: string): Promise<{ blob: Bl
   return { blob: await response.blob(), filename }
 }
 
+async function fileDownload(
+  response: Response,
+  fallbackName: string,
+  errorMessage: string,
+): Promise<{ blob: Blob; filename: string }> {
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null
+    throw new Error(body?.error ?? errorMessage)
+  }
+  const disposition = response.headers.get('Content-Disposition') ?? ''
+  const encoded = /filename\*=UTF-8''([^;]+)/.exec(disposition)?.[1]
+  return { blob: await response.blob(), filename: encoded ? decodeURIComponent(encoded) : fallbackName }
+}
+
+/** Unduh surat permohonan Kanwil (PDF) satu job International. */
+export async function downloadJobKanwilLetter(
+  jobId: string,
+  input: { letterNumber: string; letterDate: string; greeting: string | null },
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/kanwil-letter`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+    cache: 'no-store',
+  })
+  return fileDownload(response, 'SURAT-KANWIL.pdf', 'Surat Kanwil tidak dapat dibuat.')
+}
+
+/** Unduh form rincian barang (Excel) satu job International. */
+export async function downloadJobTppbGoodsForm(jobId: string): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/tppb-goods-form`, { cache: 'no-store' })
+  return fileDownload(response, 'FORM-RINCIAN-BARANG.xlsx', 'Form rincian barang tidak dapat dibuat.')
+}
+
 /**
  * Unduh daftar event (Excel) dengan filter yang sama dengan layar. `search` adalah query string
  * halaman events (`search`/`status`/`pic`); parameter lain diabaikan server.
@@ -837,6 +871,14 @@ export type SettingsVenue = {
   legalName: string
   aliasName: string | null
   city: string | null
+  tppbOperatorName: string | null
+  tppbOperatorNpwp: string | null
+  tppbOperatorAddress: string | null
+  customsRegionalOffice: string | null
+  signatory1Name: string | null
+  signatory1Title: string | null
+  signatory2Name: string | null
+  signatory2Title: string | null
 }
 export type SettingsOrganizer = { id: string; legalName: string }
 export type SettingsData = {

@@ -122,11 +122,11 @@ export function validateEventReferences(ctx: EventReferenceContext): Validation<
 // `aliasName`/`city` opsional: menerima string, null, atau tak ada; di-trim, kosong-setelah-trim →
 // null, selain itu nilai ter-trim. Batas 200 diterapkan SEBELUM normalisasi agar string panjang
 // tetap ditolak, bukan diam-diam diterima — sama seperti pola `alias` pada eventInputSchema.
-const optionalReferenceText = (overLimitMessage: string) =>
+const optionalReferenceText = (overLimitMessage: string, max = 200) =>
   z
     .string()
     .trim()
-    .max(200, overLimitMessage)
+    .max(max, overLimitMessage)
     .nullish()
     .transform((value) => (value && value.length > 0 ? value : null))
 
@@ -143,6 +143,20 @@ export const referenceVenueInputSchema = z
   .strict()
 
 export type ReferenceVenueInputParsed = z.infer<typeof referenceVenueInputSchema>
+
+// Edit venue dari Settings: master venue + data pengusaha TPPB (pemohon surat Kanwil).
+export const venueSettingsInputSchema = referenceVenueInputSchema.extend({
+  tppbOperatorName: optionalReferenceText('Nama pengusaha TPPB maksimal 200 karakter.'),
+  tppbOperatorNpwp: optionalReferenceText('NPWP pengusaha TPPB maksimal 200 karakter.'),
+  tppbOperatorAddress: optionalReferenceText('Alamat pengusaha TPPB maksimal 500 karakter.', 500),
+  customsRegionalOffice: optionalReferenceText('Kanwil DJBC maksimal 200 karakter.'),
+  signatory1Name: optionalReferenceText('Nama penandatangan maksimal 200 karakter.'),
+  signatory1Title: optionalReferenceText('Jabatan penandatangan maksimal 200 karakter.'),
+  signatory2Name: optionalReferenceText('Nama penandatangan maksimal 200 karakter.'),
+  signatory2Title: optionalReferenceText('Jabatan penandatangan maksimal 200 karakter.'),
+})
+
+export type VenueSettingsInput = z.infer<typeof venueSettingsInputSchema>
 
 export const referenceEventOrganizerInputSchema = z
   .object({

@@ -129,6 +129,21 @@ export type EventOrganizerRecord = {
   legalName: string
 }
 
+export type VenueSignatory = { name: string; title: string | null }
+
+/** Data pengusaha TPPB pada venue: pemohon surat Kanwil & "organizer" di form rincian barang. */
+export type VenueTppbProfile = {
+  venueName: string
+  city: string | null
+  operatorName: string | null
+  operatorNpwp: string | null
+  operatorAddress: string | null
+  /** Nama Kanwil DJBC tujuan, mis. "Banten". */
+  customsRegionalOffice: string | null
+  /** 0–2 entri; hanya penandatangan yang namanya terisi, urut 1 lalu 2. */
+  signatories: VenueSignatory[]
+}
+
 // ── Legacy (build lama, akan dihapus) ─────────────────────────────────────────────────────────
 // Mengapa dipertahankan: clean cutover (DD-A4) memindahkan file ini ke bentuk redesign, tetapi
 // beberapa modul build-lama MASIH mengimpor tipe-tipe di bawah dari sini dan BELUM termasuk scope

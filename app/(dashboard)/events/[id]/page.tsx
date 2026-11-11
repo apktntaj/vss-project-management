@@ -17,6 +17,8 @@ import {
 import { useParams } from 'next/navigation'
 import {
   downloadEventManifest,
+  downloadJobKanwilLetter,
+  downloadJobTppbGoodsForm,
   listEventJobs,
   listEventsWithExhibitors,
   type LocalEvent,
@@ -31,7 +33,17 @@ import { JobCreateWizard } from '@/components/job-create-wizard'
 import { JobRow } from '@/components/job-row'
 import { EventHallView } from '@/components/event-hall-view'
 import { CancelJobDialog } from '@/components/cancel-job-dialog'
+import { KanwilLetterDialog, type KanwilLetterFormInput } from '@/components/kanwil-letter-dialog'
 import { jobLabel } from '@/domain/job/numbering'
+
+function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
 
 function formatDateRange(startsAt: string, endsAt: string) {
   const formatter = new Intl.DateTimeFormat('id-ID', {
@@ -52,6 +64,7 @@ export default function EventDetailPage() {
   const [showNewJob, setShowNewJob] = useState(false)
   const [openJenis, setOpenJenis] = useState<Record<string, boolean>>({})
   const [cancellingJob, setCancellingJob] = useState<Job | null>(null)
+  const [letterJob, setLetterJob] = useState<Job | null>(null)
 
   const nomorByJobId = useMemo(() => buildJobNomor(jobs), [jobs])
 
@@ -90,12 +103,7 @@ export default function EventDetailPage() {
     setExporting(true)
     try {
       const { blob, filename } = await downloadEventManifest(params.id)
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = filename
-      anchor.click()
-      URL.revokeObjectURL(url)
+      saveBlob(blob, filename)
       showToast('Manifest berhasil diekspor.')
     } catch (caught) {
       showToast(
@@ -104,6 +112,29 @@ export default function EventDetailPage() {
       )
     } finally {
       setExporting(false)
+    }
+  }
+
+  async function generateKanwilLetter(input: KanwilLetterFormInput): Promise<boolean> {
+    if (!letterJob) return false
+    try {
+      const { blob, filename } = await downloadJobKanwilLetter(letterJob.id, input)
+      saveBlob(blob, filename)
+      showToast('Surat permohonan Kanwil berhasil diunduh.')
+      return true
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : 'Surat Kanwil tidak dapat dibuat.', 'error')
+      return false
+    }
+  }
+
+  async function generateTppbGoodsForm(job: Job) {
+    try {
+      const { blob, filename } = await downloadJobTppbGoodsForm(job.id)
+      saveBlob(blob, filename)
+      showToast('Form rincian barang berhasil diunduh.')
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : 'Form rincian barang tidak dapat dibuat.', 'error')
     }
   }
 
@@ -285,6 +316,8 @@ export default function EventDetailPage() {
                               actions={{
                                 onEdit: (editedJob) => router.push(`/jobs/${editedJob.id}`),
                                 onCancel: (jobToCancel) => setCancellingJob(jobToCancel),
+                                onKanwilLetter: setLetterJob,
+                                onTppbGoodsForm: generateTppbGoodsForm,
                               }}
                             />
                           ))}
@@ -313,6 +346,13 @@ export default function EventDetailPage() {
             setCancellingJob(null)
             loadData()
           }}
+        />
+      )}
+      {letterJob && (
+        <KanwilLetterDialog
+          job={letterJob}
+          onClose={() => setLetterJob(null)}
+          onSubmit={generateKanwilLetter}
         />
       )}
       {showNewJob && (
