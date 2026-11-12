@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { auth } from '@/auth'
+import { inswLookupConfig } from '@/lib/insw-config'
 import { lookupHsCodes } from '@/lib/insw-lartas'
 import { normalizeHsCode } from '@/lib/job-lartas'
 
@@ -10,18 +11,6 @@ export const dynamic = 'force-dynamic'
 const requestSchema = z.object({
   hsCodes: z.array(z.string().min(1)).min(1).max(20),
 })
-
-function lookupConfig() {
-  const timeout = Number(process.env.LARTAS_REQUEST_TIMEOUT_MS)
-  return {
-    baseUrl: process.env.LARTAS_BASE_URL?.trim() || 'https://api.insw.go.id',
-    token: process.env.LARTAS_TOKEN?.trim(),
-    tokenFilePath: process.env.LARTAS_TOKEN_FILE_PATH?.trim() || undefined,
-    timeoutMs: Number.isFinite(timeout) && timeout > 0 ? timeout : 30_000,
-    clientId: process.env.INSW_CLIENT_ID?.trim(),
-    clientBearer: process.env.INSW_CLIENT_BEARER?.trim(),
-  }
-}
 
 export async function POST(request: NextRequest) {
   const session = await auth()
@@ -39,7 +28,7 @@ export async function POST(request: NextRequest) {
       parsed.data.hsCodes.map((value) => normalizeHsCode(value)?.digits ?? value.replace(/\D/g, '')),
     ),
   ]
-  const results = await lookupHsCodes(hsCodes, lookupConfig())
+  const results = await lookupHsCodes(hsCodes, inswLookupConfig())
   return NextResponse.json({
     notice: "Status LARTAS hanya boleh disimpulkan 'Tidak Ada' jika verification bernilai 'verified'.",
     results: results.map((result) => ({

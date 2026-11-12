@@ -21,7 +21,9 @@ const ACCEPT = '.xls,.xlsx'
 
 function statusSummary(results: LartasResult[]) {
   const hit = results.filter((result) => lartasStatus(result).key === 'ada').length
-  const pending = results.filter((result) => lartasStatus(result).key === 'belum-terverifikasi').length
+  const pending = results.filter(
+    (result) => lartasStatus(result).key === 'belum-terverifikasi',
+  ).length
   return { hit, pending }
 }
 
@@ -45,9 +47,7 @@ export function ToolsLartasChecker() {
       body.set('file', file)
       const response = await fetch('/api/tools/lartas-columns', { method: 'POST', body })
       const data = (await response.json().catch(() => null)) as
-        | (ScanResponse & { error?: never })
-        | { error?: string }
-        | null
+        (ScanResponse & { error?: never }) | { error?: string } | null
       if (!response.ok || !data || !('codes' in data) || !Array.isArray(data.codes)) {
         throw new Error(
           data && 'error' in data && typeof data.error === 'string'
@@ -112,14 +112,17 @@ export function ToolsLartasChecker() {
             <div>
               <h2 className="font-semibold">Cek LARTAS dari invoice Excel</h2>
               <p className="mt-1 text-xs text-slate-500">
-                Unggah invoice (.xls/.xlsx) — kolom berisi HS 8 digit dicari otomatis, lalu
-                diperiksa ke INSW. Hanya HS code yang dikirim; hasil berisi status dan dokumen,
-                bukan tarif atau pajak.
+                Unggah invoice yang berisi hs code valid. Sistem akan mencarikan data lartas dari
+                INSW.
               </p>
             </div>
           </div>
           <Button type="button" disabled={checking || reading || codes.length === 0} onClick={run}>
-            {checking ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <Search data-icon="inline-start" />}
+            {checking ? (
+              <Loader2 className="animate-spin" data-icon="inline-start" />
+            ) : (
+              <Search data-icon="inline-start" />
+            )}
             {checking ? 'Memeriksa INSW…' : 'Periksa LARTAS'}
           </Button>
         </div>
@@ -163,7 +166,10 @@ export function ToolsLartasChecker() {
             <p className="text-sm text-slate-700">
               {scan.columns.length} sheet dipindai · {scan.rows.length} baris berisi HS ·{' '}
               {codes.length} HS unik
-              {scan.skipped > 0 && <span className="text-slate-500">, {scan.skipped} sel mirip kode dilewati</span>}.
+              {scan.skipped > 0 && (
+                <span className="text-slate-500">, {scan.skipped} sel mirip kode dilewati</span>
+              )}
+              .
             </p>
             <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full border-collapse text-left text-sm">
@@ -190,15 +196,23 @@ export function ToolsLartasChecker() {
             {uniqueRows && uniqueRows.length > 0 && (
               <p className="text-xs text-slate-500">
                 Contoh terbaca:{' '}
-                {uniqueRows.slice(0, PREVIEW_ROWS).map((row) => row.hsCode).join(', ')}
-                {uniqueRows.length > PREVIEW_ROWS ? `, dan ${uniqueRows.length - PREVIEW_ROWS} lainnya` : ''}
+                {uniqueRows
+                  .slice(0, PREVIEW_ROWS)
+                  .map((row) => row.hsCode)
+                  .join(', ')}
+                {uniqueRows.length > PREVIEW_ROWS
+                  ? `, dan ${uniqueRows.length - PREVIEW_ROWS} lainnya`
+                  : ''}
               </p>
             )}
           </div>
         )}
 
         {error && (
-          <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+          <p
+            role="alert"
+            className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900"
+          >
             {error}
           </p>
         )}
@@ -218,16 +232,20 @@ export function ToolsLartasChecker() {
               </p>
             </div>
             <div className="inline-flex overflow-hidden rounded-lg border border-slate-200 text-sm">
-              {([
-                ['lartas', 'Hanya yang LARTAS'],
-                ['all', 'Semua HS code'],
-              ] as const).map(([value, label]) => (
+              {(
+                [
+                  ['lartas', 'Hanya yang LARTAS'],
+                  ['all', 'Semua HS code'],
+                ] as const
+              ).map(([value, label]) => (
                 <button
                   key={value}
                   type="button"
                   onClick={() => setFilter(value)}
                   className={`px-3 py-1.5 font-medium transition ${
-                    filter === value ? 'bg-orange-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                    filter === value
+                      ? 'bg-orange-600 text-white'
+                      : 'bg-white text-slate-600 hover:bg-slate-50'
                   }`}
                 >
                   {label}
@@ -262,7 +280,9 @@ export function ToolsLartasChecker() {
                     return (
                       <tr key={result.hsCode}>
                         <td className="px-3 py-2 tabular-nums text-slate-500">{index + 1}</td>
-                        <td className="whitespace-nowrap px-3 py-2 tabular-nums">{result.formattedHsCode}</td>
+                        <td className="whitespace-nowrap px-3 py-2 tabular-nums">
+                          {result.formattedHsCode}
+                        </td>
                         <td className="px-3 py-2">
                           <span
                             className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${status.tone}`}

@@ -44,7 +44,9 @@ import {
 } from '@/domain/job/manifest'
 import type { CiplAutofillRow } from '@/domain/exhibition/cipl-autofill'
 import type { CiplDocument } from '@/domain/exhibition/cipl-document'
-import type { LartasResponse } from '@/domain/lartas/types'
+import type { LartasResponse, LartasResult } from '@/domain/lartas/types'
+import type { BtkiMatchInput, BtkiMatchResponse } from '@/lib/btki-match'
+import type { InvoiceHsItem } from '@/lib/invoice-hs-items'
 
 export type {
   Ticket,
@@ -467,6 +469,45 @@ async function jobsRequest<T>(path: string, init?: RequestInit): Promise<T> {
 /** Cek LARTAS/tarif INSW untuk HS code 8 digit (maks 20 per panggilan). */
 export async function checkLartas(hsCodes: string[]): Promise<LartasResponse> {
   return jobsRequest<LartasResponse>('/api/lartas', {
+    method: 'POST',
+    body: JSON.stringify({ hsCodes }),
+  })
+}
+
+export type InvoiceHsItemsResponse = { items: InvoiceHsItem[]; source: 'excel' | 'ai' }
+
+/** Baca baris barang (uraian + HS code) dari invoice PDF/Excel; berkas tidak disimpan. */
+export async function readInvoiceHsItems(file: File): Promise<InvoiceHsItemsResponse> {
+  const body = new FormData()
+  body.set('file', file)
+  const response = await fetch('/api/tools/hs-items', { method: 'POST', body })
+  const data = (await response.json().catch(() => null)) as
+    | InvoiceHsItemsResponse
+    | { error?: string }
+    | null
+  if (!response.ok || !data || !('items' in data) || !Array.isArray(data.items)) {
+    throw new Error(
+      data && 'error' in data && typeof data.error === 'string' ? data.error : 'Invoice tidak dapat dibaca.',
+    )
+  }
+  return data
+}
+
+/** Saran pos BTKI 8 digit per baris barang (maks BTKI_MATCH_MAX_ITEMS per panggilan). */
+export async function matchBtki(items: BtkiMatchInput[]): Promise<BtkiMatchResponse> {
+  return jobsRequest<BtkiMatchResponse>('/api/tools/btki-match', {
+    method: 'POST',
+    body: JSON.stringify({ items }),
+  })
+}
+
+export type HsTariffsResponse = {
+  results: Pick<LartasResult, 'hsCode' | 'lookupStatus' | 'tariffs'>[]
+}
+
+/** Tarif BM/PPN/PPH untuk pos 8 digit (maks LARTAS_MAX_CODES_PER_REQUEST per panggilan). */
+export async function fetchHsTariffs(hsCodes: string[]): Promise<HsTariffsResponse> {
+  return jobsRequest<HsTariffsResponse>('/api/tools/hs-tariffs', {
     method: 'POST',
     body: JSON.stringify({ hsCodes }),
   })

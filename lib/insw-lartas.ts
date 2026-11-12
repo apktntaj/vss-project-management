@@ -1,5 +1,7 @@
 import { readFile } from 'node:fs/promises'
 
+import type { BtkiRow } from './btki-match'
+
 export type LookupStatus = 'found' | 'not-found' | 'invalid' | 'source-error'
 export type LartasVerification = 'verified' | 'unverified'
 export type DataSource = 'insw-cms' | 'insw-public-list' | null
@@ -72,6 +74,7 @@ export async function lookupHsCode(
   rawCode: string,
   config: LookupConfig,
   signal?: AbortSignal,
+  options: LookupOptions = {},
 ): Promise<HsCodeLookupResult> {
   const hsCode = rawCode.replace(/\D/g, '')
   if (!/^\d{8}$/.test(hsCode)) return emptyResult(hsCode, 'invalid')
@@ -82,7 +85,7 @@ export async function lookupHsCode(
 
   if (token) {
     try {
-      const cmsResult = await fetchCmsResult(hsCode, baseUrl, token, config.timeoutMs, signal)
+      const cmsResult = await fetchCmsResult(hsCode, baseUrl, token, config.timeoutMs, options.skipSearch === true, signal)
       if (cmsResult) return cmsResult
     } catch (error) {
       if (signal?.aborted) throw error
@@ -108,20 +111,101 @@ function describeCmsError(error: unknown): string {
   return `CMS INSW gagal: ${error instanceof Error ? error.message : String(error)}`
 }
 
+/** `skipSearch`: lewati pengecekan keberadaan kode di pencarian CMS bila kode sudah berasal dari BTKI. */
+export type LookupOptions = { skipSearch?: boolean }
+
 export async function lookupHsCodes(
   codes: readonly string[],
   config: LookupConfig,
   signal?: AbortSignal,
+  options: LookupOptions = {},
 ): Promise<HsCodeLookupResult[]> {
   const results = new Array<HsCodeLookupResult>(codes.length)
   for (let start = 0; start < codes.length; start += 8) {
     const batch = codes.slice(start, start + 8)
     await Promise.all(batch.map(async (code, index) => {
       signal?.throwIfAborted()
-      results[start + index] = await lookupHsCode(code, config, signal)
+      results[start + index] = await lookupHsCode(code, config, signal, options)
     }))
   }
   return results
+}
+
+export type BtkiSearchResult = { rows: BtkiRow[]; error: string | null }
+
+const BTKI_PAGE_SIZE = 200
+const BTKI_MAX_PAGES = 5
+
+/**
+ * Baris BTKI (pos, subpos, pos tarif 8 digit beserta uraian ID/EN) untuk tiap awalan HS dari
+ * pencarian CMS INSW. Butuh token CMS; tanpa token semua awalan mengembalikan `error`.
+ */
+export async function searchBtkiPrefixes(
+  prefixes: readonly string[],
+  config: LookupConfig,
+  signal?: AbortSignal,
+): Promise<Record<string, BtkiSearchResult>> {
+  const results: Record<string, BtkiSearchResult> = {}
+  const unique = [...new Set(prefixes)]
+  if (unique.length === 0) return results
+
+  const { token, problem } = await resolveCmsToken(config, signal)
+  if (!token) {
+    for (const prefix of unique) results[prefix] = { rows: [], error: problem ?? NO_TOKEN_PROBLEM }
+    return results
+  }
+
+  const baseUrl = config.baseUrl.replace(/\/+$/, '')
+  const headers = { ...HEADERS, authorization: `Basic ${stripAuthPrefix(token)}` }
+  for (let start = 0; start < unique.length; start += 6) {
+    await Promise.all(unique.slice(start, start + 6).map(async (prefix) => {
+      try {
+        results[prefix] = { rows: await fetchBtkiRows(prefix, baseUrl, headers, config.timeoutMs, signal), error: null }
+      } catch (error) {
+        if (signal?.aborted) throw error
+        results[prefix] = { rows: [], error: describeCmsError(error) }
+      }
+    }))
+  }
+  return results
+}
+
+async function fetchBtkiRows(
+  prefix: string,
+  baseUrl: string,
+  headers: Record<string, string>,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<BtkiRow[]> {
+  const rows = new Map<number, BtkiRow>()
+  for (let page = 0; page < BTKI_MAX_PAGES; page += 1) {
+    const url = new URL('/api/cms/hscode', baseUrl)
+    url.searchParams.set('keyword', prefix)
+    url.searchParams.set('size', String(BTKI_PAGE_SIZE))
+    url.searchParams.set('from', String(page * BTKI_PAGE_SIZE))
+    const json = await fetchJson(url, headers, timeoutMs, signal)
+    const envelope = Array.isArray(json.data) ? json.data.find(isRecord) : null
+    const hits = envelope && Array.isArray(envelope.result) ? envelope.result.filter(isRecord) : []
+    const before = rows.size
+    for (const hit of hits) {
+      const source = isRecord(hit._source) ? hit._source : hit
+      const code = String(source.hs_code_format ?? '').replace(/\D/g, '')
+      const id = Number(source.id_btbmi)
+      // Pencarian INSW berbasis kata kunci; hanya baris yang benar-benar berawalan sama yang dipakai.
+      if (!code.startsWith(prefix) || !Number.isFinite(id)) continue
+      rows.set(id, {
+        id,
+        code,
+        declarable: stringValue(source.hs_code) !== null,
+        uraianId: stringValue(source.uraian_id) ?? '',
+        uraianEn: stringValue(source.uraian_en) ?? '',
+      })
+    }
+    const total = Number(envelope?.total)
+    const fetched = (page + 1) * BTKI_PAGE_SIZE
+    if (hits.length < BTKI_PAGE_SIZE || rows.size === before || (Number.isFinite(total) && fetched >= total)) break
+  }
+  return [...rows.values()].sort((a, b) => a.id - b.id)
 }
 
 async function fetchCmsResult(
@@ -129,16 +213,19 @@ async function fetchCmsResult(
   baseUrl: string,
   token: string,
   timeoutMs: number,
+  skipSearch: boolean,
   signal?: AbortSignal,
 ): Promise<HsCodeLookupResult | null> {
   const headers = { ...HEADERS, authorization: `Basic ${stripAuthPrefix(token)}` }
-  const searchUrl = new URL('/api/cms/hscode', baseUrl)
-  searchUrl.searchParams.set('keyword', hsCode)
-  searchUrl.searchParams.set('size', '200')
-  searchUrl.searchParams.set('from', '0')
+  if (!skipSearch) {
+    const searchUrl = new URL('/api/cms/hscode', baseUrl)
+    searchUrl.searchParams.set('keyword', hsCode)
+    searchUrl.searchParams.set('size', '200')
+    searchUrl.searchParams.set('from', '0')
 
-  const search = await fetchJson(searchUrl, headers, timeoutMs, signal)
-  if (extractList(search).length === 0) return null
+    const search = await fetchJson(searchUrl, headers, timeoutMs, signal)
+    if (extractList(search).length === 0) return null
+  }
 
   const detailUrl = new URL('/api/cms/detail-komoditas', baseUrl)
   detailUrl.searchParams.set('hsCode', hsCode)

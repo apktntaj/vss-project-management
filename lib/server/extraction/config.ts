@@ -32,3 +32,10 @@ export function configuredScanCiplProvider(): { apiKey: string; model: string } 
   if (!apiKey) return null
   return { apiKey, model: process.env.CIPL_SCAN_MODEL?.trim() || process.env.LLM_MODEL?.trim() || DEFAULT_LLM_MODEL }
 }
+
+/** Pencocokan pos BTKI (tool HS BTKI): klasifikasi butuh penalaran, jadi default Sonnet; BTKI_MATCH_MODEL / LLM_MODEL menimpa. */
+export function configuredBtkiMatchProvider(): { apiKey: string; model: string } | null {
+  const apiKey = process.env.LLM_API_KEY?.trim()
+  if (!apiKey) return null
+  return { apiKey, model: process.env.BTKI_MATCH_MODEL?.trim() || process.env.LLM_MODEL?.trim() || FALLBACK_LLM_MODEL }
+}

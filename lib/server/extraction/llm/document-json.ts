@@ -88,6 +88,17 @@ export async function chatDocumentJson(
   throw new DocumentExtractionError(LLM_FAILED_MESSAGE, 503, 'LLM_EXTRACTION_FAILED')
 }
 
+/** "Kirim teks + prompt, terima JSON" tanpa dokumen; tanpa model cadangan — pemanggil yang menentukan cadangannya. */
+export async function chatTextJson(
+  config: DocumentChatConfig,
+  prompt: string,
+  system?: string,
+  timeoutMs?: number,
+): Promise<Record<string, unknown>> {
+  const client = new Anthropic({ apiKey: config.apiKey })
+  return requestJson(client, config, [{ type: 'text', text: prompt }], system, { timeout: timeoutMs ?? LLM_TIMEOUT_MS })
+}
+
 async function requestJson(
   client: Anthropic,
   config: DocumentChatConfig,
