@@ -8,11 +8,15 @@ import {
   type OperationalNote,
 } from '@/domain/job/manifest'
 
-export type HallRow = {
+/** Dimensi pengelompokan baris exhibitor pada halaman event. */
+export type ExhibitorGroupBy = 'hall' | 'agent'
+
+export type ExhibitorRow = {
   /** id baris CIPL */
   key: string
   exhibitorName: string
   linked: boolean
+  hall: string | null
   booth: string | null
   agent: string | null
   jobId: string
@@ -21,12 +25,12 @@ export type HallRow = {
   notes: OperationalNote[]
 }
 
-export type HallGroup = {
-  /** Hall trim + uppercase; '' untuk "Tanpa hall". */
+export type ExhibitorGroup = {
+  /** Per hall: hall trim + uppercase; per agent: id agent. '' untuk grup tanpa hall/agent. */
   key: string
-  /** Hall trim pertama yang ditemui; null = "Tanpa hall". */
+  /** Per hall: hall trim pertama yang ditemui; per agent: nama agent. null = tanpa hall/agent. */
   label: string | null
-  rows: HallRow[]
+  rows: ExhibitorRow[]
   /** Jumlah distinct `exhibitorId ?? nameOnDocument`. */
   exhibitorCount: number
   totals: KoliSummary
@@ -37,29 +41,32 @@ const collator = new Intl.Collator('id', { numeric: true, sensitivity: 'base' })
 type GroupDraft = {
   key: string
   label: string | null
-  rows: HallRow[]
+  rows: ExhibitorRow[]
   exhibitors: Set<string>
   koli: KoliCollection[]
 }
 
 /**
- * Kelompokkan baris CIPL seluruh job event per hall exhibitor (tampilan lapangan). Job batal
- * dilewati; baris tanpa exhibitor tertaut atau tanpa hall masuk grup "Tanpa hall" (terakhir).
+ * Kelompokkan baris CIPL seluruh job event per hall exhibitor atau per agent job (tampilan
+ * lapangan). Job batal dilewati. Per hall: baris tanpa exhibitor tertaut atau tanpa hall masuk
+ * grup tanpa hall. Per agent: baris job yang pihaknya bukan agent masuk grup tanpa agent. Grup
+ * tanpa hall/agent selalu terakhir.
  */
-export function buildHallGroups(jobs: ReadonlyArray<Job>): HallGroup[] {
+export function buildExhibitorGroups(jobs: ReadonlyArray<Job>, by: ExhibitorGroupBy): ExhibitorGroup[] {
   const drafts = new Map<string, GroupDraft>()
 
   for (const job of jobs) {
     if (job.status === 'CANCELLED') continue
     const jobNo = job.jobNumber?.trim() || jobLabel(job)
-    const agent = job.party?.kind === 'AGENT' ? job.party.name : null
+    const agentParty = job.party?.kind === 'AGENT' ? job.party : null
+    const agent = agentParty?.name ?? null
 
     for (const line of job.ciplLines) {
       const hall = line.exhibitor?.hall?.trim() || null
-      const key = hall ? hall.toUpperCase() : ''
+      const key = by === 'hall' ? (hall?.toUpperCase() ?? '') : (agentParty?.id ?? '')
       let draft = drafts.get(key)
       if (!draft) {
-        draft = { key, label: hall, rows: [], exhibitors: new Set(), koli: [] }
+        draft = { key, label: by === 'hall' ? hall : agent, rows: [], exhibitors: new Set(), koli: [] }
         drafts.set(key, draft)
       }
 
@@ -67,6 +74,7 @@ export function buildHallGroups(jobs: ReadonlyArray<Job>): HallGroup[] {
         key: line.id,
         exhibitorName: line.exhibitor?.name ?? line.nameOnDocument,
         linked: Boolean(line.exhibitorId),
+        hall,
         booth: line.exhibitor?.booth?.trim() || null,
         agent,
         jobId: job.id,
@@ -80,10 +88,7 @@ export function buildHallGroups(jobs: ReadonlyArray<Job>): HallGroup[] {
   }
 
   return [...drafts.values()]
-    .sort((a, b) => {
-      if (a.label === null || b.label === null) return Number(a.label === null) - Number(b.label === null)
-      return collator.compare(a.label, b.label)
-    })
+    .sort((a, b) => compareNullsLast(a.label, b.label))
     .map((draft) => ({
       key: draft.key,
       label: draft.label,
@@ -93,12 +98,17 @@ export function buildHallGroups(jobs: ReadonlyArray<Job>): HallGroup[] {
     }))
 }
 
-function compareRows(a: HallRow, b: HallRow): number {
-  if (a.booth === null || b.booth === null) {
-    if (a.booth !== b.booth) return a.booth === null ? 1 : -1
-  } else {
-    const byBooth = collator.compare(a.booth, b.booth)
-    if (byBooth !== 0) return byBooth
-  }
-  return collator.compare(a.exhibitorName, b.exhibitorName) || collator.compare(a.jobNo, b.jobNo)
+function compareNullsLast(a: string | null, b: string | null): number {
+  if (a === null || b === null) return Number(a === null) - Number(b === null)
+  return collator.compare(a, b)
+}
+
+/** Hall → booth → exhibitor → no job. Dalam grup per hall, hall semua baris setara. */
+function compareRows(a: ExhibitorRow, b: ExhibitorRow): number {
+  return (
+    compareNullsLast(a.hall, b.hall) ||
+    compareNullsLast(a.booth, b.booth) ||
+    collator.compare(a.exhibitorName, b.exhibitorName) ||
+    collator.compare(a.jobNo, b.jobNo)
+  )
 }

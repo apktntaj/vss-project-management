@@ -25,13 +25,13 @@ import {
   type Job,
 } from '@/lib/data-client'
 import { groupJobsByJenis, jobJenisLabel } from '@/lib/job-jenis'
-import { buildHallGroups } from '@/lib/hall-view'
+import { buildExhibitorGroups, type ExhibitorGroupBy } from '@/lib/exhibitor-view'
 import { buildJobNomor } from '@/lib/job-number'
 import { PageSkeleton } from '@/components/loading-skeletons'
 import { ContextTicketList } from '@/components/context-ticket-list'
 import { JobCreateWizard } from '@/components/job-create-wizard'
 import { JobRow } from '@/components/job-row'
-import { EventHallView } from '@/components/event-hall-view'
+import { EventExhibitorView } from '@/components/event-exhibitor-view'
 import { CancelJobDialog } from '@/components/cancel-job-dialog'
 import { KanwilLetterDialog, type KanwilLetterFormInput } from '@/components/kanwil-letter-dialog'
 import { jobLabel } from '@/domain/job/numbering'
@@ -59,7 +59,7 @@ export default function EventDetailPage() {
   const router = useRouter()
   const [event, setEvent] = useState<LocalEvent | null>(null)
   const [jobs, setJobs] = useState<Job[]>([])
-  const [view, setView] = useState<'jenis' | 'hall'>('jenis')
+  const [view, setView] = useState<'jenis' | ExhibitorGroupBy>('jenis')
   const [loading, setLoading] = useState(true)
   const [showNewJob, setShowNewJob] = useState(false)
   const [openJenis, setOpenJenis] = useState<Record<string, boolean>>({})
@@ -69,7 +69,10 @@ export default function EventDetailPage() {
   const nomorByJobId = useMemo(() => buildJobNomor(jobs), [jobs])
 
   const jenisGroups = useMemo(() => groupJobsByJenis(jobs), [jobs])
-  const hallGroups = useMemo(() => buildHallGroups(jobs), [jobs])
+  const exhibitorGroups = useMemo(
+    () => (view === 'jenis' ? [] : buildExhibitorGroups(jobs, view)),
+    [jobs, view],
+  )
 
   const loadData = useCallback(() => {
     setLoading(true)
@@ -243,6 +246,7 @@ export default function EventDetailPage() {
             [
               ['jenis', 'Grouped By Job'],
               ['hall', 'By Hall'],
+              ['agent', 'By Agent'],
             ] as const
           ).map(([value, text]) => (
             <button
@@ -257,8 +261,9 @@ export default function EventDetailPage() {
             </button>
           ))}
         </div>
-        {view === 'hall' ? (
-          <EventHallView groups={hallGroups} />
+        {view !== 'jenis' ? (
+          // `key`: status buka/tutup grup tidak terbawa antar dimensi (key grup '' dipakai keduanya).
+          <EventExhibitorView key={view} groups={exhibitorGroups} by={view} />
         ) : jobs.length ? (
           <div className="space-y-4">
             {jenisGroups.map((group) => {

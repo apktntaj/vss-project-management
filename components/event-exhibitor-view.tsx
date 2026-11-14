@@ -6,11 +6,17 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 
 import { numberID } from '@/components/job-exhibitor-summary'
 import { operationalNoteKindLabels } from '@/domain/job/manifest'
-import type { HallGroup } from '@/lib/hall-view'
+import type { ExhibitorGroup, ExhibitorGroupBy } from '@/lib/exhibitor-view'
 
 const amount = (value: number) => (value > 0 ? numberID(value) : '—')
 
-export function EventHallView({ groups }: { groups: HallGroup[] }) {
+function groupTitle(by: ExhibitorGroupBy, label: string | null) {
+  if (by === 'agent') return label ?? 'Tanpa agent'
+  return label === null ? 'Hall belum terisi/diketahui' : `Hall ${label}`
+}
+
+/** Baris exhibitor seluruh job event, dikelompokkan per hall atau per agent. */
+export function EventExhibitorView({ groups, by }: { groups: ExhibitorGroup[]; by: ExhibitorGroupBy }) {
   // Hanya grup yang ditutup yang disimpan; default semua terbuka.
   const [closed, setClosed] = useState<Record<string, boolean>>({})
 
@@ -39,7 +45,7 @@ export function EventHallView({ groups }: { groups: HallGroup[] }) {
                 {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
               </span>
               <span className="min-w-0 flex-1 truncate font-semibold text-slate-900">
-                {group.label === null ? 'Hall belum terisi/diketahui' : `Hall ${group.label}`}
+                {groupTitle(by, group.label)}
               </span>
               <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600">
                 {`${group.exhibitorCount} exhibitor · ${numberID(totals.totalCount)} pkg · ${numberID(totals.volumeCbm)} CBM · ${numberID(totals.weightKg)} Kg`}
@@ -47,11 +53,14 @@ export function EventHallView({ groups }: { groups: HallGroup[] }) {
             </button>
             {isOpen && (
               <div className="overflow-x-auto">
-                <table className="min-w-[1090px] w-full table-fixed text-left text-sm">
+                <table
+                  className={`${by === 'agent' ? 'min-w-[1000px]' : 'min-w-[1090px]'} w-full table-fixed text-left text-sm`}
+                >
                   <colgroup>
                     <col className="w-[220px]" />
+                    {by === 'agent' && <col className="w-[90px]" />}
                     <col className="w-[90px]" />
-                    <col className="w-[180px]" />
+                    {by === 'hall' && <col className="w-[180px]" />}
                     <col className="w-[120px]" />
                     <col className="w-[90px]" />
                     <col className="w-[90px]" />
@@ -61,8 +70,9 @@ export function EventHallView({ groups }: { groups: HallGroup[] }) {
                   <thead className="whitespace-nowrap border-b bg-white text-slate-900 font-semibold uppercase tracking-wider">
                     <tr>
                       <th className="px-3 py-3">Exhibitor</th>
+                      {by === 'agent' && <th className="px-3 py-3">Hall</th>}
                       <th className="px-3 py-3">Booth</th>
-                      <th className="px-3 py-3">Agent</th>
+                      {by === 'hall' && <th className="px-3 py-3">Agent</th>}
                       <th className="px-3 py-3">Job No</th>
                       <th className="px-3 py-3">Package</th>
                       <th className="px-3 py-3">CBM</th>
@@ -82,16 +92,21 @@ export function EventHallView({ groups }: { groups: HallGroup[] }) {
                           </div>
                           {!row.linked && <div className="text-xs text-amber-600">belum tertaut</div>}
                         </td>
+                        {by === 'agent' && (
+                          <td className="px-3 py-2.5 align-middle text-slate-700">{row.hall ?? '—'}</td>
+                        )}
                         <td className="px-3 py-2.5 align-middle text-slate-700">{row.booth ?? '—'}</td>
-                        <td className="px-3 py-2.5 align-middle">
-                          {row.agent ? (
-                            <span className="block truncate text-slate-800" title={row.agent}>
-                              {row.agent}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">—</span>
-                          )}
-                        </td>
+                        {by === 'hall' && (
+                          <td className="px-3 py-2.5 align-middle">
+                            {row.agent ? (
+                              <span className="block truncate text-slate-800" title={row.agent}>
+                                {row.agent}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+                        )}
                         <td className="px-3 py-2.5 align-middle">
                           <Link
                             href={`/jobs/${row.jobId}`}
