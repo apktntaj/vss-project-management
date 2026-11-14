@@ -6,7 +6,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Download, MoreVertical } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Download, MoreVertical } from 'lucide-react'
 
 import { type Job, getOperationalDetails } from '@/lib/data-client'
 import {
@@ -19,6 +19,7 @@ import { JobContextBadge } from '@/components/job-context-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { label } from '@/components/job-row'
 import { jobLabel } from '@/domain/job/numbering'
+import { nextJobSort, type JobSortKey, type JobTableSort } from '@/lib/job-list'
 
 const INVOICE_BADGE: Record<Job['invoice']['status'], string> = {
   NOT_READY: 'bg-slate-100 text-slate-500',
@@ -38,21 +39,35 @@ const badge = 'inline-block max-w-full truncate rounded-full px-2 py-0.5 text-xs
 
 const th = 'sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2 whitespace-nowrap'
 
+const SORT_COLUMNS: ReadonlyArray<{ key: JobSortKey; text: string }> = [
+  { key: 'jobNumber', text: 'No Job' },
+  { key: 'context', text: 'Jenis job' },
+  { key: 'agent', text: 'Agent' },
+  { key: 'transportMode', text: 'Moda' },
+  { key: 'cipl', text: 'CIPL' },
+  { key: 'transportDocument', text: 'B/L · AWB' },
+  { key: 'invoice', text: 'Tagihan' },
+  { key: 'status', text: 'Status' },
+]
+
 type JobTableProps = {
   jobs: Job[]
+  /** Kolom urut aktif; null = urutan bawaan. */
+  sort: JobTableSort | null
+  onSortChange: (sort: JobTableSort | null) => void
   onGenerate: (job: Job, documentType: BcDocumentKind) => void
 }
 
-export function JobTable({ jobs, ...handlers }: JobTableProps) {
+export function JobTable({ jobs, sort, onSortChange, onGenerate }: JobTableProps) {
   return (
     <div className="card max-h-[65vh] overflow-auto">
-      <table className="w-full min-w-[900px] table-fixed text-left text-sm">
+      <table className="w-full min-w-[940px] table-fixed text-left text-sm">
         <colgroup>
           <col className="w-[40px]" />
           <col className="w-[120px]" />
-          <col className="w-[96px]" />
+          <col className="w-[112px]" />
           <col />
-          <col className="w-[70px]" />
+          <col className="w-[84px]" />
           <col className="w-[100px]" />
           <col className="w-[140px]" />
           <col className="w-[100px]" />
@@ -62,14 +77,27 @@ export function JobTable({ jobs, ...handlers }: JobTableProps) {
         <thead className="text-xs font-semibold uppercase tracking-wider text-slate-400">
           <tr>
             <th className={`${th} px-2 text-right`}>No</th>
-            <th className={th}>No Job</th>
-            <th className={th}>Jenis job</th>
-            <th className={th}>Agent</th>
-            <th className={th}>Moda</th>
-            <th className={th}>CIPL</th>
-            <th className={th}>B/L · AWB</th>
-            <th className={th}>Tagihan</th>
-            <th className={th}>Status</th>
+            {SORT_COLUMNS.map(({ key, text }) => {
+              const direction = sort?.key === key ? sort.direction : null
+              const Icon = direction === 'asc' ? ArrowUp : direction === 'desc' ? ArrowDown : ArrowUpDown
+              return (
+                <th
+                  key={key}
+                  className={th}
+                  aria-sort={direction === 'asc' ? 'ascending' : direction === 'desc' ? 'descending' : 'none'}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onSortChange(nextJobSort(sort, key))}
+                    title={`Urutkan berdasarkan ${text}`}
+                    className={`inline-flex max-w-full items-center gap-1 uppercase hover:text-orange-700 ${direction ? 'text-slate-700' : ''}`}
+                  >
+                    <span className="truncate">{text}</span>
+                    <Icon size={13} aria-hidden="true" className={direction ? 'shrink-0' : 'shrink-0 opacity-50'} />
+                  </button>
+                </th>
+              )
+            })}
             <th className="sticky right-0 top-0 z-20 border-b border-slate-200 bg-white px-2 py-2">
               <span className="sr-only">Aksi</span>
             </th>
@@ -77,7 +105,7 @@ export function JobTable({ jobs, ...handlers }: JobTableProps) {
         </thead>
         <tbody>
           {jobs.map((job, index) => (
-            <JobTableRow key={job.id} job={job} index={index} {...handlers} />
+            <JobTableRow key={job.id} job={job} index={index} onGenerate={onGenerate} />
           ))}
         </tbody>
       </table>
@@ -89,7 +117,7 @@ function JobTableRow({
   job,
   index,
   onGenerate,
-}: Omit<JobTableProps, 'jobs'> & {
+}: Pick<JobTableProps, 'onGenerate'> & {
   job: Job
   index: number
 }) {
@@ -171,7 +199,7 @@ function JobTableRow({
 function JobRowMenu({
   job,
   onGenerate,
-}: Omit<JobTableProps, 'jobs'> & { job: Job }) {
+}: Pick<JobTableProps, 'onGenerate'> & { job: Job }) {
   // Menu di-anchor fixed dari getBoundingClientRect agar tidak terpotong wadah tabel yang overflow.
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null)
   const customs = getOperationalDetails(job).customs

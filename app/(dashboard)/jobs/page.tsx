@@ -16,9 +16,11 @@ import {
 import {
   emptyJobTableFilters,
   filterJobs,
+  jobAgentOptions,
   sortJobsForTable,
   type JobListEvent,
   type JobTableFilters,
+  type JobTableSort,
 } from '@/lib/job-list'
 import { Button } from '@/components/ui/button'
 import { NewJobDialog } from '@/components/new-job-dialog'
@@ -27,7 +29,7 @@ import { PageSkeleton } from '@/components/loading-skeletons'
 import { downloadCustomsWorkbook, label } from '@/components/job-row'
 import { JobTable } from '@/components/job-table'
 
-const selectClass = 'input m-0 w-full py-2 text-sm shadow-none focus-visible:outline-none lg:w-40 lg:flex-none'
+const selectClass = 'input m-0 w-full py-2 text-sm shadow-none focus-visible:outline-none lg:w-36 lg:flex-none'
 
 function toListEvent(event: LocalEvent): JobListEvent {
   return {
@@ -51,6 +53,7 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [events, setEvents] = useState<LocalEvent[]>([])
   const [filters, setFilters] = useState<JobTableFilters>(initialFilters)
+  const [sort, setSort] = useState<JobTableSort | null>(null)
   const [showNewJob, setShowNewJob] = useState(false)
   const [wizardOpen, setWizardOpen] = useState(false)
   const [toast, setToast] = useState<{ message: string; tone: 'info' | 'error' } | null>(null)
@@ -99,9 +102,10 @@ export default function JobsPage() {
     [events],
   )
   const rows = useMemo(
-    () => sortJobsForTable(filterJobs(jobs, filters, eventById), eventById),
-    [jobs, filters, eventById],
+    () => sortJobsForTable(filterJobs(jobs, filters, eventById), eventById, sort),
+    [jobs, filters, eventById, sort],
   )
+  const agentOptions = useMemo(() => jobAgentOptions(jobs), [jobs])
   const setFilter = <K extends keyof JobTableFilters>(key: K, value: JobTableFilters[K]) =>
     setFilters((current) => ({ ...current, [key]: value }))
   const hasFilters = JSON.stringify(filters) !== JSON.stringify(initialFilters)
@@ -127,8 +131,8 @@ export default function JobsPage() {
   return (
     <div className="space-y-6">
       <section aria-label="Filter job">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <label className="relative w-full lg:w-80 lg:flex-none">
+        <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
+          <label className="relative w-full lg:w-auto lg:min-w-48 lg:max-w-80 lg:flex-1">
             <span className="sr-only">Cari job</span>
             <Search className="absolute left-3 top-2.5 text-orange-500" size={18} aria-hidden="true" />
             <input
@@ -178,6 +182,19 @@ export default function JobsPage() {
               </option>
             ))}
           </select>
+          <select
+            className={selectClass}
+            value={filters.agentId}
+            onChange={(event) => setFilter('agentId', event.target.value)}
+            aria-label="Filter agent"
+          >
+            <option value="">Semua agent</option>
+            {agentOptions.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.name}
+              </option>
+            ))}
+          </select>
           <Button type="button" onClick={() => setShowNewJob(true)} className="lg:ml-auto">
             <Plus data-icon="inline-start" />
             Job baru
@@ -195,7 +212,7 @@ export default function JobsPage() {
       </section>
 
       {rows.length ? (
-        <JobTable jobs={rows} onGenerate={generateCustomsWorkbook} />
+        <JobTable jobs={rows} sort={sort} onSortChange={setSort} onGenerate={generateCustomsWorkbook} />
       ) : (
         <section className="card p-12 text-center">
           <p className="font-semibold text-slate-800">Tidak ada Job yang sesuai</p>

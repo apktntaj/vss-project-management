@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
 
-import { emptyJobTableFilters, filterJobs, isEventActive, sortJobsForTable, type JobListEvent } from './job-list'
+import {
+  emptyJobTableFilters,
+  filterJobs,
+  isEventActive,
+  jobAgentOptions,
+  nextJobSort,
+  sortJobsForTable,
+  type JobListEvent,
+} from './job-list'
 import type { Job } from '@/domain/job/types'
 
 const events = new Map<string, JobListEvent>([
@@ -57,5 +65,47 @@ assert.deepEqual(filterJobs(all, { ...emptyJobTableFilters, jenis: 'LOCAL' }, ev
 assert.deepEqual(filterJobs(all, { ...emptyJobTableFilters, transportMode: 'AIR' }, events, today), [a1])
 assert.deepEqual(filterJobs(all, { ...emptyJobTableFilters, status: 'IN_PROGRESS' }, events, today), [loc])
 assert.deepEqual(filterJobs(all, { ...emptyJobTableFilters, activeOnly: false, eventId: 'old' }, events, today), [oldJob])
+
+// Agent: pilihan filter hanya agent yang memegang job (urut nama, tanpa duplikat); filter per id.
+const zeta = { kind: 'AGENT', id: 'ag-z', name: 'Zeta Cargo' } as const
+const easygo = { kind: 'AGENT', id: 'ag-e', name: 'easygo' } as const
+const z10 = job({ manifestSeq: 10, jobNumber: 'S.10/X', party: zeta, status: 'COMPLETED' })
+const e3 = job({ manifestSeq: 3, jobNumber: 'S.03/X', party: easygo, status: 'IN_PROGRESS' })
+const e4 = job({ manifestSeq: 4, jobNumber: 'S.04/X', party: easygo })
+const direct = job({ manifestSeq: 5, jobNumber: 'S.05/X', party: { kind: 'EXHIBITOR', id: 'ag-e', name: 'Alpha' } })
+const parties = [z10, direct, e4, e3, sNone]
+assert.deepEqual(jobAgentOptions(parties), [
+  { id: 'ag-e', name: 'easygo' },
+  { id: 'ag-z', name: 'Zeta Cargo' },
+])
+assert.deepEqual(filterJobs(parties, { ...emptyJobTableFilters, agentId: 'ag-e' }, events, today), [e4, e3])
+
+// Urut per kolom: nilai kosong selalu di akhir (naik maupun turun), nilai sama mengikuti urutan bawaan.
+const ids = (list: Job[]) => list.map((item) => item.id)
+assert.deepEqual(
+  ids(sortJobsForTable(parties, events, { key: 'agent', direction: 'asc' })),
+  ids([e3, e4, z10, direct, sNone]),
+)
+assert.deepEqual(
+  ids(sortJobsForTable(parties, events, { key: 'agent', direction: 'desc' })),
+  ids([z10, e3, e4, direct, sNone]),
+)
+// No Job dibandingkan natural (S.10 setelah S.05); status mengikuti urutan tahapan, bukan abjad.
+assert.deepEqual(
+  ids(sortJobsForTable(parties, events, { key: 'jobNumber', direction: 'desc' })),
+  ids([z10, direct, e4, e3, sNone]),
+)
+assert.deepEqual(
+  ids(sortJobsForTable(parties, events, { key: 'status', direction: 'desc' })),
+  ids([z10, e3, e4, direct, sNone]),
+)
+
+// Klik header berulang: naik → turun → urutan bawaan; kolom lain mulai lagi dari naik.
+const asc = nextJobSort(null, 'agent')
+assert.deepEqual(asc, { key: 'agent', direction: 'asc' })
+const desc = nextJobSort(asc, 'agent')
+assert.deepEqual(desc, { key: 'agent', direction: 'desc' })
+assert.equal(nextJobSort(desc, 'agent'), null)
+assert.deepEqual(nextJobSort(desc, 'status'), { key: 'status', direction: 'asc' })
 
 console.log('job list table passed')
