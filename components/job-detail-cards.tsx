@@ -45,11 +45,21 @@ function FormActions({ saving, onCancel }: { saving: boolean; onCancel: () => vo
 // dan status dalam satu form; dibuka sebagai dialog dari header halaman detail (bukan tab).
 // --------------------------------------------------------------------------------------------
 
-function HeaderForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job) => void; onCancel: () => void }) {
+function HeaderForm({
+  job,
+  onSaved,
+  onCancel,
+}: {
+  job: Job
+  onSaved: (job: Job) => void
+  onCancel: () => void
+}) {
   const operational = getOperationalDetails(job)
   const currentAgentId = job.party?.kind === 'AGENT' ? job.party.id : ''
-  // Agent dan exhibitor berbagi satu slot pihak: job berpihak exhibitor (atau Local) tidak diubah dari sini.
-  const agentLocked = job.kind === 'LOCAL' || job.party?.kind === 'EXHIBITOR'
+  // Hanya job Local yang terkunci (aturan server/DB). Job tanpa agent yang pihaknya sudah terisi
+  // exhibitor (otomatis dari CIPL) tetap boleh diberi agent; agent menggantikan exhibitor itu.
+  const agentLocked = job.kind === 'LOCAL'
+  const exhibitorPartyName = job.party?.kind === 'EXHIBITOR' ? job.party.name : null
   const [jobNumberText, setJobNumberText] = useState(job.jobNumber ?? '')
   const [transportMode, setTransportMode] = useState<TransportMode | ''>(job.transportMode ?? '')
   const [agentId, setAgentId] = useState(currentAgentId)
@@ -133,10 +143,6 @@ function HeaderForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job) 
             placeholder={`${job.manifestPrefix ?? 'S'}.01/NOMOR-INVOICE`}
             onChange={(event) => setJobNumberText(event.target.value)}
           />
-          <span className="mt-1 block text-xs font-normal text-slate-500">
-            Urutan mengikuti barang yang datang lebih dulu, diisi manual.
-            {job.manifestPrefix ? ` Awalan job ini: ${job.manifestPrefix}.` : ' Isi moda untuk mendapatkan awalan.'}
-          </span>
         </label>
         <label className="label">
           Moda
@@ -171,8 +177,10 @@ function HeaderForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job) 
           </select>
           {agentLocked ? (
             <span className="mt-1 block text-xs font-normal text-slate-500">
-              Pihak tagih job ini adalah exhibitor, jadi agent tidak dapat dipilih.
+              Job Local selalu dipegang exhibitor.
             </span>
+          ) : exhibitorPartyName ? (
+            <span className="mt-1 block text-xs font-normal text-slate-500"></span>
           ) : null}
         </label>
         <label className="label">
@@ -191,11 +199,13 @@ function HeaderForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job) 
             value={status}
             onChange={(event) => setStatus(event.target.value as JobStatus)}
           >
-            {jobStatuses.filter((value) => value !== 'CANCELLED').map((value) => (
-              <option key={value} value={value}>
-                {jobStatusLabels[value]}
-              </option>
-            ))}
+            {jobStatuses
+              .filter((value) => value !== 'CANCELLED')
+              .map((value) => (
+                <option key={value} value={value}>
+                  {jobStatusLabels[value]}
+                </option>
+              ))}
           </select>
         </label>
       </div>
