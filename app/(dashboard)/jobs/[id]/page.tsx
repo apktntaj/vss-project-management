@@ -26,7 +26,6 @@ import {
 import {
   bcDocumentLabels,
   jobStageBcDocument,
-  jobStageLabel,
   type BcDocumentKind,
 } from '@/domain/job/types'
 import { withStageGoods } from '@/domain/job/stages'
@@ -54,7 +53,7 @@ import { CancelJobDialog } from '@/components/cancel-job-dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { date, downloadCustomsWorkbook, label } from '@/components/job-row'
 import { jobContext } from '@/lib/job-context'
-import { jobLabel } from '@/domain/job/numbering'
+import { jobLabel, withStagePrefix } from '@/domain/job/numbering'
 import { hasTabData, tabActionLabel } from '@/domain/job/tab-data'
 import type { JobDetailTab, JobReadinessTarget } from '@/lib/job-readiness'
 import { StatusBadge } from '@/components/status-badge'
