@@ -1,7 +1,8 @@
-// Konten overview dashboard (SERVER): event belum ada job → ETA dekat dokumen kurang → ETA belum
-// diisi → bobot event. Murni presentasi — seluruh daftar dihitung `lib/dashboard.ts`.
+// Konten overview dashboard (SERVER): special instruction per event → event belum ada job → ETA
+// dekat dokumen kurang → ETA belum diisi → bobot event. Murni presentasi — seluruh daftar dihitung `lib/dashboard.ts`.
 
 import Link from 'next/link'
+import { AlertTriangle } from 'lucide-react'
 
 import { formatDayShort } from '@/features/events/components/event-presentation'
 import {
@@ -98,10 +99,68 @@ export function DashboardOverview({
   today: string
   operations: OperationsDashboard
 }) {
-  const { eventsWithoutJob, etaDocsMissing, etaMissing, eventWeights } = operations
+  const { eventsWithoutJob, etaDocsMissing, etaMissing, eventWeights, specialInstructions } = operations
+  const instructionCount = specialInstructions.reduce((sum, group) => sum + group.jobs.length, 0)
 
   return (
     <>
+      <section
+        id="special-instructions"
+        className="card p-5 sm:p-6"
+        aria-label="Special instructions"
+      >
+        <SectionHeader
+          title="Special instructions"
+          hint="Permintaan khusus klien pada job yang belum selesai, dikelompokkan per event."
+          count={instructionCount}
+        />
+        {specialInstructions.length === 0 ? (
+          <p className="mt-4 rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+            Tidak ada special instruction pada job aktif.
+          </p>
+        ) : (
+          <div className="mt-4 flex flex-col gap-4">
+            {specialInstructions.map((group) => (
+              <div key={group.eventId}>
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <Link
+                    href={`/events/${group.eventId}`}
+                    className="font-semibold transition-colors hover:text-foreground"
+                  >
+                    {group.eventName}
+                  </Link>
+                  <span className="text-xs text-muted-foreground">
+                    {[group.venueName, group.startsOn ? formatDayShort(group.startsOn) : null]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                </div>
+                <ul className="mt-2 flex flex-col gap-2">
+                  {group.jobs.map((job) => (
+                    <li
+                      key={job.jobId}
+                      className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm"
+                    >
+                      <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600" aria-hidden="true" />
+                      <div className="min-w-0">
+                        <Link
+                          href={`/jobs/${job.jobId}`}
+                          className="block truncate text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                          title={job.jobTitle}
+                        >
+                          {job.jobTitle}
+                        </Link>
+                        <p className="whitespace-pre-wrap font-medium text-slate-800">{job.text}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       <section id="event-tanpa-job" className="card p-5 sm:p-6" aria-label="Event belum ada job">
         <SectionHeader
           title="Event belum ada job"

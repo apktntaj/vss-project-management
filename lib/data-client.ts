@@ -9,6 +9,7 @@ import type {
   EventOrganizer,
   Venue,
 } from '@/domain/event/types'
+import type { EventAppointmentLetter } from '@/domain/event/appointment-letter'
 import type { Exhibitor, ExhibitorContact, ExhibitorKind } from '@/domain/exhibitor/types'
 import type {
   JobInvoiceExtraction,
@@ -321,6 +322,47 @@ export async function getAttachmentContent(attachmentId: string): Promise<Blob |
     cache: 'no-store',
   })
   return response.ok ? response.blob() : null
+}
+
+/** Surat penunjukan EO aktif satu event; null bila belum diunggah. */
+export async function getEventAppointmentLetter(eventId: string): Promise<EventAppointmentLetter | null> {
+  const response = await fetch(`/api/events/${encodeURIComponent(eventId)}/appointment-letter`, {
+    cache: 'no-store',
+  })
+  const body = (await response.json().catch(() => null)) as EventAppointmentLetter | { error?: string } | null
+  if (!response.ok) {
+    throw new Error((body && 'error' in body ? body.error : null) ?? 'Surat penunjukan tidak dapat dimuat.')
+  }
+  return body as EventAppointmentLetter | null
+}
+
+/** Unggah atau ganti surat penunjukan EO satu event; surat lama dihapus server setelah unggah berhasil. */
+export async function uploadEventAppointmentLetter(
+  eventId: string,
+  file: File,
+): Promise<EventAppointmentLetter> {
+  const form = new FormData()
+  form.set('file', file)
+  const response = await fetch(`/api/events/${encodeURIComponent(eventId)}/appointment-letter`, {
+    method: 'POST',
+    body: form,
+    cache: 'no-store',
+  })
+  const body = (await response.json().catch(() => null)) as (EventAppointmentLetter & { error?: string }) | null
+  if (!response.ok || !body) throw new Error(body?.error ?? 'Surat penunjukan tidak dapat diunggah.')
+  return body
+}
+
+/** Hapus surat penunjukan EO satu event. */
+export async function removeEventAppointmentLetter(eventId: string): Promise<void> {
+  const response = await fetch(`/api/events/${encodeURIComponent(eventId)}/appointment-letter`, {
+    method: 'DELETE',
+    cache: 'no-store',
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null
+    throw new Error(body?.error ?? 'Surat penunjukan tidak dapat dihapus.')
+  }
 }
 
 /** Metadata lampiran job (tanpa isi file); isi file lewat `getAttachmentContent`. */
@@ -1123,6 +1165,7 @@ export type JobDetailsInput = Partial<
     | 'transportDocumentType'
     | 'transportDocumentNumber'
     | 'notes'
+    | 'specialInstructions'
     | 'emptyStorage'
     | 'reExport'
     | 'operational'
