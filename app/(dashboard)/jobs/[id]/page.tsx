@@ -26,6 +26,7 @@ import {
 import {
   bcDocumentLabels,
   jobStageBcDocument,
+  jobStageLabel,
   type BcDocumentKind,
 } from '@/domain/job/types'
 import { withStageGoods } from '@/domain/job/stages'
@@ -265,6 +266,11 @@ export default function JobDetail({ params }: { params: { id: string } }) {
               )}
             </h1>
             <StatusBadge status={job.status} />
+            {job.stage && (
+              <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                {jobStageLabel(job.stage)}
+              </span>
+            )}
           </div>
           <dl className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
             <div className="flex items-center gap-1.5">

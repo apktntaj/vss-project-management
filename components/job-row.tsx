@@ -24,6 +24,7 @@ import type {
 } from '@/domain/exhibition/source-documents'
 import type { BcDocumentKind } from '@/domain/job/types'
 import { jobFileName, jobLabel, withStagePrefix } from '@/domain/job/numbering'
+import { jobStageLabel } from '@/domain/job/types'
 
 export type DocumentClassification = {
   documentType:
@@ -119,6 +120,11 @@ export function JobRow({
           >
             {withStagePrefix(job.stage, nomor || jobLabel({ ...job, stage: null }))}
           </Link>
+          {job.stage && (
+            <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+              {jobStageLabel(job.stage)}
+            </span>
+          )}
         </div>
       </td>
       {event !== undefined && (
