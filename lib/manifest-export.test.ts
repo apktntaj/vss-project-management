@@ -98,7 +98,8 @@ const fcl = job({
 })
 assert.match(blockHeaderText(fcl, buildManifestView(fcl)), / \/ FCL 1X20' \+ 1X40' \/ 0 PKG \/ 0\.00 KGS \/ 0\.000 CBM$/)
 
-// B/L job (loadType + kontainer teks bebas "40'" / "40HC") menang atas konfigurasi inward; ukuran dinormalkan.
+// B/L job (loadType + kontainer teks bebas "40'" / "40HC") menang atas konfigurasi inward; ukuran dinormalkan,
+// nomor kontainer ikut di kepala job.
 const fromBl = job({
   manifestSeq: 3,
   transportDocument: {
@@ -106,7 +107,27 @@ const fromBl = job({
     containers: [{ containerNumber: 'TGHU1234567', size: "40'", type: '40HC', sealNumber: null }],
   } as Job['transportDocument'],
 })
-assert.match(blockHeaderText(fromBl, buildManifestView(fromBl)), / \/ FCL 1X40'HQ \/ /)
+assert.match(blockHeaderText(fromBl, buildManifestView(fromBl)), / \/ FCL 1X40'HQ \(TGHU1234567\) \/ /)
+// Beberapa kontainer: nomor berurutan sesuai input; kontainer tanpa nomor dilewati.
+const multiFcl = job({
+  manifestSeq: 4,
+  inward: {
+    loadConfiguration: {
+      kind: 'FCL',
+      containers: [
+        { containerNumber: 'kmtcpnc4913153', size: 'K40', sealNumber: null },
+        { containerNumber: null, size: 'K20', sealNumber: null },
+        { containerNumber: 'COAU6464738840', size: 'K40HQ', sealNumber: null },
+      ],
+    },
+    milestones: [],
+    notes: [],
+  },
+})
+assert.match(
+  blockHeaderText(multiFcl, buildManifestView(multiFcl)),
+  / \/ FCL 1X20' \+ 1X40' \+ 1X40'HQ \(KMTCPNC4913153, COAU6464738840\) \/ 0 PKG \//,
+)
 assert.equal(normalizeContainerSize('20', 'GP'), "20'")
 assert.equal(normalizeContainerSize(null, '40 High Cube'), "40'HQ")
 const bareFcl = job({ transportDocument: { loadType: 'FCL', containers: [] } as unknown as Job['transportDocument'] })

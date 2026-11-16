@@ -6,7 +6,7 @@
 //     baris pertamanya; sel TIDAK digabung supaya garis sel tetap muncul di setiap baris (seperti
 //     dokumen klien), sehingga milestone tidak tampak seolah milik koli tertentu,
 //   - Total Package berupa angka (dapat dijumlah); subtotal & total juga menjumlah paket,
-//   - baris kepala job hanya nilai identitas kiriman `PIHAK / nomor B/L / LCL atau FCL+ukuran / jumlah package / total berat / total volume` (tanpa label),
+//   - baris kepala job hanya nilai identitas kiriman `PIHAK / nomor B/L / LCL atau FCL+ukuran (+nomor kontainer) / jumlah package / total berat / total volume` (tanpa label),
 //   - label koli di kolom CASE; kolom Bare Case, Empty Storage, dan Re-export tidak diekspor.
 //
 //   Sheet tunggal "Inward Manifest": judul (nama pameran) · "Exhibits Details For Inward Movement" · venue
@@ -23,6 +23,7 @@ import {
   summarizeKoli,
   summarizeKoliCollections,
   type ContainerSize,
+  type ShippingContainer,
   type MilestoneKind,
 } from '@/domain/job/manifest'
 import { formatJobNumber, jobLabel, jobNumberLabel } from '@/domain/job/numbering'
@@ -109,31 +110,49 @@ export function normalizeContainerSize(size: string | null, type: string | null)
   return /HQ|HC|HIGH\s*CUBE/.test(text) ? `${feet}'HQ` : `${feet}'`
 }
 
-/** "FCL 1X40'HQ", "FCL 1X20' + 1X40'"; "FCL" saja bila belum ada kontainer. */
-function fclLabel(sizes: ReadonlyArray<string | null>): string {
-  if (!sizes.length) return 'FCL'
+type LoadContainer = { size: string | null; number: string | null }
+
+/**
+ * "FCL 1X40'HQ (COAU6464738840)", "FCL 1X20' + 1X40' (KMTCPNC4913153, TGHU1234567)"; nomor kontainer
+ * yang belum diisi dilewati. "FCL" saja bila belum ada kontainer.
+ */
+function fclLabel(containers: ReadonlyArray<LoadContainer>): string {
+  if (!containers.length) return 'FCL'
   const counts = new Map<string, number>()
-  for (const size of sizes) counts.set(size ?? '?', (counts.get(size ?? '?') ?? 0) + 1)
+  for (const { size } of containers) counts.set(size ?? '?', (counts.get(size ?? '?') ?? 0) + 1)
   const groups = [...counts]
     .sort(([a], [b]) => a.localeCompare(b, 'en', { numeric: true }))
     .map(([size, count]) => `${count}X${size}`)
-  return `FCL ${groups.join(' + ')}`
+  const numbers = containers.map(({ number }) => number?.trim().toUpperCase()).filter(Boolean)
+  const suffix = numbers.length ? ` (${numbers.join(', ')})` : ''
+  return `FCL ${groups.join(' + ')}${suffix}`
 }
 
+/** Kontainer konfigurasi muatan / kepulangan (ukuran baku K20/K40/K40HQ). */
+const shippingContainer = (container: ShippingContainer): LoadContainer => ({
+  size: CONTAINER_LABEL[container.size],
+  number: container.containerNumber,
+})
+
 /**
- * "LCL" atau "FCL <ukuran>". Sumber utama: B/L/AWB job (`transportDocument.loadType` + kontainer);
- * bila belum diisi, konfigurasi muatan pada blok inward manifest. Null bila keduanya kosong.
+ * "LCL" atau "FCL <ukuran> (<nomor kontainer>)". Sumber utama: B/L/AWB job (`transportDocument.loadType` +
+ * kontainer); bila belum diisi, konfigurasi muatan pada blok inward manifest. Null bila keduanya kosong.
  */
 export function loadLabel(job: Job): string | null {
   const transport = job.transportDocument
   if (transport?.loadType === 'LCL') return 'LCL'
   if (transport?.loadType === 'FCL') {
-    return fclLabel(transport.containers.map((container) => normalizeContainerSize(container.size, container.type)))
+    return fclLabel(
+      transport.containers.map((container) => ({
+        size: normalizeContainerSize(container.size, container.type),
+        number: container.containerNumber,
+      })),
+    )
   }
   const configuration = job.inward?.loadConfiguration
   if (!configuration) return null
   if (configuration.kind === 'LCL') return 'LCL'
-  return fclLabel(configuration.containers.map((container) => CONTAINER_LABEL[container.size]))
+  return fclLabel(configuration.containers.map(shippingContainer))
 }
 
 const formatNumber = (value: number, digits: number) =>
@@ -141,7 +160,7 @@ const formatNumber = (value: number, digits: number) =>
 
 /**
  * Baris kepala job = nilai saja tanpa label, urutan tetap:
- * PIHAK / NOMOR B/L atau AWB / LCL atau FCL+ukuran / jumlah package / total berat / total volume.
+ * PIHAK / NOMOR B/L atau AWB / LCL atau FCL+ukuran (+nomor kontainer) / jumlah package / total berat / total volume.
  */
 export function blockHeaderText(job: Job, view: ManifestBlockView): string {
   const parts = [view.partyName.toUpperCase()]
@@ -445,12 +464,12 @@ export function buildEventManifestWorkbook(
   }
 }
 
-// Muatan kepulangan: "LCL", atau "FCL 1X40'HQ" dari kontainer kepulangan.
+// Muatan kepulangan: "LCL", atau "FCL 1X40'HQ (nomor kontainer)" dari kontainer kepulangan.
 function returnLoadLabel(job: Job): string | null {
   const mode = job.kepulangan?.mode
   if (!mode) return null
   if (mode.kind === 'LCL') return 'LCL'
-  return fclLabel(mode.containers.map((container) => CONTAINER_LABEL[container.size]))
+  return fclLabel(mode.containers.map(shippingContainer))
 }
 
 const splitNoteText = (text: string) =>
