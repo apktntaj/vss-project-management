@@ -23,8 +23,7 @@ import type {
   JobTransportExtraction,
 } from '@/domain/exhibition/source-documents'
 import type { BcDocumentKind } from '@/domain/job/types'
-import { jobBaseLabel, jobFileName, jobLabel } from '@/domain/job/numbering'
-import { jobStageLabel } from '@/domain/job/types'
+import { jobFileName, jobLabel, withStagePrefix } from '@/domain/job/numbering'
 
 export type DocumentClassification = {
   documentType:
@@ -118,13 +117,8 @@ export function JobRow({
             href={`/jobs/${job.id}`}
             className="min-w-0 truncate font-semibold text-slate-900 hover:text-slate-900"
           >
-            {nomor || jobBaseLabel(job)}
+            {withStagePrefix(job.stage, nomor || jobLabel({ ...job, stage: null }))}
           </Link>
-          {job.stage && (
-            <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-              {jobStageLabel(job.stage)}
-            </span>
-          )}
         </div>
       </td>
       {event !== undefined && (

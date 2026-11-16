@@ -52,14 +52,21 @@ export function jobBaseLabel(job: {
   return job.jobNumber ?? (job.manifestPrefix ? `${job.manifestPrefix}.-` : 'Belum bernomor')
 }
 
-/** Label job dengan tahap BC (mis. `S.01/234YFN · BC 2.5`); tanpa tahap = label dasar. */
+/**
+ * Beri awalan BC pada nomor job turunan (`BC 2.5 · S.01/234YFN`). Job masuk (BC 2.3) dan job
+ * tanpa tahap tetap polos; nomornya sendiri sama dengan job masuk, hanya tampilannya berawalan.
+ */
+export function withStagePrefix(stage: JobStage | null | undefined, text: string): string {
+  return stage === 'DISPOSAL' || stage === 'RE_EXPORT' ? `${jobStageLabel(stage)} · ${text}` : text
+}
+
+/** Label job di UI dengan awalan tahap untuk job turunan; selain itu sama dengan label dasar. */
 export function jobLabel(job: {
   jobNumber: string | null
   manifestPrefix: string | null
   stage?: JobStage | null
 }): string {
-  const base = jobBaseLabel(job)
-  return job.stage ? `${base} · ${jobStageLabel(job.stage)}` : base
+  return withStagePrefix(job.stage, jobBaseLabel(job))
 }
 
 /**
