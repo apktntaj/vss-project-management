@@ -75,6 +75,10 @@ assert.deepEqual(filterJobs(all, { ...emptyJobTableFilters, jenis: 'LOCAL' }, ev
 assert.deepEqual(filterJobs(all, { ...emptyJobTableFilters, transportMode: 'AIR' }, events, today), [a1])
 assert.deepEqual(filterJobs(all, { ...emptyJobTableFilters, status: 'IN_PROGRESS' }, events, today), [loc])
 assert.deepEqual(filterJobs(all, { ...emptyJobTableFilters, activeOnly: false, eventId: 'old' }, events, today), [oldJob])
+// Pencarian No Job seperti ditampilkan: "exs.07" hanya job turunan, "s.07" semua tahap.
+const stages = [inbound, disposal, reExport]
+assert.deepEqual(filterJobs(stages, { ...emptyJobTableFilters, search: 'exs.07' }, events, today), [disposal, reExport])
+assert.deepEqual(filterJobs(stages, { ...emptyJobTableFilters, search: 's.07' }, events, today), stages)
 
 // Agent: pilihan filter hanya agent yang memegang job (urut nama, tanpa duplikat); filter per id.
 const zeta = { kind: 'AGENT', id: 'ag-z', name: 'Zeta Cargo' } as const

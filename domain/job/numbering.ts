@@ -2,7 +2,7 @@
 // Awalan diturunkan database dari jalur + jenis (kolom `jobs.manifest_prefix`, satu-satunya tabel
 // awalan); urutan ditetapkan operator per event per awalan; akhiran = commercial invoice pengirim.
 
-import { jobStageLabel, type JobStage } from '@/domain/job/types'
+import { isDerivedJobStage, jobStageLabel, type JobStage } from '@/domain/job/types'
 
 /** Urutan minimal dua digit (01, 02, ...), tidak pernah dipotong (100 tetap 100). */
 export function formatManifestSequence(seq: number): string {
@@ -43,7 +43,7 @@ export function parseJobNumber(input: string): ParsedJobNumber | null {
 /**
  * Label dasar job di UI: No Job bila sudah ada; bila urutan belum diisi, awalan dari jenis job +
  * jalur (mis. `S.-`); bila awalan pun belum ada (TPPB tanpa jalur), "Belum bernomor". Tanpa
- * akhiran tahap BC — untuk nama file ekspor dan sel Job No manifest.
+ * awalan "EX" dan akhiran tahap BC — lihat `jobNumberLabel` dan `jobLabel`.
  */
 export function jobBaseLabel(job: {
   jobNumber: string | null
@@ -53,11 +53,17 @@ export function jobBaseLabel(job: {
 }
 
 /**
- * Awalan "EX" pada nomor job turunan (`EXS.01/234YFN`): job BC 2.5 / BC 3.0 itu "ex" job masuk
- * (BC 2.3). Job masuk dan job tanpa tahap tetap polos. Nomor di data tetap milik job masuk.
+ * No Job persis seperti ditampilkan ke pengguna. Job turunan berawalan "EX" (`EXS.01/234YFN`,
+ * `EXS.-`): job BC 2.5 / BC 3.0 itu "ex" job masuk (BC 2.3); nomor di data tetap milik job masuk.
+ * Job masuk dan job tanpa tahap tetap polos; "Belum bernomor" bukan nomor, jadi tidak diawali.
  */
-export function withStagePrefix(stage: JobStage | null | undefined, text: string): string {
-  return stage === 'DISPOSAL' || stage === 'RE_EXPORT' ? `EX${text}` : text
+export function jobNumberLabel(job: {
+  jobNumber: string | null
+  manifestPrefix: string | null
+  stage?: JobStage | null
+}): string {
+  const base = jobBaseLabel(job)
+  return isDerivedJobStage(job.stage) && (job.jobNumber || job.manifestPrefix) ? `EX${base}` : base
 }
 
 /**
@@ -69,23 +75,27 @@ export function jobLabel(job: {
   manifestPrefix: string | null
   stage?: JobStage | null
 }): string {
-  const label = withStagePrefix(job.stage, jobBaseLabel(job))
-  return job.stage === 'DISPOSAL' || job.stage === 'RE_EXPORT'
-    ? `${label} · ${jobStageLabel(job.stage)}`
-    : label
+  const label = jobNumberLabel(job)
+  return isDerivedJobStage(job.stage) ? `${label} · ${jobStageLabel(job.stage)}` : label
 }
 
 /**
- * Nama file ekspor job: label dasar job tanpa karakter terlarang di nama file
- * (`S.01/234YFN` → `S.01-234YFN`). Job tanpa urutan ditambah nama pihak agar tidak semua
- * file bernama `S.-`.
+ * Nama file ekspor job: No Job seperti ditampilkan (job turunan berawalan "EX") tanpa karakter
+ * terlarang di nama file (`S.01/234YFN` → `S.01-234YFN`). Job tanpa urutan ditambah nama pihak
+ * agar tidak semua file bernama `S.-`.
  */
 export function jobFileName(
-  job: { jobNumber: string | null; manifestPrefix: string | null; party: { name: string } | null },
+  job: {
+    jobNumber: string | null
+    manifestPrefix: string | null
+    stage: JobStage | null
+    party: { name: string } | null
+  },
   prefix: string,
   extension: string,
 ): string {
-  const stem = [jobBaseLabel(job), job.jobNumber ? null : job.party?.name]
+  const number = jobNumberLabel(job)
+  const stem = [number, job.jobNumber ? null : job.party?.name]
     .filter(Boolean)
     .join(' ')
   const safe = stem.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim()

@@ -5,7 +5,7 @@
 import { normalizeOperationalDetails } from '@/domain/job/operational'
 import { deriveCiplStatus, type CiplStatus, type CiplStatusSummary } from '@/domain/job/cipl-status'
 import { invoiceStatusLabels, type InvoiceStatus, type Job } from '@/domain/job/types'
-import { jobLabel } from '@/domain/job/numbering'
+import { jobNumberLabel } from '@/domain/job/numbering'
 
 /** Tab area kerja halaman detail job; state aktif disimpan di URL (`?tab=`). */
 export type JobDetailTab = 'muatan' | 'transport' | 'billing'
@@ -78,7 +78,7 @@ export function buildJobReadiness(job: Job): JobReadiness {
     {
       key: 'number',
       label: 'No Job',
-      detail: jobLabel(job),
+      detail: jobNumberLabel(job),
       state: job.jobNumber ? 'done' : 'todo',
       tab: 'header',
     },

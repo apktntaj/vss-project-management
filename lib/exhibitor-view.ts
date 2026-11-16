@@ -1,5 +1,5 @@
 import type { Job } from '@/domain/job/types'
-import { jobLabel } from '@/domain/job/numbering'
+import { jobNumberLabel } from '@/domain/job/numbering'
 import {
   summarizeKoli,
   summarizeKoliCollections,
@@ -57,7 +57,7 @@ export function buildExhibitorGroups(jobs: ReadonlyArray<Job>, by: ExhibitorGrou
 
   for (const job of jobs) {
     if (job.status === 'CANCELLED') continue
-    const jobNo = job.jobNumber?.trim() || jobLabel(job)
+    const jobNo = jobNumberLabel(job)
     const agentParty = job.party?.kind === 'AGENT' ? job.party : null
     const agent = agentParty?.name ?? null
 

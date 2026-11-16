@@ -112,10 +112,10 @@ assert.deepEqual(
   ['A2', 'A10', null],
 )
 
-// Nomor job: trim, fallback jobLabel.
+// Nomor job: No Job bila ada; tanpa urutan → awalan + strip.
 const numbers = buildExhibitorGroups(
   [
-    job({ jobNumber: ' S.01/X ', ciplLines: [line('e1', 'Alpha', 'A1', 'A1', 1)] }),
+    job({ jobNumber: 'S.01/X', ciplLines: [line('e1', 'Alpha', 'A1', 'A1', 1)] }),
     job({ jobNumber: null, manifestPrefix: 'S', ciplLines: [line('e2', 'Beta', 'A1', 'A2', 1)] }),
   ],
   'hall',

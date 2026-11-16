@@ -287,7 +287,7 @@ assert.ok(outLabels.includes('KEEP 1') && outLabels.includes('BETA 1'))
 assert.ok(!outLabels.includes('DISPOSE 2'), 'koli disposal tidak ikut outward')
 const outFirst = outSheet.rows[outSheet.rows.findIndex((row) => row.kind === 'BLOCK_HEADER') + 1]
 assert.equal(outFirst.cells[col('Remark')], 'BC 3.0: 000123')
-assert.equal(outFirst.cells[col('Job No')], 'S.03')
+assert.equal(outFirst.cells[col('Job No')], 'EXS.03')
 // Tanpa job re-ekspor: pesan kosong; job turunan tidak menjadi blok di inward.
 const noOut = buildEventOutwardManifestWorkbook(outEvent, [outInbound]).sheets[0].rows
 assert.ok(noOut.some((row) => row.cells[0] === 'BELUM ADA JOB RE-EKSPOR PADA EVENT INI'))

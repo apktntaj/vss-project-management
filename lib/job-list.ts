@@ -14,6 +14,7 @@ import {
   type TransportMode,
 } from '@/domain/job/types'
 import { deriveCiplStatus, type CiplStatus } from '@/domain/job/cipl-status'
+import { jobNumberLabel } from '@/domain/job/numbering'
 import { jobContext, jobContextKinds } from '@/lib/job-context'
 
 const PREFIX_ORDER = ['S', 'A', 'ATA', 'T', 'P', 'R', 'L']
@@ -60,7 +61,8 @@ export function isEventActive(event: JobListEvent | undefined, today = new Date(
 
 function searchText(job: Job): string {
   return [
-    job.jobNumber,
+    // No Job seperti ditampilkan ("EXS.01/…" untuk job turunan); job tanpa nomor tidak dicari.
+    job.jobNumber ? jobNumberLabel(job) : null,
     job.transportDocumentNumber,
     job.commercialInvoiceNumber,
     job.invoice.number,

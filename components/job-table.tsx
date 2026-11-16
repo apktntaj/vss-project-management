@@ -18,7 +18,7 @@ import { ciplStatusText, deriveCiplStatus, type CiplStatus } from '@/domain/job/
 import { JobContextBadge } from '@/components/job-context-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { label } from '@/components/job-row'
-import { jobBaseLabel, jobLabel, withStagePrefix } from '@/domain/job/numbering'
+import { jobLabel, jobNumberLabel } from '@/domain/job/numbering'
 import { jobStageLabel } from '@/domain/job/types'
 import { nextJobSort, type JobSortKey, type JobTableSort } from '@/lib/job-list'
 
@@ -146,7 +146,7 @@ function JobTableRow({
             className="block truncate font-semibold text-slate-600 hover:text-slate-900"
             aria-label={`Buka job ${jobLabel(job)}`}
           >
-            {withStagePrefix(job.stage, jobBaseLabel(job))}
+            {jobNumberLabel(job)}
           </Link>
           {job.stage && (
             <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">

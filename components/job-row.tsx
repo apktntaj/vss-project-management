@@ -23,7 +23,7 @@ import type {
   JobTransportExtraction,
 } from '@/domain/exhibition/source-documents'
 import type { BcDocumentKind } from '@/domain/job/types'
-import { jobFileName, jobLabel, withStagePrefix } from '@/domain/job/numbering'
+import { jobFileName, jobLabel, jobNumberLabel } from '@/domain/job/numbering'
 import { jobStageLabel } from '@/domain/job/types'
 
 export type DocumentClassification = {
@@ -76,13 +76,10 @@ export async function downloadCustomsWorkbook(job: Job, documentType: BcDocument
 
 export function JobRow({
   job,
-  nomor,
   event,
   actions,
 }: {
   job: Job
-  /** No Job yang diisi manual; kosong bila belum ditetapkan. */
-  nomor?: string
   /** Bila diisi, tampil kolom Event · Jenis · Jalur (tabel lintas event di /jobs). */
   event?: { id: string; name: string } | null
   /** Bila diisi, kolom terakhir menampilkan menu titik tiga (Edit/Kanwil/Batalkan) alih-alih PIC. */
@@ -118,7 +115,7 @@ export function JobRow({
             href={`/jobs/${job.id}`}
             className="min-w-0 truncate font-semibold text-slate-900 hover:text-slate-900"
           >
-            {withStagePrefix(job.stage, nomor || jobLabel({ ...job, stage: null }))}
+            {jobNumberLabel(job)}
           </Link>
           {job.stage && (
             <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
@@ -192,7 +189,7 @@ export function JobRow({
                   current ? null : { top: rect.bottom + 4, left: rect.right - 256 },
                 )
               }}
-              aria-label={`Menu aksi untuk ${nomor || jobLabel(job)}`}
+              aria-label={`Menu aksi untuk ${jobLabel(job)}`}
               aria-expanded={menuAnchor !== null}
               aria-haspopup="menu"
               title="Menu"
@@ -209,7 +206,7 @@ export function JobRow({
                 />
                 <div
                   role="menu"
-                  aria-label={`Aksi untuk ${nomor || jobLabel(job)}`}
+                  aria-label={`Aksi untuk ${jobLabel(job)}`}
                   className="fixed z-50 w-64 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg"
                   style={{ top: menuAnchor.top, left: menuAnchor.left }}
                 >

@@ -25,7 +25,7 @@ import {
   type ContainerSize,
   type MilestoneKind,
 } from '@/domain/job/manifest'
-import { formatJobNumber, jobBaseLabel, jobLabel } from '@/domain/job/numbering'
+import { formatJobNumber, jobLabel, jobNumberLabel } from '@/domain/job/numbering'
 import { stageCiplLines } from '@/domain/job/stages'
 import type { InternationalJobJenis, Job } from '@/domain/job/types'
 import {
@@ -502,7 +502,10 @@ export function buildEventOutwardManifestWorkbook(
         {
           section: section.key,
           tone: section.tone,
-          jobNo: formatJobNumber(job.manifestPrefix, job.manifestSeq, null) ?? jobBaseLabel(job),
+          jobNo: jobNumberLabel({
+            ...job,
+            jobNumber: formatJobNumber(job.manifestPrefix, job.manifestSeq, null),
+          }),
           headerText,
           peserta,
           exhibitorLabel: (item: ManifestPeserta) => item.name,

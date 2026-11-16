@@ -69,6 +69,8 @@ export const jobStages = ['INBOUND', 'DISPOSAL', 'RE_EXPORT'] as const
 export type JobStage = (typeof jobStages)[number]
 export const derivedJobStages = ['DISPOSAL', 'RE_EXPORT'] as const
 export type DerivedJobStage = (typeof derivedJobStages)[number]
+export const isDerivedJobStage = (stage: JobStage | null | undefined): stage is DerivedJobStage =>
+  (derivedJobStages as readonly (JobStage | null | undefined)[]).includes(stage)
 
 export const jobStageBcDocument: Record<JobStage, BcDocumentKind> = {
   INBOUND: 'BC_2_3',

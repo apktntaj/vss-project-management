@@ -121,5 +121,7 @@ assert.equal(derived.cipl.state, 'done')
 assert.equal(derived.transport.detail, 'Tidak diperlukan')
 assert.equal(derived.transport.state, 'done')
 assert.equal(derived.customs.detail, '0/1 selesai')
+// No Job job turunan berawalan "EX" tanpa akhiran tahap (lencana tahap ada di header halaman).
+assert.equal(derived.number.detail, 'EXS.-')
 
 console.log('job readiness passed')

@@ -8,9 +8,9 @@ import { useState } from 'react'
 import Link from 'next/link'
 
 import { createStageJob, type Job, type JobSummary } from '@/lib/data-client'
-import { derivedJobStages, jobStageLabel } from '@/domain/job/types'
+import { derivedJobStages, isDerivedJobStage, jobStageLabel } from '@/domain/job/types'
 import { stageReconciliation } from '@/domain/job/stages'
-import { jobLabel } from '@/domain/job/numbering'
+import { jobNumberLabel } from '@/domain/job/numbering'
 import type { DerivedJobStage } from '@/domain/job/types'
 import { StatusBadge } from '@/components/status-badge'
 
@@ -41,7 +41,7 @@ export function JobStageCard({
     sourceJob?.ciplLines ?? [],
     series
       .map((summary) => summary.stage)
-      .filter((stage): stage is DerivedJobStage => stage === 'DISPOSAL' || stage === 'RE_EXPORT'),
+      .filter(isDerivedJobStage),
   )
 
   async function create(stage: DerivedJobStage) {
@@ -75,7 +75,7 @@ export function JobStageCard({
                   href={`/jobs/${sourceJob.id}`}
                   className="truncate font-medium text-slate-800 hover:text-slate-900"
                 >
-                  {jobLabel(sourceJob)}
+                  {jobNumberLabel(sourceJob)}
                 </Link>
                 <StatusBadge status={sourceJob.status} />
               </>
@@ -100,7 +100,7 @@ export function JobStageCard({
                       href={`/jobs/${other.id}`}
                       className="truncate font-medium text-slate-800 hover:text-slate-900"
                     >
-                      {jobLabel(other)}
+                      {jobNumberLabel(other)}
                     </Link>
                     <StatusBadge status={other.status} />
                   </>

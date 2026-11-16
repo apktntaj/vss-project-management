@@ -54,7 +54,7 @@ import { CancelJobDialog } from '@/components/cancel-job-dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { date, downloadCustomsWorkbook, label } from '@/components/job-row'
 import { jobContext } from '@/lib/job-context'
-import { jobLabel, withStagePrefix } from '@/domain/job/numbering'
+import { jobLabel, jobNumberLabel } from '@/domain/job/numbering'
 import { hasTabData, tabActionLabel } from '@/domain/job/tab-data'
 import type { JobDetailTab, JobReadinessTarget } from '@/lib/job-readiness'
 import { StatusBadge } from '@/components/status-badge'
@@ -260,10 +260,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
             <h1
               className={`text-4xl font-bold tracking-tight ${job.jobNumber ? '' : 'text-slate-400'}`}
             >
-              {withStagePrefix(
-                job.stage,
-                job.jobNumber ?? (job.manifestPrefix ? `${job.manifestPrefix}.-` : 'No Job belum ada'),
-              )}
+              {job.jobNumber || job.manifestPrefix ? jobNumberLabel(job) : 'No Job belum ada'}
             </h1>
             <StatusBadge status={job.status} />
             {job.stage && (

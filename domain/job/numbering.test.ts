@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-import { formatJobNumber, jobFileName, jobLabel, parseJobNumber } from './numbering'
+import { formatJobNumber, jobFileName, jobLabel, jobNumberLabel, parseJobNumber } from './numbering'
 
 assert.equal(formatJobNumber('S', 1, '234YFN'), 'S.01/234YFN')
 assert.equal(formatJobNumber('ATA', 3, 'INV-9'), 'ATA.03/INV-9')
@@ -25,23 +25,36 @@ assert.equal(parseJobNumber('S.01/'), null)
 assert.equal(jobLabel({ jobNumber: 'S.01/234YFN', manifestPrefix: 'S' }), 'S.01/234YFN')
 assert.equal(jobLabel({ jobNumber: null, manifestPrefix: 'T' }), 'T.-')
 assert.equal(jobLabel({ jobNumber: null, manifestPrefix: null }), 'Belum bernomor')
-// Job turunan: label dasar + tahap BC; tanpa tahap label tidak berubah.
+// Job turunan: No Job berawalan "EX" + tahap BC di belakang; tanpa tahap label tidak berubah.
 assert.equal(
   jobLabel({ jobNumber: 'S.01/234YFN', manifestPrefix: 'S', stage: 'DISPOSAL' }),
   'EXS.01/234YFN · BC 2.5',
 )
 assert.equal(jobLabel({ jobNumber: null, manifestPrefix: 'S', stage: 'RE_EXPORT' }), 'EXS.- · BC 3.0')
 assert.equal(jobLabel({ jobNumber: 'S.01/X', manifestPrefix: 'S', stage: null }), 'S.01/X')
+// "Belum bernomor" bukan nomor, jadi tidak pernah diberi awalan "EX".
+assert.equal(jobLabel({ jobNumber: null, manifestPrefix: null, stage: 'RE_EXPORT' }), 'Belum bernomor · BC 3.0')
+
+// No Job seperti ditampilkan: job turunan berawalan "EX", job masuk polos.
+assert.equal(jobNumberLabel({ jobNumber: 'S.01/234YFN', manifestPrefix: 'S', stage: 'DISPOSAL' }), 'EXS.01/234YFN')
+assert.equal(jobNumberLabel({ jobNumber: null, manifestPrefix: 'S', stage: 'RE_EXPORT' }), 'EXS.-')
+assert.equal(jobNumberLabel({ jobNumber: null, manifestPrefix: null, stage: 'DISPOSAL' }), 'Belum bernomor')
+assert.equal(jobNumberLabel({ jobNumber: 'S.01/234YFN', manifestPrefix: 'S', stage: 'INBOUND' }), 'S.01/234YFN')
 
 // Nama file: "/" dari akhiran invoice tidak boleh masuk nama file; job tanpa urutan memakai nama pihak.
 const party = { name: 'Shenzhen Bobon' }
 assert.equal(
-  jobFileName({ jobNumber: 'S.01/234YFN', manifestPrefix: 'S', party }, 'BC-2-3', 'xlsx'),
+  jobFileName({ jobNumber: 'S.01/234YFN', manifestPrefix: 'S', stage: 'INBOUND', party }, 'BC-2-3', 'xlsx'),
   'BC-2-3-S.01-234YFN.xlsx',
 )
 assert.equal(
-  jobFileName({ jobNumber: null, manifestPrefix: 'S', party }, 'BC-2-3', 'xlsx'),
+  jobFileName({ jobNumber: null, manifestPrefix: 'S', stage: 'INBOUND', party }, 'BC-2-3', 'xlsx'),
   'BC-2-3-S.- Shenzhen Bobon.xlsx',
+)
+// Nama file job turunan memakai No Job berawalan "EX", sama dengan yang ditampilkan.
+assert.equal(
+  jobFileName({ jobNumber: 'S.01/234YFN', manifestPrefix: 'S', stage: 'RE_EXPORT', party }, 'BC-3-0', 'xlsx'),
+  'BC-3-0-EXS.01-234YFN.xlsx',
 )
 
 console.log('job numbering passed')

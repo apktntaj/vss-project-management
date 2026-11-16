@@ -30,7 +30,6 @@ import { groupJobsByJenis, jobJenisLabel } from '@/lib/job-jenis'
 import { sortJobsForTable } from '@/lib/job-list'
 import { withStageGoods } from '@/domain/job/stages'
 import { buildExhibitorGroups, type ExhibitorGroupBy } from '@/lib/exhibitor-view'
-import { buildJobNomor } from '@/lib/job-number'
 import { PageSkeleton } from '@/components/loading-skeletons'
 import { ContextTicketList } from '@/components/context-ticket-list'
 import { JobCreateWizard } from '@/components/job-create-wizard'
@@ -75,7 +74,6 @@ export default function EventDetailPage() {
   const [letter, setLetter] = useState<EventAppointmentLetter | null | undefined>(undefined)
   const [letterError, setLetterError] = useState<string | null>(null)
 
-  const nomorByJobId = useMemo(() => buildJobNomor(jobs), [jobs])
   const jobsById = useMemo(() => new Map(jobs.map((job) => [job.id, job])), [jobs])
 
   const jenisGroups = useMemo(() => groupJobsByJenis(jobs), [jobs])
@@ -385,7 +383,6 @@ export default function EventDetailPage() {
                                 job,
                                 job.sourceJobId ? jobsById.get(job.sourceJobId) : null,
                               )}
-                              nomor={nomorByJobId.get(job.id)}
                               actions={{
                                 onEdit: (editedJob) => router.push(`/jobs/${editedJob.id}`),
                                 onCancel: (jobToCancel) => setCancellingJob(jobToCancel),
