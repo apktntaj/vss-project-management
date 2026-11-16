@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
+  FileCheck2,
   FileSpreadsheet,
   Loader2,
   MapPin,
@@ -19,6 +20,7 @@ import {
   downloadEventManifest,
   downloadJobKanwilLetter,
   downloadJobTppbGoodsForm,
+  getEventAppointmentLetter,
   listEventJobs,
   listEventsWithExhibitors,
   type LocalEvent,
@@ -35,6 +37,8 @@ import { EventExhibitorView } from '@/components/event-exhibitor-view'
 import { CancelJobDialog } from '@/components/cancel-job-dialog'
 import { KanwilLetterDialog, type KanwilLetterFormInput } from '@/components/kanwil-letter-dialog'
 import { jobLabel } from '@/domain/job/numbering'
+import type { EventAppointmentLetter } from '@/domain/event/appointment-letter'
+import { EventAppointmentLetterLink } from '@/features/events/components/event-appointment-letter-link'
 
 function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -65,6 +69,9 @@ export default function EventDetailPage() {
   const [openJenis, setOpenJenis] = useState<Record<string, boolean>>({})
   const [cancellingJob, setCancellingJob] = useState<Job | null>(null)
   const [letterJob, setLetterJob] = useState<Job | null>(null)
+  // undefined = sedang dimuat; null = belum ada surat.
+  const [letter, setLetter] = useState<EventAppointmentLetter | null | undefined>(undefined)
+  const [letterError, setLetterError] = useState<string | null>(null)
 
   const nomorByJobId = useMemo(() => buildJobNomor(jobs), [jobs])
 
@@ -88,6 +95,24 @@ export default function EventDetailPage() {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  useEffect(() => {
+    let active = true
+    setLetter(undefined)
+    setLetterError(null)
+    getEventAppointmentLetter(params.id)
+      .then((value) => {
+        if (active) setLetter(value)
+      })
+      .catch((caught) => {
+        if (!active) return
+        setLetter(null)
+        setLetterError(caught instanceof Error ? caught.message : 'Surat penunjukan tidak dapat dimuat.')
+      })
+    return () => {
+      active = false
+    }
+  }, [params.id])
 
   // Routing "Job baru" dari halaman /jobs: ?newJob=1 langsung membuka form inisiasi job.
   useEffect(() => {
@@ -182,7 +207,7 @@ export default function EventDetailPage() {
 
       <section className="card px-5 py-3.5">
         <h2 className="sr-only">Informasi event</h2>
-        <dl className="grid gap-3 text-sm md:grid-cols-3">
+        <dl className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
           <div className="flex items-start gap-3">
             <CalendarDays className="mt-0.5 shrink-0 text-slate-600" size={18} />
             <div>
@@ -210,6 +235,23 @@ export default function EventDetailPage() {
               <dt className="text-slate-500">Event organizer</dt>
               <dd className="mt-0.5 font-medium text-slate-900">
                 {event.eventOrganizer?.legalName || 'Belum diinput'}
+              </dd>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <FileCheck2 className="mt-0.5 shrink-0 text-slate-600" size={18} />
+            <div className="min-w-0 flex-1">
+              <dt className="text-slate-500">Surat penunjukan</dt>
+              <dd className="mt-0.5">
+                {letter === undefined ? (
+                  <span className="text-slate-400">Memuat…</span>
+                ) : letterError ? (
+                  <span className="text-rose-600" role="alert">{letterError}</span>
+                ) : letter ? (
+                  <EventAppointmentLetterLink letter={letter} className="-mx-1 max-w-full" />
+                ) : (
+                  <span className="font-medium text-slate-400">Belum diunggah</span>
+                )}
               </dd>
             </div>
           </div>
