@@ -28,9 +28,9 @@ assert.equal(jobLabel({ jobNumber: null, manifestPrefix: null }), 'Belum bernomo
 // Job turunan: label dasar + tahap BC; tanpa tahap label tidak berubah.
 assert.equal(
   jobLabel({ jobNumber: 'S.01/234YFN', manifestPrefix: 'S', stage: 'DISPOSAL' }),
-  'ex S.01/234YFN · BC 2.5',
+  'EXS.01/234YFN · BC 2.5',
 )
-assert.equal(jobLabel({ jobNumber: null, manifestPrefix: 'S', stage: 'RE_EXPORT' }), 'ex S.- · BC 3.0')
+assert.equal(jobLabel({ jobNumber: null, manifestPrefix: 'S', stage: 'RE_EXPORT' }), 'EXS.- · BC 3.0')
 assert.equal(jobLabel({ jobNumber: 'S.01/X', manifestPrefix: 'S', stage: null }), 'S.01/X')
 
 // Nama file: "/" dari akhiran invoice tidak boleh masuk nama file; job tanpa urutan memakai nama pihak.
