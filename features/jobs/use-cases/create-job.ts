@@ -14,6 +14,7 @@ import {
 } from '@/features/jobs/repository'
 import { translateConstraint } from '@/features/jobs/use-cases/errors'
 import { emptyOperationalDetails } from '@/domain/job/operational'
+import { stageForNewJob } from '@/domain/job/stages'
 import { ApiError } from '@/lib/server/errors'
 import type { CurrentUser } from '@/domain/auth/types'
 import type { Job } from '@/domain/job/types'
@@ -31,6 +32,8 @@ export async function createJob(currentUser: CurrentUser, input: JobCreateInput)
   }
   if (input.agentId) await ensureEventAgent(input.eventId, input.agentId, currentUser.id)
 
+  // Job baru selalu job masuk tahapnya (Local/Road tanpa tahap); job turunan dibuat stage-jobs.ts.
+  const stage = stageForNewJob(input.kind, input.internationalJenis)
   try {
     return await insertJob({
       event_id: input.eventId,
@@ -41,7 +44,9 @@ export async function createJob(currentUser: CurrentUser, input: JobCreateInput)
       agent_id: input.agentId,
       exhibitor_id: input.exhibitorId,
       created_by_id: currentUser.id,
-      operational: emptyOperationalDetails(),
+      stage,
+      source_job_id: null,
+      operational: emptyOperationalDetails(stage),
     })
   } catch (error) {
     translateConstraint(error)

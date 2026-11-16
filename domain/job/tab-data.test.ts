@@ -16,7 +16,7 @@ const empty = {
   emptyStorage: null,
   reExport: null,
   party: null,
-  operational: emptyOperationalDetails(),
+  operational: emptyOperationalDetails(null),
   invoice: { number: null, amount: null, currency: null, status: 'NOT_READY', sentAt: null, paidAt: null },
 } as unknown as Job
 const patch = (value: Partial<Job>) => ({ ...empty, ...value }) as Job
@@ -44,11 +44,11 @@ assert.equal(
   true,
 )
 assert.equal(hasTabData('transport', patch({ reExport: 'Ya' })), true)
-const customsStarted = emptyOperationalDetails()
+const customsStarted = emptyOperationalDetails(null)
 customsStarted.customs.BC_2_3.status = 'PREPARING'
 assert.equal(hasTabData('transport', patch({ operational: customsStarted })), true)
 // Menandai BC yang secara default tidak diperlukan sebagai diperlukan juga dihitung sebagai isian.
-const customsToggled = emptyOperationalDetails()
+const customsToggled = emptyOperationalDetails(null)
 customsToggled.customs.BC_2_5.applicable = true
 assert.equal(hasTabData('transport', patch({ operational: customsToggled })), true)
 

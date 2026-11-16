@@ -2,6 +2,8 @@
 // Awalan diturunkan database dari jalur + jenis (kolom `jobs.manifest_prefix`, satu-satunya tabel
 // awalan); urutan ditetapkan operator per event per awalan; akhiran = commercial invoice pengirim.
 
+import { jobStageLabel, type JobStage } from '@/domain/job/types'
+
 /** Urutan minimal dua digit (01, 02, ...), tidak pernah dipotong (100 tetap 100). */
 export function formatManifestSequence(seq: number): string {
   return String(seq).padStart(2, '0')
@@ -39,23 +41,40 @@ export function parseJobNumber(input: string): ParsedJobNumber | null {
 }
 
 /**
- * Label job di UI: No Job bila sudah ada; bila urutan belum diisi, awalan dari jenis job + jalur
- * (mis. `S.-`); bila awalan pun belum ada (TPPB tanpa jalur), "Belum bernomor".
+ * Label dasar job di UI: No Job bila sudah ada; bila urutan belum diisi, awalan dari jenis job +
+ * jalur (mis. `S.-`); bila awalan pun belum ada (TPPB tanpa jalur), "Belum bernomor". Tanpa
+ * akhiran tahap BC — untuk nama file ekspor dan sel Job No manifest.
  */
-export function jobLabel(job: { jobNumber: string | null; manifestPrefix: string | null }): string {
+export function jobBaseLabel(job: {
+  jobNumber: string | null
+  manifestPrefix: string | null
+}): string {
   return job.jobNumber ?? (job.manifestPrefix ? `${job.manifestPrefix}.-` : 'Belum bernomor')
 }
 
+/** Label job dengan tahap BC (mis. `S.01/234YFN · BC 2.5`); tanpa tahap = label dasar. */
+export function jobLabel(job: {
+  jobNumber: string | null
+  manifestPrefix: string | null
+  stage?: JobStage | null
+}): string {
+  const base = jobBaseLabel(job)
+  return job.stage ? `${base} · ${jobStageLabel(job.stage)}` : base
+}
+
 /**
- * Nama file ekspor job: label job tanpa karakter terlarang di nama file (`S.01/234YFN` → `S.01-234YFN`).
- * Job tanpa urutan ditambah nama pihak agar tidak semua file bernama `S.-`.
+ * Nama file ekspor job: label dasar job tanpa karakter terlarang di nama file
+ * (`S.01/234YFN` → `S.01-234YFN`). Job tanpa urutan ditambah nama pihak agar tidak semua
+ * file bernama `S.-`.
  */
 export function jobFileName(
   job: { jobNumber: string | null; manifestPrefix: string | null; party: { name: string } | null },
   prefix: string,
   extension: string,
 ): string {
-  const stem = [jobLabel(job), job.jobNumber ? null : job.party?.name].filter(Boolean).join(' ')
+  const stem = [jobBaseLabel(job), job.jobNumber ? null : job.party?.name]
+    .filter(Boolean)
+    .join(' ')
   const safe = stem.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim()
   return `${prefix}-${safe}.${extension}`
 }

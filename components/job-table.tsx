@@ -18,7 +18,8 @@ import { ciplStatusText, deriveCiplStatus, type CiplStatus } from '@/domain/job/
 import { JobContextBadge } from '@/components/job-context-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { label } from '@/components/job-row'
-import { jobLabel } from '@/domain/job/numbering'
+import { jobBaseLabel, jobLabel } from '@/domain/job/numbering'
+import { jobStageLabel } from '@/domain/job/types'
 import { nextJobSort, type JobSortKey, type JobTableSort } from '@/lib/job-list'
 
 const INVOICE_BADGE: Record<Job['invoice']['status'], string> = {
@@ -139,13 +140,20 @@ function JobTableRow({
     >
       <td className="px-2 py-1.5 text-right align-middle tabular-nums text-slate-400">{index + 1}</td>
       <td className="px-2 py-1.5 align-middle">
-        <Link
-          href={`/jobs/${job.id}`}
-          className="block truncate font-semibold text-slate-600 hover:text-slate-900"
-          aria-label={`Buka job ${jobLabel(job)}`}
-        >
-          {jobLabel(job)}
-        </Link>
+        <div className="flex items-center gap-2 whitespace-nowrap">
+          <Link
+            href={`/jobs/${job.id}`}
+            className="block truncate font-semibold text-slate-600 hover:text-slate-900"
+            aria-label={`Buka job ${jobLabel(job)}`}
+          >
+            {jobBaseLabel(job)}
+          </Link>
+          {job.stage && (
+            <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+              {jobStageLabel(job.stage)}
+            </span>
+          )}
+        </div>
       </td>
       <td className="px-2 py-1.5 align-middle">
         <JobContextBadge job={job} />
@@ -167,9 +175,14 @@ function JobTableRow({
         )}
       </td>
       <td className="px-2 py-1.5 align-middle">
-        <span className={`${badge} ${ciplBadge.className}`} title={ciplStatusText(cipl)}>
-          {ciplBadge.text}
-        </span>
+        {job.sourceJobId ? (
+          // Barang job turunan selalu mengikuti job masuknya — status CIPL induk yang berlaku.
+          <span className="text-slate-300">—</span>
+        ) : (
+          <span className={`${badge} ${ciplBadge.className}`} title={ciplStatusText(cipl)}>
+            {ciplBadge.text}
+          </span>
+        )}
       </td>
       <td className="px-2 py-1.5 align-middle">
         {job.transportDocumentNumber ? (

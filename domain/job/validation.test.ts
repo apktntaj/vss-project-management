@@ -36,7 +36,7 @@ assert.equal(ok(jobDetailsPatchSchema, { notes: 'x' }), false)
 assert.equal(ok(jobDetailsPatchSchema, { version: 1, billTo: 'X' }), false)
 assert.equal(ok(jobDetailsPatchSchema, { version: 1, manifestSeq: 0 }), false)
 assert.equal(ok(jobDetailsPatchSchema, { version: 1, party: { agentId: 'a', exhibitorId } }), false)
-const patch = jobDetailsPatchSchema.parse({ version: 3, notes: '  ', manifestSeq: 2, operational: emptyOperationalDetails() })
+const patch = jobDetailsPatchSchema.parse({ version: 3, notes: '  ', manifestSeq: 2, operational: emptyOperationalDetails(null) })
 assert.equal(patch.notes, null)
 assert.equal(patch.manifestSeq, 2)
 

@@ -27,6 +27,8 @@ import {
   type Job,
 } from '@/lib/data-client'
 import { groupJobsByJenis, jobJenisLabel } from '@/lib/job-jenis'
+import { sortJobsForTable } from '@/lib/job-list'
+import { withStageGoods } from '@/domain/job/stages'
 import { buildExhibitorGroups, type ExhibitorGroupBy } from '@/lib/exhibitor-view'
 import { buildJobNomor } from '@/lib/job-number'
 import { PageSkeleton } from '@/components/loading-skeletons'
@@ -74,6 +76,7 @@ export default function EventDetailPage() {
   const [letterError, setLetterError] = useState<string | null>(null)
 
   const nomorByJobId = useMemo(() => buildJobNomor(jobs), [jobs])
+  const jobsById = useMemo(() => new Map(jobs.map((job) => [job.id, job])), [jobs])
 
   const jenisGroups = useMemo(() => groupJobsByJenis(jobs), [jobs])
   const exhibitorGroups = useMemo(
@@ -126,20 +129,24 @@ export default function EventDetailPage() {
       }),
     )
   }
-  const [exporting, setExporting] = useState(false)
-  async function exportManifest() {
-    setExporting(true)
+  const [exporting, setExporting] = useState<'inward' | 'outward' | null>(null)
+  async function exportManifest(direction: 'inward' | 'outward') {
+    setExporting(direction)
     try {
-      const { blob, filename } = await downloadEventManifest(params.id)
+      const { blob, filename } = await downloadEventManifest(params.id, direction)
       saveBlob(blob, filename)
-      showToast('Manifest berhasil diekspor.')
+      showToast(
+        direction === 'inward'
+          ? 'Inward manifest berhasil diekspor.'
+          : 'Outward manifest berhasil diekspor.',
+      )
     } catch (caught) {
       showToast(
         caught instanceof Error ? caught.message : 'Manifest tidak dapat diekspor.',
         'error',
       )
     } finally {
-      setExporting(false)
+      setExporting(null)
     }
   }
 
@@ -189,20 +196,36 @@ export default function EventDetailPage() {
           <h1 className="text-3xl font-bold tracking-tight">{event.officialName}</h1>
           {event.alias && <p className="mt-1 text-sm text-slate-500">{event.alias}</p>}
         </div>
-        <button
-          type="button"
-          onClick={exportManifest}
-          disabled={exporting}
-          className="btn-secondary shrink-0 gap-2"
-          title="Unduh inward manifest event ini (Excel, format dokumen klien)"
-        >
-          {exporting ? (
-            <Loader2 className="animate-spin" size={16} aria-hidden="true" />
-          ) : (
-            <Download size={16} aria-hidden="true" />
-          )}
-          {exporting ? 'Mengekspor…' : 'Export Manifest'}
-        </button>
+        <div className="flex shrink-0 gap-2">
+          <button
+            type="button"
+            onClick={() => exportManifest('inward')}
+            disabled={exporting !== null}
+            className="btn-secondary shrink-0 gap-2"
+            title="Unduh inward manifest event ini (Excel, format dokumen klien)"
+          >
+            {exporting === 'inward' ? (
+              <Loader2 className="animate-spin" size={16} aria-hidden="true" />
+            ) : (
+              <Download size={16} aria-hidden="true" />
+            )}
+            Inward Manifest
+          </button>
+          <button
+            type="button"
+            onClick={() => exportManifest('outward')}
+            disabled={exporting !== null}
+            className="btn-secondary shrink-0 gap-2"
+            title="Unduh outward manifest event ini (barang re-ekspor, Excel)"
+          >
+            {exporting === 'outward' ? (
+              <Loader2 className="animate-spin" size={16} aria-hidden="true" />
+            ) : (
+              <Download size={16} aria-hidden="true" />
+            )}
+            Outward Manifest
+          </button>
+        </div>
       </div>
 
       <section className="card px-5 py-3.5">
@@ -355,10 +378,13 @@ export default function EventDetailPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {group.jobs.map((job) => (
+                          {sortJobsForTable(group.jobs, new Map()).map((job) => (
                             <JobRow
                               key={job.id}
-                              job={job}
+                              job={withStageGoods(
+                                job,
+                                job.sourceJobId ? jobsById.get(job.sourceJobId) : null,
+                              )}
                               nomor={nomorByJobId.get(job.id)}
                               actions={{
                                 onEdit: (editedJob) => router.push(`/jobs/${editedJob.id}`),

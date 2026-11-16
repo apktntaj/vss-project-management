@@ -10,6 +10,7 @@ import {
 } from '@/domain/job/manifest'
 import {
   bcDocumentKinds,
+  derivedJobStages,
   internationalJobJenisValues,
   invoiceStatuses,
   jobCustomsStatuses,
@@ -317,6 +318,14 @@ export const jobCancelSchema = z
   })
   .strict()
 export type JobCancelInput = z.output<typeof jobCancelSchema>
+
+/** Buat job turunan (BC 2.5 / BC 3.0) dari job masuk secara manual. */
+export const jobStageCreateSchema = z
+  .object({
+    stage: z.enum(derivedJobStages),
+  })
+  .strict()
+export type JobStageCreateInput = z.output<typeof jobStageCreateSchema>
 
 const dateTime = z.string().datetime({ offset: true, message: 'Tanggal tidak valid.' })
 

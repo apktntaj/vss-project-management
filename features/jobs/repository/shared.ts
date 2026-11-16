@@ -26,7 +26,7 @@ const PARTY_EMBEDS = [
 ]
 
 export const JOB_COLUMNS = [
-  'id, version, event_id, kind, international_jenis, transport_mode, status',
+  'id, version, event_id, kind, international_jenis, transport_mode, status, stage, source_job_id',
   'agent_id, exhibitor_id, manifest_prefix, manifest_seq, commercial_invoice_number',
   'transport_document, transport_document_type, transport_document_number, cipl_document',
   'invoice_number, invoice_amount, invoice_currency, invoice_status, invoice_sent_at, invoice_paid_at',
@@ -38,7 +38,7 @@ export const JOB_COLUMNS = [
 ].join(', ')
 
 export const JOB_SUMMARY_COLUMNS = [
-  'id, event_id, kind, international_jenis, status, assigned_to_id',
+  'id, event_id, kind, international_jenis, status, assigned_to_id, stage, source_job_id',
   'agent_id, exhibitor_id, manifest_prefix, manifest_seq, commercial_invoice_number',
   ...PARTY_EMBEDS,
 ].join(', ')
@@ -78,6 +78,8 @@ export type JobRow = PartyEmbeds &
     international_jenis: Job['internationalJenis']
     transport_mode: Job['transportMode']
     status: Job['status']
+    stage: Job['stage']
+    source_job_id: string | null
     transport_document: JobTransportExtraction | null
     transport_document_type: Job['transportDocumentType']
     transport_document_number: string | null
@@ -107,7 +109,14 @@ export type JobSummaryRow = PartyEmbeds &
   NumberColumns &
   Pick<
     JobRow,
-    'id' | 'event_id' | 'kind' | 'international_jenis' | 'status' | 'assigned_to_id'
+    | 'id'
+    | 'event_id'
+    | 'kind'
+    | 'international_jenis'
+    | 'status'
+    | 'assigned_to_id'
+    | 'stage'
+    | 'source_job_id'
   >
 
 /** Kolom yang boleh ditulis use-case (snake_case, persis nama kolom). */
@@ -155,6 +164,22 @@ function toJobNumber(row: NumberColumns): string | null {
   return formatJobNumber(row.manifest_prefix, row.manifest_seq, row.commercial_invoice_number)
 }
 
+// Job turunan tidak punya nomor sendiri: kolom nomornya mencerminkan job masuk (source_job_id).
+// Bila job masuknya tidak ikut terbaca, anggap nomor belum diisi.
+function resolveNumbers(
+  row: NumberColumns & { id: string; source_job_id: string | null },
+  sourceNumbers: ReadonlyMap<string, NumberColumns>,
+): NumberColumns {
+  if (!row.source_job_id) return row
+  return (
+    sourceNumbers.get(row.source_job_id) ?? {
+      manifest_prefix: null,
+      manifest_seq: null,
+      commercial_invoice_number: null,
+    }
+  )
+}
+
 function toCiplLine(row: CiplLineRow): JobCiplLine {
   const exhibitor = first(row.exhibitor)
   return {
@@ -170,8 +195,14 @@ function toCiplLine(row: CiplLineRow): JobCiplLine {
   }
 }
 
-export function toJob(row: JobRow, ciplSources: JobCiplSource[], cancellation: JobCancellation | null): Job {
+export function toJob(
+  row: JobRow,
+  ciplSources: JobCiplSource[],
+  cancellation: JobCancellation | null,
+  sourceNumbers: ReadonlyMap<string, NumberColumns>,
+): Job {
   const assignedTo = first(row.assigned_to)
+  const numbers = resolveNumbers(row, sourceNumbers)
   return {
     id: row.id,
     version: row.version,
@@ -181,13 +212,15 @@ export function toJob(row: JobRow, ciplSources: JobCiplSource[], cancellation: J
     transportMode: row.transport_mode,
     status: row.status,
     cancellation,
+    stage: row.stage,
+    sourceJobId: row.source_job_id,
     agentId: row.agent_id,
     exhibitorId: row.exhibitor_id,
     party: toParty(row),
-    manifestPrefix: row.manifest_prefix,
-    manifestSeq: row.manifest_seq,
-    commercialInvoiceNumber: row.commercial_invoice_number,
-    jobNumber: toJobNumber(row),
+    manifestPrefix: numbers.manifest_prefix,
+    manifestSeq: numbers.manifest_seq,
+    commercialInvoiceNumber: numbers.commercial_invoice_number,
+    jobNumber: toJobNumber(numbers),
     transportDocumentType: row.transport_document_type,
     transportDocumentNumber: row.transport_document_number,
     transportDocument: row.transport_document,
@@ -208,7 +241,7 @@ export function toJob(row: JobRow, ciplSources: JobCiplSource[], cancellation: J
     assignedToId: row.assigned_to_id,
     createdById: row.created_by_id,
     assignedTo: assignedTo ? { id: assignedTo.id, name: assignedTo.full_name } : null,
-    operational: normalizeOperationalDetails(row.operational),
+    operational: normalizeOperationalDetails(row.operational, row.stage),
     inward: row.inward,
     kepulangan: row.kepulangan,
     emptyStorage: row.empty_storage,
@@ -281,26 +314,80 @@ async function loadCancellations(
   return cancellations
 }
 
-/** Petakan baris job ke aggregate, dengan query tambahan untuk lampiran CIPL dan pembatalan. */
+type SourceNumberRow = { id: string; source_job_id: string | null } & NumberColumns
+
+/**
+ * Kolom nomor (awalan/urutan/invoice) per id job — dipakai mencerminkan nomor job masuk ke baris
+ * job turunan. Baris yang sudah memuat kolom nomornya mengisi peta tanpa query; hanya id job
+ * masuk yang belum ada di peta yang ditanyakan (dipotong per chunk agar URL PostgREST pendek).
+ */
+export async function loadSourceNumbers(
+  context: WorkspaceContext,
+  rows: ReadonlyArray<SourceNumberRow>,
+): Promise<Map<string, NumberColumns>> {
+  const numbers = new Map<string, NumberColumns>()
+  const missing = new Set<string>()
+  for (const row of rows) {
+    if (!numbers.has(row.id)) {
+      numbers.set(row.id, {
+        manifest_prefix: row.manifest_prefix,
+        manifest_seq: row.manifest_seq,
+        commercial_invoice_number: row.commercial_invoice_number,
+      })
+    }
+    if (row.source_job_id && !numbers.has(row.source_job_id)) missing.add(row.source_job_id)
+  }
+  const ids = [...missing]
+  if (!ids.length) return numbers
+  const { client, workspaceId } = context
+  for (let start = 0; start < ids.length; start += CIPL_SOURCE_CHUNK) {
+    const { data, error } = await client
+      .from('jobs')
+      .select('id, manifest_prefix, manifest_seq, commercial_invoice_number')
+      .eq('workspace_id', workspaceId)
+      .in('id', ids.slice(start, start + CIPL_SOURCE_CHUNK))
+      .returns<SourceNumberRow[]>()
+    if (error) raise('Gagal memuat nomor job masuk', error)
+    for (const row of data ?? []) {
+      numbers.set(row.id, {
+        manifest_prefix: row.manifest_prefix,
+        manifest_seq: row.manifest_seq,
+        commercial_invoice_number: row.commercial_invoice_number,
+      })
+    }
+  }
+  return numbers
+}
+
+/** Petakan baris job ke aggregate, dengan query tambahan untuk lampiran CIPL, pembatalan, dan nomor induk. */
 export async function toJobs(context: WorkspaceContext, rows: JobRow[]): Promise<Job[]> {
   const sources = await loadCiplSources(context, rows.map((row) => row.id))
   const cancellations = await loadCancellations(
     context,
     rows.filter((row) => row.status === 'CANCELLED').map((row) => row.id),
   )
-  return rows.map((row) => toJob(row, sources.get(row.id) ?? [], cancellations.get(row.id) ?? null))
+  const sourceNumbers = await loadSourceNumbers(context, rows)
+  return rows.map((row) =>
+    toJob(row, sources.get(row.id) ?? [], cancellations.get(row.id) ?? null, sourceNumbers),
+  )
 }
 
-export function toJobSummary(row: JobSummaryRow): JobSummary {
+export function toJobSummary(
+  row: JobSummaryRow,
+  sourceNumbers: ReadonlyMap<string, NumberColumns>,
+): JobSummary {
+  const numbers = resolveNumbers(row, sourceNumbers)
   return {
     id: row.id,
-    manifestPrefix: row.manifest_prefix,
+    manifestPrefix: numbers.manifest_prefix,
     eventId: row.event_id,
-    jobNumber: toJobNumber(row),
+    jobNumber: toJobNumber(numbers),
     status: row.status,
     kind: row.kind,
     internationalJenis: row.international_jenis,
     assignedToId: row.assigned_to_id,
+    stage: row.stage,
+    sourceJobId: row.source_job_id,
     partyName: toParty(row)?.name || null,
   }
 }

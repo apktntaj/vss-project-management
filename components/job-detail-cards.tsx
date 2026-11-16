@@ -141,8 +141,14 @@ function HeaderForm({
             className="input mt-1"
             value={jobNumberText}
             placeholder={`${job.manifestPrefix ?? 'S'}.01/NOMOR-INVOICE`}
+            disabled={job.sourceJobId != null}
             onChange={(event) => setJobNumberText(event.target.value)}
           />
+          {job.sourceJobId != null && (
+            <span className="mt-1 block text-xs font-normal text-slate-500">
+              Mengikuti job masuk (BC 2.3).
+            </span>
+          )}
         </label>
         <label className="label">
           Moda
@@ -183,15 +189,17 @@ function HeaderForm({
             <span className="mt-1 block text-xs font-normal text-slate-500"></span>
           ) : null}
         </label>
-        <label className="label">
-          ETA
-          <input
-            type="date"
-            className="input mt-1"
-            value={eta}
-            onChange={(event) => setEta(event.target.value)}
-          />
-        </label>
+        {!job.sourceJobId && (
+          <label className="label">
+            ETA
+            <input
+              type="date"
+              className="input mt-1"
+              value={eta}
+              onChange={(event) => setEta(event.target.value)}
+            />
+          </label>
+        )}
         <label className="label">
           Status Job
           <select

@@ -8,6 +8,7 @@ import type { JobListQuery } from '@/domain/job/validation'
 import {
   JOB_COLUMNS,
   JOB_SUMMARY_COLUMNS,
+  loadSourceNumbers,
   raise,
   toJobs,
   toJobSummary,
@@ -47,7 +48,8 @@ export async function listJobs(filter: ListFilter): Promise<Job[]> {
 }
 
 export async function listJobSummaries(filter: ListFilter): Promise<JobSummary[]> {
-  const { client, workspaceId } = await withWorkspace()
+  const context = await withWorkspace()
+  const { client, workspaceId } = context
   let query = client.from('jobs').select(JOB_SUMMARY_COLUMNS).eq('workspace_id', workspaceId)
   if (filter.eventId) query = query.eq('event_id', filter.eventId)
   if (filter.status) query = query.eq('status', filter.status)
@@ -57,5 +59,7 @@ export async function listJobSummaries(filter: ListFilter): Promise<JobSummary[]
     .order('updated_at', { ascending: false })
     .returns<JobSummaryRow[]>()
   if (error) raise('Gagal memuat daftar job', error)
-  return (data ?? []).map(toJobSummary)
+  // Nomor job turunan dicerminkan dari job masuknya — muat dulu peta nomornya.
+  const sourceNumbers = await loadSourceNumbers(context, data ?? [])
+  return (data ?? []).map((row) => toJobSummary(row, sourceNumbers))
 }

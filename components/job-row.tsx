@@ -23,7 +23,8 @@ import type {
   JobTransportExtraction,
 } from '@/domain/exhibition/source-documents'
 import type { BcDocumentKind } from '@/domain/job/types'
-import { jobFileName, jobLabel } from '@/domain/job/numbering'
+import { jobBaseLabel, jobFileName, jobLabel } from '@/domain/job/numbering'
+import { jobStageLabel } from '@/domain/job/types'
 
 export type DocumentClassification = {
   documentType:
@@ -117,8 +118,13 @@ export function JobRow({
             href={`/jobs/${job.id}`}
             className="min-w-0 truncate font-semibold text-slate-900 hover:text-slate-900"
           >
-            {nomor || jobLabel(job)}
+            {nomor || jobBaseLabel(job)}
           </Link>
+          {job.stage && (
+            <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+              {jobStageLabel(job.stage)}
+            </span>
+          )}
         </div>
       </td>
       {event !== undefined && (
@@ -218,7 +224,7 @@ export function JobRow({
                   >
                     <Pencil size={15} /> Edit
                   </button>
-                  {job.kind === 'INTERNATIONAL' && job.status !== 'CANCELLED' && (
+                  {job.kind === 'INTERNATIONAL' && !job.sourceJobId && job.status !== 'CANCELLED' && (
                     <>
                       <button
                         role="menuitem"

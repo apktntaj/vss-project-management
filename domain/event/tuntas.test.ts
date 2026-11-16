@@ -15,6 +15,7 @@ function internationalJob(overrides: Partial<TuntasJobShape> = {}): TuntasJobSha
   return {
     kind: 'INTERNATIONAL',
     internationalJenis: 'TEMPORARY_IMPORT',
+    stage: 'RE_EXPORT',
     kepulangan: null,
     operational: {
       customs: {
@@ -51,14 +52,17 @@ describe('jobTuntas', () => {
     expect(jobTuntas(internationalJob({ kepulangan: { mode: { kind: 'LCL', koliCount: 5 } } }))).toBe(true)
   })
 
-  test('semua jenis wajib kepulangan dinilai wajib', () => {
-    for (const jenis of ['TPPB_BC_23', 'ATA_CARNET', 'TEMPORARY_IMPORT', 'ROAD_SHIPMENT']) {
-      expect(jobTuntas(internationalJob({ internationalJenis: jenis }))).toBe(false)
-    }
+  test('kepulangan wajib hanya di job re-ekspor dan Road Shipment', () => {
+    expect(jobTuntas(internationalJob({ stage: 'RE_EXPORT' }))).toBe(false)
+    expect(
+      jobTuntas(internationalJob({ stage: null, internationalJenis: 'ROAD_SHIPMENT' })),
+    ).toBe(false)
   })
 
-  test('PERMANENT_IMPORT tanpa kepulangan tetap bisa tuntas', () => {
-    expect(jobTuntas(internationalJob({ internationalJenis: 'PERMANENT_IMPORT' }))).toBe(true)
+  test('job masuk (BC 2.3) dan disposal (BC 2.5) tuntas tanpa kepulangan', () => {
+    for (const stage of ['INBOUND', 'DISPOSAL']) {
+      expect(jobTuntas(internationalJob({ stage }))).toBe(true)
+    }
   })
 
   test('job LOCAL tanpa dokumen BC → tuntas', () => {

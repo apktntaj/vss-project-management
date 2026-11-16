@@ -4,6 +4,7 @@ import {
   INWARD_COLUMNS,
   blockHeaderText,
   buildEventManifestWorkbook,
+  buildEventOutwardManifestWorkbook,
   normalizeContainerSize,
   formatVenueLine,
 } from './manifest-export'
@@ -229,5 +230,68 @@ assert.deepEqual(urgentFirst.highlight, [col('Special Instructions')])
 const total = rows[rows.length - 1]
 assert.equal(total.kind, 'TOTAL')
 assert.equal(total.cells[col('Exhibitor Name')], 'TOTAL')
+
+// Outward: satu blok per job BC 3.0, hanya koli re-ekspor; job turunan tidak jadi blok inward.
+const item = (disposisi: 'RE_EXPORT' | 'DISPOSED', refKoliIds: string[]) =>
+  ({ uraian: 'Barang', merekModel: null, kodeHs: null, jumlah: 1, satuan: 'PCS', nilaiSatuan: null, nilaiTotal: null, disposisi, refKoli: null, refKoliIds }) as JobCiplLine['items'][number]
+const pk = (id: string, label: string) => ({ id, label, dimension: null, volumeCbm: 1, weightKg: 10 })
+const outInbound = job({
+  manifestSeq: 3,
+  jobNumber: 'S.03/Q',
+  stage: 'INBOUND',
+  sourceJobId: null,
+  ciplLines: [
+    line({
+      id: 'la',
+      nameOnDocument: 'ALPHA',
+      koli: { totalCount: 2, bareCaseCount: null, details: [pk('k1', 'KEEP 1'), pk('k2', 'DISPOSE 2')] },
+      items: [item('RE_EXPORT', ['k1']), item('DISPOSED', ['k2'])],
+    }),
+    line({
+      id: 'lb',
+      nameOnDocument: 'BETA',
+      koli: { totalCount: 1, bareCaseCount: null, details: [pk('k3', 'BETA 1')] },
+      items: [item('RE_EXPORT', ['k3'])],
+    }),
+  ],
+})
+const outReExport = job({
+  manifestSeq: 3,
+  jobNumber: 'S.03/Q',
+  stage: 'RE_EXPORT',
+  sourceJobId: outInbound.id,
+  inward: null,
+  kepulangan: {
+    mode: { kind: 'LCL', koliCount: 2 },
+    destination: 'Shanghai',
+    shippingLine: null,
+    bookingNumber: null,
+    vessel: null,
+    etd: null,
+    eta: null,
+    notes: [],
+  },
+  operational: { customs: { BC_3_0: { registrationNumber: '000123' } } } as unknown as Job['operational'],
+})
+const outEvent = { name: 'Allpack', venueName: null, startsOn: null, endsOn: null }
+const outward = buildEventOutwardManifestWorkbook(outEvent, [outInbound, outReExport])
+const outSheet = outward.sheets[0]
+assert.equal(outSheet.name, 'Outward Manifest')
+assert.equal(outSheet.rows[1].cells[0], 'Exhibits Details For Outward Movement')
+const outHeaders = outSheet.rows.filter((row) => row.kind === 'BLOCK_HEADER')
+assert.equal(outHeaders.length, 1)
+assert.match(String(outHeaders[0].cells[0]), /SHANGHAI/)
+assert.match(String(outHeaders[0].cells[0]), / LCL /)
+const outLabels = outSheet.rows.map((row) => row.cells[col('CASE')])
+assert.ok(outLabels.includes('KEEP 1') && outLabels.includes('BETA 1'))
+assert.ok(!outLabels.includes('DISPOSE 2'), 'koli disposal tidak ikut outward')
+const outFirst = outSheet.rows[outSheet.rows.findIndex((row) => row.kind === 'BLOCK_HEADER') + 1]
+assert.equal(outFirst.cells[col('Remark')], 'BC 3.0: 000123')
+assert.equal(outFirst.cells[col('Job No')], 'S.03')
+// Tanpa job re-ekspor: pesan kosong; job turunan tidak menjadi blok di inward.
+const noOut = buildEventOutwardManifestWorkbook(outEvent, [outInbound]).sheets[0].rows
+assert.ok(noOut.some((row) => row.cells[0] === 'BELUM ADA JOB RE-EKSPOR PADA EVENT INI'))
+const inwardOnly = buildEventManifestWorkbook(outEvent, [outInbound, outReExport]).sheets[0].rows
+assert.equal(inwardOnly.filter((row) => row.kind === 'BLOCK_HEADER').length, 1)
 
 console.log('event manifest export passed')

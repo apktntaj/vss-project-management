@@ -15,7 +15,7 @@ const partial = {
     BC_3_0: { applicable: true, status: 'RELEASED', ajuNumber: 'AJU-1', registrationNumber: 'NOPEN-1', registrationDate: '2026-09-02', warehouseName: null },
   },
 } as unknown as Partial<JobOperationalDetails>
-const details = normalizeOperationalDetails(partial)
+const details = normalizeOperationalDetails(partial, 'INBOUND')
 assert.equal(details.customs.BC_2_7.applicable, false)
 assert.equal(details.customs.BC_3_0.status, 'RELEASED')
 assert.equal(details.customs.BC_2_3.applicable, true)
@@ -26,6 +26,16 @@ assert.equal('billing' in details.customs.BC_2_3, false)
 
 const fresh = normalizeOperationalDetails(null)
 assert.deepEqual(fresh, emptyOperationalDetails())
+
+// Hanya BC milik tahap yang applicable; tanpa tahap (Local/Road) tidak ada.
+const applicable = (stage: Parameters<typeof emptyOperationalDetails>[0]) =>
+  Object.entries(emptyOperationalDetails(stage).customs)
+    .filter(([, document]) => document.applicable)
+    .map(([kind]) => kind)
+assert.deepEqual(applicable('INBOUND'), ['BC_2_3'])
+assert.deepEqual(applicable('DISPOSAL'), ['BC_2_5'])
+assert.deepEqual(applicable('RE_EXPORT'), ['BC_3_0'])
+assert.deepEqual(applicable(null), [])
 
 // Ekstraksi B/L: nomor & isi mentah menjadi milik job; leg inbound hanya carrier (ETA milik job, tidak ditimpa B/L).
 const transport: JobTransportExtraction = {

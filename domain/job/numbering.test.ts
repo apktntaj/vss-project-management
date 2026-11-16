@@ -25,6 +25,13 @@ assert.equal(parseJobNumber('S.01/'), null)
 assert.equal(jobLabel({ jobNumber: 'S.01/234YFN', manifestPrefix: 'S' }), 'S.01/234YFN')
 assert.equal(jobLabel({ jobNumber: null, manifestPrefix: 'T' }), 'T.-')
 assert.equal(jobLabel({ jobNumber: null, manifestPrefix: null }), 'Belum bernomor')
+// Job turunan: label dasar + tahap BC; tanpa tahap label tidak berubah.
+assert.equal(
+  jobLabel({ jobNumber: 'S.01/234YFN', manifestPrefix: 'S', stage: 'DISPOSAL' }),
+  'S.01/234YFN · BC 2.5',
+)
+assert.equal(jobLabel({ jobNumber: null, manifestPrefix: 'S', stage: 'RE_EXPORT' }), 'S.- · BC 3.0')
+assert.equal(jobLabel({ jobNumber: 'S.01/X', manifestPrefix: 'S', stage: null }), 'S.01/X')
 
 // Nama file: "/" dari akhiran invoice tidak boleh masuk nama file; job tanpa urutan memakai nama pihak.
 const party = { name: 'Shenzhen Bobon' }

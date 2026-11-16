@@ -23,7 +23,11 @@ const CONSTRAINT_MESSAGES: Record<string, [number, string]> = {
   jobs_exhibitor_only_party: [400, 'Job Local selalu dipegang exhibitor, bukan agent.'],
   jobs_road_mode: [400, 'Road Shipment hanya lewat jalur darat.'],
   jobs_manifest_number_key: [409, 'No Job dengan urutan itu sudah dipakai di event ini.'],
-  jobs_manifest_seq_needs_prefix: [400, 'Isi jalur (laut/udara/darat) dulu sebelum menetapkan No Job.'],
+  jobs_derived_number_from_source: [
+    400,
+    'No Job job BC 2.5 / BC 3.0 mengikuti job masuk (BC 2.3).',
+  ],
+  jobs_source_job_fk: [400, 'Job masuk tidak ditemukan di event ini.'],
   jobs_invoice_sent_has_number: [400, 'Nomor tagihan wajib diisi sebelum tagihan dikirim.'],
   jobs_invoice_paid_has_date: [400, 'Tanggal lunas wajib diisi.'],
   job_cipl_lines_exhibitor_key: [400, 'Satu exhibitor hanya boleh muncul sekali dalam satu job.'],

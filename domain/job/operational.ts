@@ -6,10 +6,12 @@ import type {
   JobInvoiceExtraction,
   JobTransportExtraction,
 } from '@/domain/exhibition/source-documents'
+import { jobStageBcDocument } from '@/domain/job/types'
 import type {
   BcDocumentKind,
   JobCustomsDocument,
   JobOperationalDetails,
+  JobStage,
   JobTransportLeg,
   TransportDocumentType,
 } from '@/domain/job/types'
@@ -29,37 +31,34 @@ export function emptyCustomsDocument(applicable = true): JobCustomsDocument {
   }
 }
 
-/** Default customs per BC: 2.3 dan 3.0 diperlukan, 2.5 dan 2.7 tidak. */
-const DEFAULT_APPLICABLE: Record<BcDocumentKind, boolean> = {
-  BC_2_3: true,
-  BC_2_5: false,
-  BC_3_0: true,
-  BC_2_7: false,
-}
-
-/** Bagian operational untuk job yang baru dibuat. */
-export function emptyOperationalDetails(): JobOperationalDetails {
+/**
+ * Bagian operational untuk job yang baru dibuat: hanya dokumen BC milik tahap job yang
+ * applicable (job masuk = BC 2.3, turunan = BC 2.5/BC 3.0); tanpa tahap (Local/Road) tidak ada.
+ */
+export function emptyOperationalDetails(stage: JobStage | null): JobOperationalDetails {
   return {
     inbound: emptyLeg(),
     outbound: emptyLeg(),
     invoiceNumber: null,
     customs: {
-      BC_2_3: emptyCustomsDocument(DEFAULT_APPLICABLE.BC_2_3),
-      BC_2_5: emptyCustomsDocument(DEFAULT_APPLICABLE.BC_2_5),
-      BC_3_0: emptyCustomsDocument(DEFAULT_APPLICABLE.BC_3_0),
-      BC_2_7: emptyCustomsDocument(DEFAULT_APPLICABLE.BC_2_7),
+      BC_2_3: emptyCustomsDocument(stage != null && jobStageBcDocument[stage] === 'BC_2_3'),
+      BC_2_5: emptyCustomsDocument(stage != null && jobStageBcDocument[stage] === 'BC_2_5'),
+      BC_3_0: emptyCustomsDocument(stage != null && jobStageBcDocument[stage] === 'BC_3_0'),
+      BC_2_7: emptyCustomsDocument(false),
     },
   }
 }
 
 /**
  * Lengkapi bentuk operational yang belum utuh (mis. customs tanpa BC_2_7) dengan default, tanpa
- * menimpa nilai yang sudah ada. `null`/`undefined` menghasilkan operational kosong.
+ * menimpa nilai yang sudah ada. `null`/`undefined` menghasilkan operational kosong. Default
+ * `applicable` mengikuti tahap job (tanpa tahap = tidak ada dokumen BC applicable).
  */
 export function normalizeOperationalDetails(
   stored: Partial<JobOperationalDetails> | null | undefined,
+  stage: JobStage | null = null,
 ): JobOperationalDetails {
-  const base = emptyOperationalDetails()
+  const base = emptyOperationalDetails(stage)
   if (!stored) return base
   const customs = (stored.customs ?? {}) as Partial<Record<BcDocumentKind, JobCustomsDocument>>
   return {

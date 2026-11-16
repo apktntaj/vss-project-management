@@ -4,7 +4,7 @@ import 'server-only'
 // plus pengecekan rujukan ke aggregate lain. Tanpa aturan bisnis. Job tidak pernah dihapus.
 
 import { withWorkspace } from '@/lib/server/db'
-import type { Job, JobCiplLineInput, JobOperationalDetails } from '@/domain/job/types'
+import type { DerivedJobStage, Job, JobCiplLineInput, JobOperationalDetails } from '@/domain/job/types'
 import type { CiplDocument } from '@/domain/exhibition/cipl-document'
 import {
   JOB_COLUMNS,
@@ -37,6 +37,8 @@ export type NewJobRow = {
   agent_id: string | null
   exhibitor_id: string | null
   created_by_id: string
+  stage: Job['stage']
+  source_job_id: string | null
   operational: JobOperationalDetails
 }
 
@@ -123,6 +125,25 @@ export async function cancelJobGuarded(
   })
   if (error) raise('Gagal membatalkan job', error)
   return data !== null
+}
+
+/**
+ * Job turunan (BC 2.5 / BC 3.0) sebuah job masuk — SEMUA status termasuk CANCELLED, karena
+ * pembuatan ulang manual boleh setelah batal dan tahap yang pernah ada tidak dibuat otomatis lagi.
+ */
+export async function listDerivedJobs(
+  sourceJobId: string,
+): Promise<Array<{ id: string; stage: DerivedJobStage; status: Job['status'] }>> {
+  if (!isUuid(sourceJobId)) return []
+  const { client, workspaceId } = await withWorkspace()
+  const { data, error } = await client
+    .from('jobs')
+    .select('id, stage, status')
+    .eq('workspace_id', workspaceId)
+    .eq('source_job_id', sourceJobId)
+    .returns<Array<{ id: string; stage: DerivedJobStage; status: Job['status'] }>>()
+  if (error) raise('Gagal memuat job turunan', error)
+  return (data ?? []).filter((row) => row.stage === 'DISPOSAL' || row.stage === 'RE_EXPORT')
 }
 
 /** Nama agent (master data payload) atau null bila agent tidak ada di workspace. */

@@ -21,14 +21,20 @@
 import {
   findMilestone,
   summarizeKoli,
+  summarizeKoliCollections,
   type ContainerSize,
   type MilestoneKind,
 } from '@/domain/job/manifest'
-import { formatJobNumber } from '@/domain/job/numbering'
+import { formatJobNumber, jobBaseLabel, jobLabel } from '@/domain/job/numbering'
+import { stageCiplLines } from '@/domain/job/stages'
 import type { InternationalJobJenis, Job } from '@/domain/job/types'
-import { buildManifestView, type ManifestBlockView } from '@/lib/manifest-view'
+import {
+  buildManifestView,
+  pesertaFromLine,
+  type ManifestBlockView,
+  type ManifestPeserta,
+} from '@/lib/manifest-view'
 import { sortJobsForTable } from '@/lib/job-list'
-import { jobLabel } from '@/domain/job/numbering'
 
 export type ManifestCellValue = string | number | { formula: string } | null
 
@@ -247,11 +253,33 @@ const sectionOf = (job: Job): SectionKey =>
 const emptyCells = (): ManifestCellValue[] => Array.from({ length: INWARD_COLUMNS.length }, () => null)
 const fullWidth: Array<[number, number]> = [[0, LAST]]
 
-function inwardSheet(
-  event: ManifestEventInfo,
-  jobs: ReadonlyArray<Job>,
-  exhibitorPic: ReadonlyMap<string, string>,
-): ManifestSheetModel {
+// ---------------------------------------------------------------------------------------------
+// Penyusun sheet umum (dipakai inward & outward)
+// ---------------------------------------------------------------------------------------------
+
+/** Satu blok job: identitas (kepala), peserta (baris koli), Remark, dan Notes. */
+export type ManifestBlock = {
+  section: SectionKey
+  tone: BlockTone
+  jobNo: string
+  headerText: string
+  peserta: ManifestPeserta[]
+  exhibitorLabel: (peserta: ManifestPeserta) => string
+  remarks: string[]
+  notes: Array<{ text: string; highlight: boolean }>
+  /** Permintaan khusus klien: baris pertama blok, disorot merah (inward). */
+  specialInstructions?: string | null
+}
+
+export type ManifestSheetSpec = {
+  name: string
+  subtitle: string
+  emptyBlockText: string
+  noJobsText: string
+  blocks: ManifestBlock[]
+}
+
+function manifestSheet(event: ManifestEventInfo, spec: ManifestSheetSpec): ManifestSheetModel {
   const rows: ManifestRow[] = []
   const merged = (kind: ManifestRowKind, text: string, tone?: BlockTone): ManifestRow => {
     const cells = emptyCells()
@@ -260,7 +288,7 @@ function inwardSheet(
   }
 
   rows.push(merged('TITLE', event.name.toUpperCase()))
-  rows.push(merged('SUBTITLE', 'Exhibits Details For Inward Movement'))
+  rows.push(merged('SUBTITLE', spec.subtitle))
   rows.push(merged('VENUE', formatVenueLine(event)))
 
   // Kepala kolom dua baris: kolom tunggal digabung vertikal oleh perender; "Dimension (cm)"
@@ -279,26 +307,22 @@ function inwardSheet(
   const subtotalRows: number[] = [] // nomor baris Excel (1-based)
 
   for (const section of SECTIONS) {
-    const sectionJobs = sortJobsForTable(
-      jobs.filter((job) => sectionOf(job) === section.key),
-      new Map(),
-    )
-    if (!sectionJobs.length) continue
+    // Blok datang sudah terurut dari penyusunnya; saring per bagian dengan urutan masuk.
+    const sectionBlocks = spec.blocks.filter((block) => block.section === section.key)
+    if (!sectionBlocks.length) continue
     if (section.title) rows.push(merged('SECTION', section.title))
 
-    for (const job of sectionJobs) {
-      const view = buildManifestView(job)
-      rows.push(merged('BLOCK_HEADER', blockHeaderText(job, view), section.tone))
+    for (const block of sectionBlocks) {
+      rows.push(merged('BLOCK_HEADER', block.headerText, block.tone))
 
       const blockStart = rows.length // indeks 0-based baris data pertama
-      for (const peserta of view.peserta) {
+      for (const peserta of block.peserta) {
         const koli = peserta.logistics.koli
         const details = koli.details.length ? koli.details : [null]
         details.forEach((detail, index) => {
           const cells = emptyCells()
           if (index === 0) {
-            const pic = peserta.line.exhibitorId ? exhibitorPic.get(peserta.line.exhibitorId) : undefined
-            cells[COL.exhibitor] = pic && section.key === 'LOCAL' ? `${peserta.name}\nPIC : ${pic}` : peserta.name
+            cells[COL.exhibitor] = block.exhibitorLabel(peserta)
             cells[COL.totalPackage] = summarizeKoli(koli).totalCount
             cells[COL.hall] = peserta.logistics.hall
             cells[COL.booth] = peserta.logistics.booth
@@ -318,31 +342,28 @@ function inwardSheet(
       }
       if (rows.length === blockStart) {
         const cells = emptyCells()
-        cells[COL.exhibitor] = 'Belum ada baris CIPL'
+        cells[COL.exhibitor] = spec.emptyBlockText
         rows.push({ kind: 'DATA', cells })
       }
 
       // Data milik job hanya ditulis di baris pertama blok; sel tidak digabung supaya garis sel tetap ada di tiap baris.
       const first = rows[blockStart]
-      first.cells[COL.jobNo] =
-        formatJobNumber(job.manifestPrefix, job.manifestSeq, null) ?? jobLabel(job)
-      // Notes: satu baris catatan per baris tabel (catatan job lalu catatan manifest).
-      const notes = noteLines(job, view)
-      // Blok dipadatkan agar semua butir Remark (daftar isian tetap) dan semua baris Notes muat.
-      while (rows.length - blockStart < Math.max(REMARK_SLOTS.length, notes.length)) {
+      first.cells[COL.jobNo] = block.jobNo
+      // Blok dipadatkan agar semua butir Remark dan semua baris Notes muat.
+      while (rows.length - blockStart < Math.max(block.remarks.length, block.notes.length)) {
         rows.push({ kind: 'DATA', cells: emptyCells() })
       }
-      remarkRows(view).forEach((text, index) => {
+      block.remarks.forEach((text, index) => {
         rows[blockStart + index].cells[COL.remark] = text
       })
-      notes.forEach((note, index) => {
+      block.notes.forEach((note, index) => {
         const row = rows[blockStart + index]
         row.cells[COL.notes] = note.text
         if (note.highlight) row.highlight = [COL.notes]
       })
       // Special instruction (permintaan khusus klien) milik job: baris pertama, disorot merah sebagai peringatan.
-      if (job.specialInstructions) {
-        first.cells[COL.specialInstructions] = job.specialInstructions
+      if (block.specialInstructions) {
+        first.cells[COL.specialInstructions] = block.specialInstructions
         first.highlight = [...(first.highlight ?? []), COL.specialInstructions]
       }
 
@@ -358,7 +379,7 @@ function inwardSheet(
     }
   }
 
-  if (!jobs.length) rows.push(merged('SECTION', 'BELUM ADA JOB PADA EVENT INI'))
+  if (!spec.blocks.length) rows.push(merged('SECTION', spec.noJobsText))
 
   const total = emptyCells()
   total[COL.exhibitor] = 'TOTAL'
@@ -370,7 +391,7 @@ function inwardSheet(
   rows.push({ kind: 'TOTAL', cells: total })
 
   return {
-    name: 'Inward Manifest',
+    name: spec.name,
     columnWidths: [16, 52, 10, 12, 8, 8, 8, 10, 12, 22, 8, 12, 36, 30],
     rows,
     columnFormats: { [COL.cbm]: '0.000', [COL.weight]: '#,##0.00', [COL.totalPackage]: '0' },
@@ -378,13 +399,139 @@ function inwardSheet(
 }
 
 /**
- * Model workbook inward manifest satu event. `exhibitorPic` memetakan id exhibitor → nama PIC
- * (kontak exhibitor) untuk baris "PIC : …" pada bagian LOCAL.
+ * Model workbook inward manifest satu event: satu blok per job MASUK (BC 2.3 — job turunan tidak
+ * punya blok sendiri karena barangnya bagian dari kiriman yang sama). `exhibitorPic` memetakan id
+ * exhibitor → nama PIC (kontak exhibitor) untuk baris "PIC : …" pada bagian LOCAL.
  */
 export function buildEventManifestWorkbook(
   event: ManifestEventInfo,
   jobs: ReadonlyArray<Job>,
   exhibitorPic: ReadonlyMap<string, string> = new Map(),
 ): ManifestWorkbookModel {
-  return { sheets: [inwardSheet(event, jobs, exhibitorPic)] }
+  const blocks = SECTIONS.flatMap((section) =>
+    sortJobsForTable(
+      jobs.filter((job) => !job.sourceJobId && sectionOf(job) === section.key),
+      new Map(),
+    ).map((job) => {
+      const view = buildManifestView(job)
+      return {
+        section: section.key,
+        tone: section.tone,
+        jobNo: formatJobNumber(job.manifestPrefix, job.manifestSeq, null) ?? jobLabel(job),
+        headerText: blockHeaderText(job, view),
+        peserta: view.peserta,
+        exhibitorLabel: (peserta: ManifestPeserta) => {
+          const pic = peserta.line.exhibitorId
+            ? exhibitorPic.get(peserta.line.exhibitorId)
+            : undefined
+          return pic && section.key === 'LOCAL' ? `${peserta.name}\nPIC : ${pic}` : peserta.name
+        },
+        remarks: remarkRows(view),
+        notes: noteLines(job, view),
+        specialInstructions: job.specialInstructions,
+      } satisfies ManifestBlock
+    }),
+  )
+  return {
+    sheets: [
+      manifestSheet(event, {
+        name: 'Inward Manifest',
+        subtitle: 'Exhibits Details For Inward Movement',
+        emptyBlockText: 'Belum ada baris CIPL',
+        noJobsText: 'BELUM ADA JOB PADA EVENT INI',
+        blocks,
+      }),
+    ],
+  }
+}
+
+// Muatan kepulangan: "LCL", atau "FCL 1X40'HQ" dari kontainer kepulangan.
+function returnLoadLabel(job: Job): string | null {
+  const mode = job.kepulangan?.mode
+  if (!mode) return null
+  if (mode.kind === 'LCL') return 'LCL'
+  return fclLabel(mode.containers.map((container) => CONTAINER_LABEL[container.size]))
+}
+
+const splitNoteText = (text: string) =>
+  text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+/**
+ * Model workbook OUTWARD manifest satu event: satu blok per job re-ekspor (BC 3.0) aktif yang
+ * job masuknya ikut dimuat; barang = baris CIPL job masuk disaring disposisi re-ekspor. Kolom
+ * mengikuti inward (cermin) sampai ada contoh dokumen klien.
+ */
+export function buildEventOutwardManifestWorkbook(
+  event: ManifestEventInfo,
+  jobs: ReadonlyArray<Job>,
+): ManifestWorkbookModel {
+  const byId = new Map(jobs.map((job) => [job.id, job]))
+  const remark = (label: string, value: string | null | undefined) =>
+    value ? `${label}: ${value}` : `${label}:`
+  const blocks = SECTIONS.flatMap((section) =>
+    sortJobsForTable(
+      jobs.filter(
+        (job) =>
+          job.stage === 'RE_EXPORT' &&
+          job.status !== 'CANCELLED' &&
+          job.sourceJobId != null &&
+          byId.has(job.sourceJobId) &&
+          sectionOf(job) === section.key,
+      ),
+      new Map(),
+    ).flatMap((job) => {
+      const source = byId.get(job.sourceJobId!)
+      if (!source) return []
+      const peserta = stageCiplLines(source.ciplLines, 'RE_EXPORT').map(pesertaFromLine)
+      const totals = summarizeKoliCollections(peserta.map((item) => item.logistics.koli))
+      const kepulangan = job.kepulangan
+      const headerText = [
+        (job.party?.name ?? 'Pihak belum ditetapkan').toUpperCase(),
+        kepulangan?.destination?.toUpperCase() ?? null,
+        returnLoadLabel(job),
+        `${totals.totalCount} PKG`,
+        `${formatNumber(totals.weightKg, 2)} KGS`,
+        `${formatNumber(totals.volumeCbm, 3)} CBM`,
+      ]
+        .filter(Boolean)
+        .join(' / ')
+      return [
+        {
+          section: section.key,
+          tone: section.tone,
+          jobNo: formatJobNumber(job.manifestPrefix, job.manifestSeq, null) ?? jobBaseLabel(job),
+          headerText,
+          peserta,
+          exhibitorLabel: (item: ManifestPeserta) => item.name,
+          remarks: [
+            remark('BC 3.0', job.operational.customs.BC_3_0.registrationNumber),
+            remark('Booking', kepulangan?.bookingNumber),
+            remark('Shipping Line', kepulangan?.shippingLine),
+            remark('Vessel', kepulangan?.vessel),
+            remark('ETD', kepulangan?.etd ? ddmmyyyy(kepulangan.etd) : null),
+            remark('ETA', kepulangan?.eta ? ddmmyyyy(kepulangan.eta) : null),
+            remark('Destination', kepulangan?.destination),
+          ],
+          notes: [
+            ...(job.notes ? splitNoteText(job.notes) : []),
+            ...(kepulangan?.notes ?? []).flatMap((note) => splitNoteText(note.text)),
+          ].map((text) => ({ text, highlight: false })),
+        } satisfies ManifestBlock,
+      ]
+    }),
+  )
+  return {
+    sheets: [
+      manifestSheet(event, {
+        name: 'Outward Manifest',
+        subtitle: 'Exhibits Details For Outward Movement',
+        emptyBlockText: 'Belum ada barang re-ekspor',
+        noJobsText: 'BELUM ADA JOB RE-EKSPOR PADA EVENT INI',
+        blocks,
+      }),
+    ],
+  }
 }

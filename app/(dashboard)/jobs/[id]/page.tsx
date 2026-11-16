@@ -18,10 +18,18 @@ import {
   getJob,
   getOperationalDetails,
   listEventExhibitors,
+  listJobSummaries,
   type Exhibitor,
   type Job,
+  type JobSummary,
 } from '@/lib/data-client'
-import { bcDocumentLabels, type BcDocumentKind } from '@/domain/job/types'
+import {
+  bcDocumentLabels,
+  jobStageBcDocument,
+  jobStageLabel,
+  type BcDocumentKind,
+} from '@/domain/job/types'
+import { withStageGoods } from '@/domain/job/stages'
 import { buildManifestView } from '@/lib/manifest-view'
 import { totalDokumen } from '@/domain/exhibition/cipl-document'
 import { JobHeaderDialog } from '@/components/job-detail-cards'
@@ -34,6 +42,8 @@ import {
 } from '@/components/job-document-editor-dialog'
 import { JobTransportDocumentCard } from '@/components/job-transport-document-card'
 import { JobDocumentsCard } from '@/components/job-documents-card'
+import { JobStageCard } from '@/components/job-stage-card'
+import { JobCustomsCard } from '@/components/job-customs-card'
 import { JobLartasCard } from '@/components/job-lartas-card'
 import { JobBillingDialog, JobPartyInvoiceCard } from '@/components/job-party-invoice-card'
 import { JobContextBadge } from '@/components/job-context-badge'
@@ -106,6 +116,11 @@ export default function JobDetail({ params }: { params: { id: string } }) {
     }
   }, [params.id])
   const [exhibitors, setExhibitors] = useState<Exhibitor[]>([])
+  // Rangkaian job BC (job masuk + turunannya) untuk kartu rangkaian; dimuat ulang saat job berubah
+  // atau setelah job turunan baru dibuat manual dari kartu.
+  const [sourceJob, setSourceJob] = useState<Job | null>(null)
+  const [series, setSeries] = useState<JobSummary[]>([])
+  const [seriesRefresh, setSeriesRefresh] = useState(0)
   const [ciplEntryOpen, setCiplEntryOpen] = useState(false)
   // Dialog dokumen sumber yang sedang diedit: INVOICE (tab CIPL) atau TRANSPORT (tab Transport).
   const [documentEdit, setDocumentEdit] = useState<EditableJobDocument | null>(null)
@@ -113,7 +128,6 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   const [headerOpen, setHeaderOpen] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null)
-
   // Tab area kerja aktif disimpan di URL (?tab=muatan|transport|billing) agar bisa dibagikan dan
   // bertahan refresh; dibaca sekali saat mount (pola ?newJob=1 di halaman event).
   const [tab, setTab] = useState<JobDetailTab>('muatan')
@@ -174,6 +188,45 @@ export default function JobDetail({ params }: { params: { id: string } }) {
       active = false
     }
   }, [eventId, jobVersion])
+
+  // Rangkaian job BC: job masuk (sumber barang CIPL) + daftar job turunan aktif satu kiriman.
+  // Hanya untuk job bertahap; Local/Road tidak punya rangkaian.
+  const jobId = job?.id
+  const jobStage = job?.stage ?? null
+  useEffect(() => {
+    if (!jobId || !jobStage) {
+      setSourceJob(null)
+      setSeries([])
+      return
+    }
+    let active = true
+    const current = job
+    const rootId = current.sourceJobId ?? jobId
+    Promise.all([
+      current.sourceJobId ? getJob(current.sourceJobId) : Promise.resolve(current),
+      listJobSummaries({ eventId: current.eventId }),
+    ])
+      .then(([source, summaries]) => {
+        if (!active) return
+        setSourceJob(source)
+        setSeries(
+          summaries.filter(
+            (summary) => summary.sourceJobId === rootId && summary.status !== 'CANCELLED',
+          ),
+        )
+      })
+      .catch((caught) => {
+        if (!active) return
+        setSeries([])
+        toast(
+          caught instanceof Error ? caught.message : 'Rangkaian job tidak dapat dimuat.',
+          'error',
+        )
+      })
+    return () => {
+      active = false
+    }
+  }, [jobId, job?.version, jobStage, seriesRefresh])
   if (loading || !job) {
     if (loadError)
       return (
@@ -211,6 +264,11 @@ export default function JobDetail({ params }: { params: { id: string } }) {
                 (job.manifestPrefix ? `${job.manifestPrefix}.-` : 'No Job belum ada')}
             </h1>
             <StatusBadge status={job.status} />
+            {job.stage && (
+              <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                {jobStageLabel(job.stage)}
+              </span>
+            )}
           </div>
           <dl className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
             <div className="flex items-center gap-1.5">
@@ -268,9 +326,9 @@ export default function JobDetail({ params }: { params: { id: string } }) {
                 className="fixed z-50 w-52 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg"
                 style={{ top: menuAnchor.top, left: menuAnchor.left }}
               >
-                {job.kind === 'INTERNATIONAL' && (
+                {job.stage && (
                   <>
-                    {(['BC_2_3', 'BC_2_5', 'BC_3_0', 'BC_2_7'] as const).map((kind) => (
+                    {[jobStageBcDocument[job.stage]].map((kind) => (
                       <button
                         key={kind}
                         role="menuitem"
@@ -330,6 +388,14 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           <JobNotesCard job={job} onSaved={setJob} />
         </div>
       </div>
+      {job.stage && (
+        <JobStageCard
+          job={job}
+          sourceJob={sourceJob}
+          series={series}
+          onCreated={() => setSeriesRefresh((value) => value + 1)}
+        />
+      )}
       <Tabs value={tab} onValueChange={(value) => selectTab(value as JobDetailTab)}>
         <div className="sticky top-0 z-30 -mx-1 flex items-center justify-between gap-3 border-b bg-white/95 px-1 py-2 backdrop-blur">
           <TabsList className="h-auto gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
@@ -349,7 +415,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
               </TabsTrigger>
             ))}
           </TabsList>
-          {!cancelled && (
+          {!cancelled && (!job.sourceJobId || tab === 'billing') && (
             <button
               type="button"
               onClick={openTabEditor}
@@ -360,7 +426,25 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           )}
         </div>
         <TabsContent value="muatan" className="space-y-6">
-          {hasTabData('muatan', job) ? (
+          {job.sourceJobId ? (
+            // Job turunan: barang selalu diturunkan dari baris CIPL job masuk (baca-saja).
+            (() => {
+              const viewJob = withStageGoods(job, sourceJob)
+              if (viewJob.ciplLines.length === 0) return <EmptyTabState tab="muatan" />
+              return (
+                <>
+                  {isEvent && (
+                    <JobManifestSection
+                      view={buildManifestView(viewJob)}
+                      invoiceNumber={sourceJob?.commercialInvoiceNumber ?? null}
+                      totalAmount={null}
+                    />
+                  )}
+                  <JobBarangCard job={viewJob} onToast={toast} />
+                </>
+              )
+            })()
+          ) : hasTabData('muatan', job) ? (
             <>
               {isEvent && (
                 <JobManifestSection
@@ -416,11 +500,16 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           ) : (
             <EmptyTabState tab="muatan" />
           )}
-          <JobDocumentsCard job={job} kinds={MUATAN_DOCUMENT_KINDS} />
+          {!job.sourceJobId && <JobDocumentsCard job={job} kinds={MUATAN_DOCUMENT_KINDS} />}
         </TabsContent>
         <TabsContent value="transport" className="space-y-6">
-          <JobTransportDocumentCard job={job} />
-          <JobDocumentsCard job={job} kinds={TRANSPORT_DOCUMENT_KINDS} />
+          {job.stage && <JobCustomsCard job={job} onSaved={setJob} />}
+          {!job.sourceJobId && (
+            <>
+              <JobTransportDocumentCard job={job} />
+              <JobDocumentsCard job={job} kinds={TRANSPORT_DOCUMENT_KINDS} />
+            </>
+          )}
         </TabsContent>
         <TabsContent value="billing">
           {hasTabData('billing', job) ? (

@@ -168,6 +168,8 @@ export function buildOperationsDashboard(input: {
   const etaDocsMissing: JobDocsRow[] = []
   const etaMissing: JobEtaMissingRow[] = []
   for (const job of active) {
+    // Kedatangan hanya urusan job masuk (BC 2.3); job turunan tidak punya ETA/dokumen sendiri.
+    if (job.sourceJobId) continue
     const event = eventById.get(job.eventId)
     if (!event || !eventNotEnded(event)) continue
     const eta = jobEta(job)

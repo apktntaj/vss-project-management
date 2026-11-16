@@ -5,6 +5,7 @@
 import {
   invoiceStatuses,
   jobStatuses,
+  jobStages,
   transportModeLabels,
   type InternationalJobJenis,
   type InvoiceStatus,
@@ -134,7 +135,7 @@ const SORT_VALUE: Record<JobSortKey, (job: Job) => string | number | null> = {
   context: (job) => jobContextKinds.indexOf(jobContext(job).kind),
   agent: (job) => (job.party?.kind === 'AGENT' ? job.party.name : null),
   transportMode: (job) => (job.transportMode ? transportModeLabels[job.transportMode] : null),
-  cipl: (job) => CIPL_RANK[deriveCiplStatus(job).status],
+  cipl: (job) => (job.sourceJobId ? null : CIPL_RANK[deriveCiplStatus(job).status]),
   transportDocument: (job) => job.transportDocumentNumber?.trim() || null,
   invoice: (job) => invoiceStatuses.indexOf(job.invoice.status),
   status: (job) => jobStatuses.indexOf(job.status),
@@ -156,6 +157,10 @@ export function sortJobsForTable(
   eventById: ReadonlyMap<string, JobListEvent>,
   sort: JobTableSort | null = null,
 ): Job[] {
+  // Job turunan (BC 2.5/BC 3.0) mengikuti job masuknya: dikelompokkan lewat createdAt + id induk,
+  // lalu dipisah peringkat tahap — selalu tepat di bawah baris induk pada urutan bawaan.
+  const createdAtById = new Map(jobs.map((job) => [job.id, job.createdAt]))
+  const stageRank = (job: Job) => (job.stage ? jobStages.indexOf(job.stage) : -1)
   const ordered = [...jobs].sort((left, right) => {
     if (left.eventId !== right.eventId) {
       const leftStart = eventById.get(left.eventId)?.startsOn ?? ''
@@ -170,7 +175,15 @@ export function sortJobsForTable(
     const leftSeq = left.manifestSeq ?? Number.MAX_SAFE_INTEGER
     const rightSeq = right.manifestSeq ?? Number.MAX_SAFE_INTEGER
     if (leftSeq !== rightSeq) return leftSeq - rightSeq
-    return left.createdAt.localeCompare(right.createdAt)
+    const leftRoot = left.sourceJobId ?? left.id
+    const rightRoot = right.sourceJobId ?? right.id
+    const rootCreated = (id: string, fallback: string) => createdAtById.get(id) ?? fallback
+    const byRootCreated = rootCreated(leftRoot, left.createdAt).localeCompare(
+      rootCreated(rightRoot, right.createdAt),
+    )
+    if (byRootCreated) return byRootCreated
+    if (leftRoot !== rightRoot) return leftRoot.localeCompare(rightRoot)
+    return stageRank(left) - stageRank(right)
   })
   if (!sort) return ordered
 

@@ -142,6 +142,15 @@ describe('buildOperationsDashboard', () => {
     ])
   })
 
+  test('job turunan (BC 2.5/3.0) tanpa ETA tidak masuk etaMissing; job masuk tetap', () => {
+    const operations = dashboard([
+      makeJob({ id: 'job-inbound', stage: 'INBOUND', sourceJobId: null }),
+      makeJob({ id: 'job-derived', stage: 'RE_EXPORT', sourceJobId: 'job-inbound' }),
+    ])
+
+    expect(operations.etaMissing.map((row) => row.jobId)).toEqual(['job-inbound'])
+  })
+
   test('etaDocsMissing: kekurangan CIPL dan nomor angkut, urut menurut ETA', () => {
     const operations = dashboard([
       makeJob({ id: 'job-sea', ...withEta('2026-11-18') }),

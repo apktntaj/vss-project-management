@@ -20,6 +20,7 @@ import {
   writeJob,
 } from '@/features/jobs/use-cases/errors'
 import { authorizeJobWrite } from '@/features/jobs/use-cases/job-guards'
+import { ensureStageJobs } from '@/features/jobs/use-cases/stage-jobs'
 import { applyDocumentExtraction, normalizeOperationalDetails } from '@/domain/job/operational'
 import { exhibitorOnlyJob } from '@/domain/job/validation'
 import { ApiError } from '@/lib/server/errors'
@@ -118,6 +119,9 @@ export async function applyJobExtraction(
 ): Promise<Job> {
   await authorizeJobWrite(currentUser, 'job:update', jobId)
   const job = await loadJobForWrite(jobId, input.version)
+  if (job.sourceJobId) {
+    throw new ApiError(400, 'Dokumen sumber hanya diunggah di job masuk (BC 2.3).')
+  }
   const { operational, fields } = applyDocumentExtraction(job, input)
   const columns: JobWritableColumns = { operational }
   if (fields.transportDocument) columns.transport_document = fields.transportDocument
@@ -144,6 +148,12 @@ export async function saveJobCipl(
   const current = await findJobById(jobId)
   if (!current) throw new ApiError(404, 'Job tidak ditemukan.')
   assertNotCancelled(current)
+  if (current.sourceJobId) {
+    throw new ApiError(
+      400,
+      'CIPL job BC 2.5 / BC 3.0 mengikuti job masuk (BC 2.3). Ubah CIPL di job masuknya.',
+    )
+  }
   let saved: boolean
   try {
     saved = await saveJobCiplGuarded(jobId, input.version, input.ciplDocument, input.lines)
@@ -153,6 +163,8 @@ export async function saveJobCipl(
   const job = await findJobById(jobId)
   if (!job) throw new ApiError(404, 'Job tidak ditemukan.')
   if (!saved) throw new ApiError(409, STALE_VERSION_MESSAGE)
+  // Barang berubah → pastikan job tahap yang diperlukan ada (tanpa membuat ulang yang batal).
+  if (job.stage === 'INBOUND') await ensureStageJobs(currentUser, job)
   return job
 }
 
@@ -163,9 +175,9 @@ export async function saveJobInward(
   version: number,
   inward: InwardManifest,
 ): Promise<Job> {
-  await authorizeJobWrite(currentUser, 'job:update', jobId)
   const job = await loadJobForWrite(jobId, version)
   if (job.kind === 'LOCAL') throw new ApiError(400, 'Job Local tidak memiliki dokumen kepabeanan.')
+  if (job.sourceJobId) throw new ApiError(400, 'Inward manifest hanya ada di job masuk (BC 2.3).')
   return writeJob(jobId, version, { inward })
 }
 
@@ -177,5 +189,10 @@ export async function saveJobKepulangan(
   kepulangan: JobReturn | null,
 ): Promise<Job> {
   await authorizeJobWrite(currentUser, 'job:update', jobId)
+  const job = await findJobById(jobId)
+  if (!job) throw new ApiError(404, 'Job tidak ditemukan.')
+  if (job.stage === 'INBOUND' || job.stage === 'DISPOSAL') {
+    throw new ApiError(400, 'Kepulangan diisi di job re-ekspor (BC 3.0).')
+  }
   return writeJob(jobId, version, { kepulangan })
 }

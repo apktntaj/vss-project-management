@@ -15,6 +15,7 @@ export {
   findAgentName,
   findJobById,
   insertJob,
+  listDerivedJobs,
   saveJobCiplGuarded,
   updateJobGuarded,
 } from './job-crud'

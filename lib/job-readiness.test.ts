@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { buildJobReadiness } from './job-readiness'
 import type { Job } from '@/domain/job/types'
 
-// Job minimal draft INTERNATIONAL: operational kosong dinormalisasi ke default (BC 2.3 & 3.0
-// applicable, 2.5 & 2.7 tidak; CIPL MISSING; tagihan NOT_READY).
+// Job minimal draft INTERNATIONAL tahap INBOUND: operational kosong dinormalisasi ke default
+// (hanya BC 2.3 applicable; CIPL MISSING; tagihan NOT_READY).
 const draft = {
   id: 'job-1',
   version: 1,
@@ -12,6 +12,8 @@ const draft = {
   kind: 'INTERNATIONAL',
   jobNumber: null,
   manifestPrefix: 'S',
+  stage: 'INBOUND',
+  sourceJobId: null,
   transportDocumentType: null,
   transportDocumentNumber: null,
   invoice: { number: null, amount: null, currency: null, status: 'NOT_READY', sentAt: null, paidAt: null },
@@ -33,7 +35,7 @@ assert.equal(empty.transport.detail, 'Belum ada')
 assert.equal(empty.cipl.state, 'todo')
 assert.equal(empty.cipl.detail, 'Belum ada')
 assert.equal(empty.customs.state, 'todo')
-assert.equal(empty.customs.detail, '0/2 selesai')
+assert.equal(empty.customs.detail, '0/1 selesai')
 assert.equal(empty.invoice.state, 'todo')
 assert.equal(empty.invoice.detail, 'Belum siap')
 assert.equal(buildJobReadiness(draft).doneCount, 0)
@@ -82,6 +84,7 @@ const partial = byKey({
   operational: {
     customs: {
       BC_2_3: { applicable: true, status: 'COMPLETED', ajuNumber: null, registrationNumber: null, registrationDate: null, warehouseName: null },
+      BC_3_0: { applicable: true, status: 'NOT_STARTED', ajuNumber: null, registrationNumber: null, registrationDate: null, warehouseName: null },
     },
   },
   invoice: { ...draft.invoice, status: 'SENT' },
@@ -106,5 +109,17 @@ const noCustoms = byKey({
 } as unknown as Job).customs
 assert.equal(noCustoms.state, 'done')
 assert.equal(noCustoms.detail, 'Tidak diperlukan')
+
+// Job turunan (BC 3.0): CIPL & angkut ikut job masuk, dokumen BC-nya sendiri yang dihitung.
+const derived = byKey({
+  ...draft,
+  stage: 'RE_EXPORT',
+  sourceJobId: 'job-0',
+} as unknown as Job)
+assert.equal(derived.cipl.detail, 'Ikut job masuk')
+assert.equal(derived.cipl.state, 'done')
+assert.equal(derived.transport.detail, 'Tidak diperlukan')
+assert.equal(derived.transport.state, 'done')
+assert.equal(derived.customs.detail, '0/1 selesai')
 
 console.log('job readiness passed')

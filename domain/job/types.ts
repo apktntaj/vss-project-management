@@ -62,9 +62,27 @@ export const bcDocumentLabels: Record<BcDocumentKind, string> = {
   BC_2_7: 'BC 2.7',
 }
 
+// Tahap job dalam rangkaian dokumen BC: kiriman international non-road terbelah menjadi satu job
+// masuk (INBOUND = BC 2.3) plus job turunan per dokumen keluar — DISPOSAL = BC 2.5 (barang
+// disposal), RE_EXPORT = BC 3.0 (barang kembali). Road Shipment dan Local tidak punya tahap.
+export const jobStages = ['INBOUND', 'DISPOSAL', 'RE_EXPORT'] as const
+export type JobStage = (typeof jobStages)[number]
+export const derivedJobStages = ['DISPOSAL', 'RE_EXPORT'] as const
+export type DerivedJobStage = (typeof derivedJobStages)[number]
+
+export const jobStageBcDocument: Record<JobStage, BcDocumentKind> = {
+  INBOUND: 'BC_2_3',
+  DISPOSAL: 'BC_2_5',
+  RE_EXPORT: 'BC_3_0',
+}
+
+/** Label singkat tahap: 'BC 2.3' | 'BC 2.5' | 'BC 3.0'. */
+export const jobStageLabel = (stage: JobStage) => bcDocumentLabels[jobStageBcDocument[stage]]
+
 // ---------------------------------------------------------------------------------------------
 // Bagian dalam aggregate Job. Dibaca-tulis bersama job dan dijaga `domain/job/validation.ts`.
-// Model 2026-11-02: job = satu kiriman = satu B/L/AWB = satu tagihan ke satu pihak.
+// Model 2026-11-02 (revisi 2026-11-16): kiriman = rangkaian 1 job masuk (BC 2.3) + 0..2 job
+// turunan (BC 2.5 / BC 3.0) dari disposisi barang CIPL; tiap job tetap satu tagihan sendiri.
 // ---------------------------------------------------------------------------------------------
 
 export const transportModes = ['SEA', 'AIR', 'ROAD'] as const
@@ -95,6 +113,16 @@ export const jobCustomsStatuses = [
   'COMPLETED',
   'ON_HOLD',
 ] as const
+
+export const jobCustomsStatusLabels: Record<(typeof jobCustomsStatuses)[number], string> = {
+  NOT_STARTED: 'Belum mulai',
+  PREPARING: 'Disiapkan',
+  SUBMITTED: 'Diajukan',
+  REGISTERED: 'Terdaftar',
+  RELEASED: 'Keluar (SPPB)',
+  COMPLETED: 'Selesai',
+  ON_HOLD: 'Ditahan',
+}
 
 /** Status dokumen BC. Penagihan TIDAK di sini: satu job = satu tagihan (`Job.invoice`). */
 export type JobCustomsDocument = {
@@ -218,6 +246,10 @@ export type Job = {
   status: JobStatus
   /** Terisi tepat bila `status === 'CANCELLED'`. */
   cancellation: JobCancellation | null
+  /** Tahap dokumen BC; null untuk Local dan Road Shipment. DISPOSAL/RE_EXPORT = job turunan. */
+  stage: JobStage | null
+  /** Job masuk (BC 2.3) tempat job turunan diturunkan; terisi tepat bila stage DISPOSAL/RE_EXPORT. */
+  sourceJobId: string | null
 
   agentId: string | null
   exhibitorId: string | null
@@ -272,4 +304,6 @@ export type JobSummary = Pick<
   | 'kind'
   | 'internationalJenis'
   | 'assignedToId'
+  | 'stage'
+  | 'sourceJobId'
 > & { partyName: string | null }

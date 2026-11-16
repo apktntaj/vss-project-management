@@ -11,6 +11,8 @@ import type { EventTuntasStatus } from '@/domain/event/types'
 export type TuntasJobShape = {
   /** Job batal tidak ikut hitungan tuntas (tidak ada lagi pekerjaan yang diharapkan). */
   status?: string | null
+  /** Tahap dokumen BC (INBOUND/DISPOSAL/RE_EXPORT); null untuk Local/Road Shipment. */
+  stage?: string | null
   kind?: string | null
   internationalJenis?: string | null
   /** Blok kepulangan (JobReturn) — cukup diketahui terisi atau kosong. */
@@ -23,14 +25,9 @@ export type TuntasJobShape = {
   } | null
 }
 
-// Jenis international yang mewajibkan barang kembali ( Permanent Import tidak; Local tidak;
-// job lama tanpa kind tidak — kepulangan bukan bagian model lamanya).
-const JENIS_WAJIB_KEPULANGAN = new Set([
-  'TPPB_BC_23',
-  'ATA_CARNET',
-  'TEMPORARY_IMPORT',
-  'ROAD_SHIPMENT',
-])
+// Kepulangan wajib hanya pada job re-ekspor (BC 3.0 — barang keluar negeri) dan Road Shipment
+// (kiriman road kembali tanpa terbelah tahap). Job masuk BC 2.3 dan job disposal BC 2.5 tidak
+// punya kepulangan; job lama tanpa stage mengikuti jenis international-nya.
 
 // Dokumen BC dianggap selesai bila staff menutupnya (status COMPLETED) ATAU bukti registrasi
 // DJBC sudah terisi — dua sinyal penutupan yang independen di data live.
@@ -49,7 +46,10 @@ export function jobTuntas(job: TuntasJobShape): boolean {
     return dokumenBcSelesai(dokumen)
   })
   const wajibKepulangan =
-    job.kind === 'INTERNATIONAL' && JENIS_WAJIB_KEPULANGAN.has(job.internationalJenis ?? '')
+    job.stage === 'RE_EXPORT' ||
+    (job.stage == null &&
+      job.kind === 'INTERNATIONAL' &&
+      job.internationalJenis === 'ROAD_SHIPMENT')
   const kepulanganTercatat = job.kepulangan != null && typeof job.kepulangan === 'object'
   return semuaDokumenSelesai && (!wajibKepulangan || kepulanganTercatat)
 }

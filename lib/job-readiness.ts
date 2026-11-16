@@ -5,7 +5,7 @@
 import { normalizeOperationalDetails } from '@/domain/job/operational'
 import { deriveCiplStatus, type CiplStatus, type CiplStatusSummary } from '@/domain/job/cipl-status'
 import { invoiceStatusLabels, type InvoiceStatus, type Job } from '@/domain/job/types'
-import { jobLabel } from '@/domain/job/numbering'
+import { jobBaseLabel } from '@/domain/job/numbering'
 
 /** Tab area kerja halaman detail job; state aktif disimpan di URL (`?tab=`). */
 export type JobDetailTab = 'muatan' | 'transport' | 'billing'
@@ -53,7 +53,7 @@ function customsStep(job: Job): JobReadinessStep {
       state: 'done',
       tab: 'transport',
     }
-  const documents = Object.values(normalizeOperationalDetails(job.operational).customs)
+  const documents = Object.values(normalizeOperationalDetails(job.operational, job.stage).customs)
   const required = documents.filter((document) => document.applicable).length
   const completed = documents.filter(
     (document) => document.applicable && document.status === 'COMPLETED',
@@ -72,30 +72,48 @@ function customsStep(job: Job): JobReadinessStep {
 /** Lima langkah milestone job: nomor, dokumen angkut, CIPL, dokumen BC, tagihan. */
 export function buildJobReadiness(job: Job): JobReadiness {
   const cipl = deriveCiplStatus(job)
+  // Job turunan tidak punya proses masuk sendiri: barang dan angkut ikut job masuk (BC 2.3).
+  const derived = job.sourceJobId != null
   const steps: JobReadinessStep[] = [
     {
       key: 'number',
       label: 'No Job',
-      detail: jobLabel(job),
+      detail: jobBaseLabel(job),
       state: job.jobNumber ? 'done' : 'todo',
       tab: 'header',
     },
-    {
-      key: 'transport',
-      label: 'B/L · AWB',
-      detail: job.transportDocumentNumber
-        ? `${job.transportDocumentType ?? ''} ${job.transportDocumentNumber}`.trim()
-        : 'Belum ada',
-      state: job.transportDocumentNumber ? 'done' : 'todo',
-      tab: 'transport',
-    },
-    {
-      key: 'cipl',
-      label: 'CIPL',
-      detail: ciplStepDetail(cipl),
-      state: ciplStepStates[cipl.status],
-      tab: 'muatan',
-    },
+    derived
+      ? {
+          key: 'transport',
+          label: 'B/L · AWB',
+          detail: 'Tidak diperlukan',
+          state: 'done',
+          tab: 'transport',
+        }
+      : {
+          key: 'transport',
+          label: 'B/L · AWB',
+          detail: job.transportDocumentNumber
+            ? `${job.transportDocumentType ?? ''} ${job.transportDocumentNumber}`.trim()
+            : 'Belum ada',
+          state: job.transportDocumentNumber ? 'done' : 'todo',
+          tab: 'transport',
+        },
+    derived
+      ? {
+          key: 'cipl',
+          label: 'CIPL',
+          detail: 'Ikut job masuk',
+          state: 'done',
+          tab: 'muatan',
+        }
+      : {
+          key: 'cipl',
+          label: 'CIPL',
+          detail: ciplStepDetail(cipl),
+          state: ciplStepStates[cipl.status],
+          tab: 'muatan',
+        },
     customsStep(job),
     {
       key: 'invoice',

@@ -27,8 +27,8 @@ const hasTabDataBy: Record<DetailTab, (job: Job) => boolean> = {
     deriveCiplStatus(job).status !== 'MISSING' || job.inward !== null || job.kepulangan !== null,
   // Dokumen angkut, leg perjalanan, logistik, atau dokumen BC yang sudah diubah dari default.
   transport: (job) => {
-    const operational = normalizeOperationalDetails(job.operational)
-    const defaults = emptyOperationalDetails().customs
+    const operational = normalizeOperationalDetails(job.operational, job.stage)
+    const defaults = emptyOperationalDetails(job.stage).customs
     return (
       job.transportDocument !== null ||
       Boolean(job.transportDocumentType || job.transportDocumentNumber) ||

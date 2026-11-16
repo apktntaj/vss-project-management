@@ -4,7 +4,7 @@ import 'server-only'
 // Alasan wajib (dijaga skema di route) dan dicatat atomik bersama perubahan status (fungsi DB
 // `cancel_job`). Setelah batal, semua perintah tulis job menolak dengan 409 (lihat `errors.ts`).
 
-import { cancelJobGuarded, findJobById } from '@/features/jobs/repository'
+import { cancelJobGuarded, findJobById, listDerivedJobs } from '@/features/jobs/repository'
 import {
   STALE_VERSION_MESSAGE,
   assertNotCancelled,
@@ -22,6 +22,11 @@ export async function cancelJob(
   input: JobCancelInput,
 ): Promise<Job> {
   await authorizeJobWrite(currentUser, 'job:cancel', jobId)
+  // Job masuk tidak boleh batal selama masih ada job BC 2.5 / BC 3.0 aktif dari kiriman ini.
+  const derived = await listDerivedJobs(jobId)
+  if (derived.some((job) => job.status !== 'CANCELLED')) {
+    throw new ApiError(409, 'Batalkan dulu job BC 2.5 / BC 3.0 dari kiriman ini.')
+  }
   let cancelled: boolean
   try {
     cancelled = await cancelJobGuarded(jobId, input.version, currentUser.id, input.reason)

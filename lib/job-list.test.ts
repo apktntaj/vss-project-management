@@ -53,6 +53,16 @@ assert.deepEqual(
   [s1.id, s2.id, sNone.id, a1.id, loc.id, oldJob.id],
 )
 
+// Job turunan (mirror nomor induk, dibuat belakangan) tepat di bawah job masuknya: INBOUND, DISPOSAL, RE_EXPORT.
+const inbound = job({ manifestSeq: 7, jobNumber: 'S.07/Q', stage: 'INBOUND', sourceJobId: null })
+const reExport = job({ manifestSeq: 7, jobNumber: 'S.07/Q', stage: 'RE_EXPORT', sourceJobId: inbound.id })
+const disposal = job({ manifestSeq: 7, jobNumber: 'S.07/Q', stage: 'DISPOSAL', sourceJobId: inbound.id })
+const otherSeven = job({ manifestSeq: 8, jobNumber: 'S.08/Q', stage: 'INBOUND', sourceJobId: null })
+assert.deepEqual(
+  sortJobsForTable([reExport, otherSeven, disposal, inbound], events).map((item) => item.id),
+  [inbound.id, disposal.id, reExport.id, otherSeven.id],
+)
+
 const today = new Date('2026-11-02T10:00:00Z')
 assert.equal(isEventActive(events.get('old'), today), false)
 assert.equal(isEventActive(events.get('new'), today), true)

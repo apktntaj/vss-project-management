@@ -26,6 +26,7 @@ import type {
 } from '@/domain/ticket/types'
 import type { Agent, EventAgent } from '@/domain/agent/types'
 import type {
+  DerivedJobStage,
   InternationalJobJenis,
   Job,
   JobCiplLineInput,
@@ -61,6 +62,7 @@ export type { Agent, EventAgent } from '@/domain/agent/types'
 export type { Exhibitor, ExhibitorContact, ExhibitorKind } from '@/domain/exhibitor/types'
 export type {
   BcDocumentKind,
+  DerivedJobStage,
   InternationalJobJenis,
   InvoiceStatus,
   Job,
@@ -72,6 +74,7 @@ export type {
   JobKind,
   JobOperationalDetails,
   JobParty,
+  JobStage,
   JobStatus,
   JobSummary,
   JobTransportLeg,
@@ -249,20 +252,25 @@ async function saveFile(file: StoredFile) {
 }
 
 /**
- * Unduh inward manifest satu event (Excel, format dokumen klien). Mengembalikan isi file + nama
- * file dari server; pemanggil yang memicu unduhan di browser.
+ * Unduh manifest satu event (Excel, format dokumen klien): `inward` ( barang datang) atau
+ * `outward` (barang re-ekspor). Mengembalikan isi file + nama file dari server; pemanggil yang
+ * memicu unduhan di browser.
  */
-export async function downloadEventManifest(eventId: string): Promise<{ blob: Blob; filename: string }> {
-  const response = await fetch(`/api/events/${encodeURIComponent(eventId)}/manifest-export`, {
-    cache: 'no-store',
-  })
+export async function downloadEventManifest(
+  eventId: string,
+  direction: 'inward' | 'outward' = 'inward',
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(
+    `/api/events/${encodeURIComponent(eventId)}/manifest-export?direction=${direction}`,
+    { cache: 'no-store' },
+  )
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { error?: string } | null
     throw new Error(body?.error ?? 'Manifest tidak dapat diekspor.')
   }
   const disposition = response.headers.get('Content-Disposition') ?? ''
   const encoded = /filename\*=UTF-8''([^;]+)/.exec(disposition)?.[1]
-  const filename = encoded ? decodeURIComponent(encoded) : 'INWARD-MANIFEST.xlsx'
+  const filename = encoded ? decodeURIComponent(encoded) : `${direction.toUpperCase()}-MANIFEST.xlsx`
   return { blob: await response.blob(), filename }
 }
 
@@ -1058,6 +1066,14 @@ export function cancelJob(job: JobRef, reason: string): Promise<Job> {
   return jobsRequest<Job>(jobPath(job.id, '/cancel'), {
     method: 'POST',
     body: JSON.stringify({ version: job.version, reason }),
+  })
+}
+
+/** Buat job turunan (BC 2.5 / BC 3.0) dari job masuk — override manual operator. */
+export function createStageJob(sourceJobId: string, stage: DerivedJobStage): Promise<Job> {
+  return jobsRequest<Job>(jobPath(sourceJobId, '/stage-jobs'), {
+    method: 'POST',
+    body: JSON.stringify({ stage }),
   })
 }
 

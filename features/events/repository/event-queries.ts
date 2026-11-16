@@ -38,6 +38,7 @@ type TuntasJobRow = {
   status: string
   kind: string
   international_jenis: string | null
+  stage: string | null
   kepulangan: unknown
   operational: TuntasJobShape['operational']
 }
@@ -48,7 +49,7 @@ async function fetchJobsGroupedByEvent(
 ): Promise<Map<string, TuntasJobShape[]>> {
   const { data, error } = await client
     .from('jobs')
-    .select('event_id, status, kind, international_jenis, kepulangan, operational')
+    .select('event_id, status, kind, international_jenis, stage, kepulangan, operational')
     .eq('workspace_id', workspaceId)
     .returns<TuntasJobRow[]>()
 
@@ -62,6 +63,7 @@ async function fetchJobsGroupedByEvent(
       status: row.status,
       kind: row.kind,
       internationalJenis: row.international_jenis,
+      stage: row.stage,
       kepulangan: row.kepulangan,
       operational: row.operational,
     })
