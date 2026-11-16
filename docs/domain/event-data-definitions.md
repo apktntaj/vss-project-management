@@ -362,6 +362,27 @@ prosesEvent(e, hariIni):
   gunakan e.siklusHidup untuk penyaringan daftar dan gerbang pembuatan job
 ```
 
+### `SuratPenunjukan` — **2026-11-16**
+
+```text
+SuratPenunjukan terdiri dari:
+  lampiran      : AttachmentId (PDF/JPG/PNG, ≤ 10 MB)
+  namaFile      : Text
+  diunggahPada  : Waktu
+
+Event punya nol atau satu SuratPenunjukan.
+```
+
+**Interpretasi** — surat resmi dari EO yang menunjuk VSS menangani pameran. Daftar event
+disusun per tahun dari riwayat pameran tahun lalu, jadi event bisa ada lebih dulu sebelum
+penunjukannya resmi; kolom "Surat Penunjukan" di daftar event menunjukkan event mana yang sudah
+punya bukti. Disimpan sebagai baris `attachments` (`owner_type = 'EVENT'`,
+`kind = 'SURAT_PENUNJUKAN'`) + objek di bucket `attachments`; tidak ada kolom di `events`.
+Unggah ulang menggantikan surat lama (surat baru disimpan dulu, baru surat lama dihapus).
+Surat dihitung sebagai data turunan: event bersurat tidak bisa dihapus keras.
+Unggah/hapus = `event:update` + pengelola event (PIC, penerima akses, admin), hanya lewat form
+buat/edit event; tabel event dan detail event hanya menampilkan surat (klik untuk unduh).
+
 ## 4. Invariant lintas konsep
 
 - **I-1:** `mulai ≤ selesai` (E-2).

@@ -39,7 +39,7 @@ import { JobBillingDialog, JobPartyInvoiceCard } from '@/components/job-party-in
 import { JobContextBadge } from '@/components/job-context-badge'
 import { JobDetailSkeleton } from '@/components/loading-skeletons'
 import { JobReadinessBar } from '@/components/job-readiness-bar'
-import { JobNotesCard } from '@/components/job-notes-card'
+import { JobNotesCard, JobSpecialInstructionsCard } from '@/components/job-notes-card'
 import { CancelJobDialog } from '@/components/cancel-job-dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { date, downloadCustomsWorkbook, label } from '@/components/job-row'
@@ -325,7 +325,10 @@ export default function JobDetail({ params }: { params: { id: string } }) {
       )}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
         <JobReadinessBar job={job} activeTab={tab} onNavigate={navigateReadiness} />
-        <JobNotesCard job={job} onSaved={setJob} />
+        <div className="flex flex-col gap-4">
+          <JobSpecialInstructionsCard job={job} onSaved={setJob} />
+          <JobNotesCard job={job} onSaved={setJob} />
+        </div>
       </div>
       <Tabs value={tab} onValueChange={(value) => selectTab(value as JobDetailTab)}>
         <div className="sticky top-0 z-30 -mx-1 flex items-center justify-between gap-3 border-b bg-white/95 px-1 py-2 backdrop-blur">

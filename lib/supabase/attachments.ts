@@ -2,7 +2,7 @@ import 'server-only'
 
 import { getSupabaseAdmin } from '@/lib/supabase/admin'
 
-export const attachmentOwners = ['JOB'] as const
+export const attachmentOwners = ['JOB', 'EVENT'] as const
 export type AttachmentOwner = (typeof attachmentOwners)[number]
 
 type AttachmentRow = {
@@ -93,6 +93,62 @@ export async function listAttachmentsByOwner(
     fileSize: row.file_size,
     createdAt: row.created_at,
   }))
+}
+
+/** Metadata lampiran ber-`kind` tertentu untuk banyak pemilik sekaligus (satu query), terbaru dulu. */
+export async function listAttachmentsForOwners(
+  ownerType: AttachmentOwner,
+  ownerIds: ReadonlyArray<string>,
+  kind: string,
+): Promise<Array<AttachmentMeta & { ownerId: string }>> {
+  if (!ownerIds.length) return []
+  const workspace_id = await workspaceId()
+  const { data, error } = await getSupabaseAdmin()
+    .from('attachments')
+    .select('id, owner_id, kind, file_name, mime_type, file_size, created_at')
+    .eq('workspace_id', workspace_id)
+    .eq('owner_type', ownerType)
+    .eq('kind', kind)
+    .in('owner_id', [...ownerIds])
+    .order('created_at', { ascending: false })
+    .returns<
+      Array<Pick<AttachmentRow, 'id' | 'owner_id' | 'kind' | 'file_name' | 'mime_type' | 'file_size' | 'created_at'>>
+    >()
+  if (error) throw new Error(`Lampiran tidak dapat dimuat: ${error.message}`)
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    ownerId: row.owner_id,
+    kind: row.kind,
+    fileName: row.file_name,
+    mimeType: row.mime_type,
+    fileSize: row.file_size,
+    createdAt: row.created_at,
+  }))
+}
+
+/** Hapus lampiran (objek bucket lalu baris metadata). Id yang tidak ada diabaikan. */
+export async function deleteAttachments(ids: ReadonlyArray<string>): Promise<void> {
+  if (!ids.length) return
+  const workspace_id = await workspaceId()
+  const admin = getSupabaseAdmin()
+  const { data, error } = await admin
+    .from('attachments')
+    .select('storage_path')
+    .eq('workspace_id', workspace_id)
+    .in('id', [...ids])
+    .returns<Array<Pick<AttachmentRow, 'storage_path'>>>()
+  if (error) throw new Error(`Lampiran tidak dapat dimuat: ${error.message}`)
+  const paths = (data ?? []).map((row) => row.storage_path)
+  if (paths.length) {
+    const { error: removeError } = await admin.storage.from('attachments').remove(paths)
+    if (removeError) throw new Error(`Lampiran tidak dapat dihapus: ${removeError.message}`)
+  }
+  const { error: deleteError } = await admin
+    .from('attachments')
+    .delete()
+    .eq('workspace_id', workspace_id)
+    .in('id', [...ids])
+  if (deleteError) throw new Error(`Metadata lampiran tidak dapat dihapus: ${deleteError.message}`)
 }
 
 export async function downloadAttachment(id: string) {

@@ -1,4 +1,5 @@
 import type { Role } from '@/domain/auth/types'
+import type { EventAppointmentLetter } from '@/domain/event/appointment-letter'
 
 export type EventDisplayStatus = 'unscheduled' | 'soon' | 'ongoing' | 'done'
 export type EventLifecycle = 'ACTIVE' | 'CANCELLED' | 'ARCHIVED'
@@ -42,6 +43,8 @@ export type EventListItem = {
   jobCount: number
   tuntasStatus: EventTuntasStatus
   unfinishedJobs: number
+  /** Surat penunjukan dari EO; null bila belum diunggah. */
+  appointmentLetter: EventAppointmentLetter | null
 }
 
 // Hasil daftar: baris yang sudah tersaring. Halaman events hanya membutuhkan daftar ini; ringkasan

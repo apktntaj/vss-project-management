@@ -232,6 +232,30 @@ describe('buildOperationsDashboard', () => {
     ])
   })
 
+  test('specialInstructions: dikelompokkan per event, termasuk event selesai; job selesai/batal/kosong tidak', () => {
+    const operations = dashboard(
+      [
+        makeJob({ id: 'job-b', eventId: 'event-a', jobNumber: 'S.02', specialInstructions: 'Urgent re-export' }),
+        makeJob({ id: 'job-a', eventId: 'event-a', jobNumber: 'S.01', specialInstructions: ' Butuh vacuum pack ' }),
+        makeJob({ id: 'job-lama', eventId: 'event-lama', specialInstructions: 'Forklift 5 ton' }),
+        makeJob({ id: 'job-done', eventId: 'event-a', status: 'COMPLETED', specialInstructions: 'x' }),
+        makeJob({ id: 'job-batal', eventId: 'event-a', status: 'CANCELLED', specialInstructions: 'x' }),
+        makeJob({ id: 'job-kosong', eventId: 'event-a', specialInstructions: '   ' }),
+      ],
+      [
+        makeEvent({ id: 'event-a', name: 'A', startsOn: '2026-11-20', endsOn: '2026-11-22' }),
+        makeEvent({ id: 'event-lama', name: 'Lama', startsOn: '2026-11-01', endsOn: '2026-11-14' }),
+      ],
+    )
+
+    expect(
+      operations.specialInstructions.map((group) => [group.eventId, group.jobs.map((job) => [job.jobId, job.text])]),
+    ).toEqual([
+      ['event-lama', [['job-lama', 'Forklift 5 ton']]],
+      ['event-a', [['job-a', 'Butuh vacuum pack'], ['job-b', 'Urgent re-export']]],
+    ])
+  })
+
   test('wibDateOf: instan UTC menjelang tengah malam WIB tetap tanggal berikutnya', () => {
     expect(wibDateOf(new Date('2026-11-14T17:00:00.000Z'))).toBe('2026-11-15')
   })

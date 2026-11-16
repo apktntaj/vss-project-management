@@ -18,6 +18,8 @@ import type {
   EventNameCount,
   EventScheduleRef,
 } from '@/domain/event/types'
+import { APPOINTMENT_LETTER_KIND } from '@/domain/event/appointment-letter'
+import { listAttachmentsForOwners } from '@/lib/supabase/attachments'
 import {
   deriveDisplayStatus,
   firstRelation,
@@ -244,6 +246,7 @@ export async function queryEventList(q: EventListQuery): Promise<EventListPage> 
     jobCount: 0,
     tuntasStatus: 'TANPA_JOB',
     unfinishedJobs: 0,
+    appointmentLetter: null,
   }))
 
   // Pencarian 5-field di JS (lihat catatan di atas): salah-satu-cocok pada name/alias/venue/EO/PIC.
@@ -277,11 +280,23 @@ export async function queryEventList(q: EventListQuery): Promise<EventListPage> 
   // Rollup tuntas per baris (badge "Belum tuntas" + peringatan arsip) — satu query jobs, digabung
   // di JS karena bentuknya jsonb lintas generasi.
   const jobsByEvent = await fetchJobsGroupedByEvent(client, workspaceId)
+  // Surat penunjukan EO: satu query lampiran untuk seluruh baris tampil (terbaru dulu = surat aktif).
+  const letters = await listAttachmentsForOwners(
+    'EVENT',
+    visibleItems.map((item) => item.id),
+    APPOINTMENT_LETTER_KIND,
+  )
+  const letterByEvent = new Map<string, (typeof letters)[number]>()
+  for (const letter of letters) if (!letterByEvent.has(letter.ownerId)) letterByEvent.set(letter.ownerId, letter)
   for (const item of visibleItems) {
     const jobs = jobsByEvent.get(item.id) ?? []
     item.jobCount = jobs.length
     item.tuntasStatus = eventTuntas(jobs)
     item.unfinishedJobs = hitungJobBelumTuntas(jobs)
+    const letter = letterByEvent.get(item.id)
+    item.appointmentLetter = letter
+      ? { attachmentId: letter.id, fileName: letter.fileName, uploadedAt: letter.createdAt }
+      : null
   }
 
   return { items: visibleItems }

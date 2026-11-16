@@ -255,6 +255,8 @@ export type Job = {
   emptyStorage: string | null
   reExport: string | null
   notes: string | null
+  /** Permintaan khusus klien (mis. "butuh vacuum pack", "urgent re-export"): peringatan di dashboard & manifest. */
+  specialInstructions: string | null
   createdAt: string
   updatedAt: string
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, type KeyboardEvent } from 'react'
-import { Pencil, Plus } from 'lucide-react'
+import { AlertTriangle, Pencil, Plus } from 'lucide-react'
 
 import { saveJobOperationalDetails, type Job } from '@/lib/data-client'
 
@@ -9,35 +9,83 @@ function notify(message: string, tone: 'success' | 'error') {
   window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
 }
 
+type TextField = 'notes' | 'specialInstructions'
+
+type FieldCopy = {
+  title: string
+  placeholder: string
+  maxLength: number
+  empty: string
+  add: string
+  saved: string
+  failed: string
+  /** Isi tampil sebagai peringatan (permukaan amber + ikon). */
+  warning: boolean
+}
+
+const COPY: Record<TextField, FieldCopy> = {
+  notes: {
+    title: 'Catatan',
+    placeholder: 'Catatan operasional job',
+    maxLength: 5000,
+    empty: 'Tidak ada catatan.',
+    add: 'Tambah catatan',
+    saved: 'Catatan job disimpan.',
+    failed: 'Catatan tidak dapat disimpan.',
+    warning: false,
+  },
+  specialInstructions: {
+    title: 'Special instructions',
+    placeholder: 'Permintaan khusus klien, mis. butuh vacuum pack, urgent re-export',
+    maxLength: 1000,
+    empty: 'Tidak ada special instruction.',
+    add: 'Tambah special instruction',
+    saved: 'Special instruction disimpan.',
+    failed: 'Special instruction tidak dapat disimpan.',
+    warning: true,
+  },
+}
+
 /**
- * Catatan job (`job.notes`), diedit di tempat. Kosong: hanya ajakan kecil "Tambah catatan" agar
- * tidak berisik; terisi: tampil dipotong tiga baris, klik untuk membuka kotak edit berisi teks utuh.
+ * Satu field teks job, diedit di tempat. Kosong: hanya ajakan kecil "Tambah …" agar tidak
+ * berisik; terisi: tampil dipotong tiga baris, klik untuk membuka kotak edit berisi teks utuh.
  */
-export function JobNotesCard({ job, onSaved }: { job: Job; onSaved: (job: Job) => void }) {
+function JobTextFieldCard({
+  job,
+  field,
+  onSaved,
+}: {
+  job: Job
+  field: TextField
+  onSaved: (job: Job) => void
+}) {
+  const copy = COPY[field]
+  const value = job[field]
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
-  // Job batal tidak dapat diubah lagi: catatan hanya dibaca.
+  // Job batal tidak dapat diubah lagi: isi hanya dibaca.
   const readOnly = job.status === 'CANCELLED'
+  const highlighted = copy.warning && Boolean(value) && !editing
   function startEditing() {
-    setDraft(job.notes ?? '')
+    setDraft(value ?? '')
     setEditing(true)
   }
 
   async function save() {
     const next = draft.trim() || null
-    if (next === (job.notes ?? null)) {
+    if (next === (value ?? null)) {
       setEditing(false)
       return
     }
     setSaving(true)
     try {
-      const saved = await saveJobOperationalDetails(job, { notes: next })
+      const saved = await saveJobOperationalDetails(job, { [field]: next })
       onSaved(saved)
-      notify('Catatan job disimpan.', 'success')
+      notify(copy.saved, 'success')
       setEditing(false)
     } catch (caught) {
-      notify(caught instanceof Error ? caught.message : 'Catatan tidak dapat disimpan.', 'error')
+      notify(caught instanceof Error ? caught.message : copy.failed, 'error')
     } finally {
       setSaving(false)
     }
@@ -49,14 +97,19 @@ export function JobNotesCard({ job, onSaved }: { job: Job; onSaved: (job: Job) =
   }
 
   return (
-    <section className="card flex flex-col p-5">
+    <section className={`card flex flex-col p-5 ${highlighted ? 'border-amber-300 bg-amber-50' : ''}`}>
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold">Catatan</p>
-        {job.notes && !editing && !readOnly ? (
+        <p className="flex items-center gap-1.5 text-sm font-semibold">
+          {copy.warning ? (
+            <AlertTriangle size={15} className={value ? 'text-amber-600' : 'text-slate-400'} aria-hidden="true" />
+          ) : null}
+          {copy.title}
+        </p>
+        {value && !editing && !readOnly ? (
           <button
             type="button"
             onClick={startEditing}
-            aria-label="Ubah catatan"
+            aria-label={`Ubah ${copy.title.toLowerCase()}`}
             className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
           >
             <Pencil size={14} aria-hidden="true" />
@@ -69,13 +122,13 @@ export function JobNotesCard({ job, onSaved }: { job: Job; onSaved: (job: Job) =
           <textarea
             autoFocus
             rows={4}
-            maxLength={5000}
+            maxLength={copy.maxLength}
             value={draft}
             disabled={saving}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={onKeyDown}
-            aria-label="Catatan job"
-            placeholder="Catatan operasional job"
+            aria-label={copy.title}
+            placeholder={copy.placeholder}
             className="input min-h-24 w-full"
           />
           <div className="flex justify-end gap-2">
@@ -89,16 +142,16 @@ export function JobNotesCard({ job, onSaved }: { job: Job; onSaved: (job: Job) =
         </div>
       ) : readOnly ? (
         <p className="mt-2 text-sm whitespace-pre-wrap text-slate-600">
-          {job.notes ?? <span className="text-slate-400">Tidak ada catatan.</span>}
+          {value ?? <span className="text-slate-400">{copy.empty}</span>}
         </p>
-      ) : job.notes ? (
+      ) : value ? (
         <button
           type="button"
           onClick={startEditing}
-          title="Klik untuk mengubah catatan"
-          className="mt-2 line-clamp-3 text-left text-sm whitespace-pre-wrap text-slate-600"
+          title={`Klik untuk mengubah ${copy.title.toLowerCase()}`}
+          className={`mt-2 line-clamp-3 text-left text-sm whitespace-pre-wrap ${highlighted ? 'font-medium text-slate-800' : 'text-slate-600'}`}
         >
-          {job.notes}
+          {value}
         </button>
       ) : (
         <button
@@ -106,9 +159,19 @@ export function JobNotesCard({ job, onSaved }: { job: Job; onSaved: (job: Job) =
           onClick={startEditing}
           className="mt-2 inline-flex w-fit items-center gap-1 text-sm text-slate-400 hover:text-slate-700"
         >
-          <Plus size={14} aria-hidden="true" /> Tambah catatan
+          <Plus size={14} aria-hidden="true" /> {copy.add}
         </button>
       )}
     </section>
   )
+}
+
+/** Catatan job (`job.notes`). */
+export function JobNotesCard(props: { job: Job; onSaved: (job: Job) => void }) {
+  return <JobTextFieldCard {...props} field="notes" />
+}
+
+/** Special instruction job (`job.specialInstructions`): permintaan khusus klien, tampil sebagai peringatan. */
+export function JobSpecialInstructionsCard(props: { job: Job; onSaved: (job: Job) => void }) {
+  return <JobTextFieldCard {...props} field="specialInstructions" />
 }

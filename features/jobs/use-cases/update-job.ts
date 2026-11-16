@@ -80,6 +80,7 @@ export async function updateJobDetails(
     columns.transport_document_number = patch.transportDocumentNumber
   }
   if (patch.notes !== undefined) columns.notes = patch.notes
+  if (patch.specialInstructions !== undefined) columns.special_instructions = patch.specialInstructions
   if (patch.emptyStorage !== undefined) columns.empty_storage = patch.emptyStorage
   if (patch.reExport !== undefined) columns.re_export = patch.reExport
   if (patch.operational !== undefined) {

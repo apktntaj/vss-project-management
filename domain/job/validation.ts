@@ -297,6 +297,7 @@ export const jobDetailsPatchSchema = z
     transportDocumentType: z.enum(transportDocumentTypes).nullable().optional(),
     transportDocumentNumber: optionalText(100).optional(),
     notes: optionalText(5000).optional(),
+    specialInstructions: optionalText(1000).optional(),
     emptyStorage: optionalText(1000).optional(),
     reExport: optionalText(1000).optional(),
     operational: operationalDetailsSchema.optional(),

@@ -11,6 +11,11 @@ export { cancelEvent } from '@/features/events/use-cases/cancel-event'
 export { deleteEvent } from '@/features/events/use-cases/delete-event'
 export { archiveEvent } from '@/features/events/use-cases/archive-event'
 export {
+  getAppointmentLetter,
+  uploadAppointmentLetter,
+  removeAppointmentLetter,
+} from '@/features/events/use-cases/appointment-letter'
+export {
   grantEventAccess,
   revokeEventAccess,
   listEventAccess,

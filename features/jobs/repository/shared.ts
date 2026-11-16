@@ -30,7 +30,7 @@ export const JOB_COLUMNS = [
   'agent_id, exhibitor_id, manifest_prefix, manifest_seq, commercial_invoice_number',
   'transport_document, transport_document_type, transport_document_number, cipl_document',
   'invoice_number, invoice_amount, invoice_currency, invoice_status, invoice_sent_at, invoice_paid_at',
-  'assigned_to_id, created_by_id, operational, inward, kepulangan, empty_storage, re_export, notes',
+  'assigned_to_id, created_by_id, operational, inward, kepulangan, empty_storage, re_export, notes, special_instructions',
   'created_at, updated_at',
   ...PARTY_EMBEDS,
   'assigned_to:app_users!jobs_assigned_to_id_fkey(id, full_name)',
@@ -96,6 +96,7 @@ export type JobRow = PartyEmbeds &
     empty_storage: string | null
     re_export: string | null
     notes: string | null
+    special_instructions: string | null
     created_at: string
     updated_at: string
     assigned_to: Relation<{ id: string; full_name: string }>
@@ -132,6 +133,7 @@ export type JobWritableColumns = Partial<{
   empty_storage: string | null
   re_export: string | null
   notes: string | null
+  special_instructions: string | null
 }>
 
 function first<T>(relation: Relation<T>): T | null {
@@ -212,6 +214,7 @@ export function toJob(row: JobRow, ciplSources: JobCiplSource[], cancellation: J
     emptyStorage: row.empty_storage,
     reExport: row.re_export,
     notes: row.notes,
+    specialInstructions: row.special_instructions,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }

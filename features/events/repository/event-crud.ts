@@ -369,17 +369,24 @@ export async function checkReferences(input: EventInput): Promise<EventReference
 /**
  * Apakah event punya data turunan yang menghalangi penghapusan keras (Req 14.3)? Job dan exhibitor
  * ber-FK `on delete restrict` ke event, jadi tanpa pengecekan ini penghapusan gagal dengan error
- * FK mentah alih-alih 409 yang jelas. Disaring `workspace_id` + `event_id`.
+ * FK mentah alih-alih 409 yang jelas. Lampiran event (surat penunjukan) juga dihitung: ia bukti
+ * resmi penunjukan dan tidak ber-FK, jadi hapus keras akan meninggalkan file yatim.
+ * Disaring `workspace_id` + event.
  */
 export async function hasDerivedData(eventId: string): Promise<boolean> {
   const { client, workspaceId } = await withWorkspace()
+  const queries = [
+    client.from('jobs').select('id', { count: 'exact', head: true }).eq('event_id', eventId),
+    client.from('exhibitors').select('id', { count: 'exact', head: true }).eq('event_id', eventId),
+    client
+      .from('attachments')
+      .select('id', { count: 'exact', head: true })
+      .eq('owner_type', 'EVENT')
+      .eq('owner_id', eventId),
+  ]
   const counts = await Promise.all(
-    (['jobs', 'exhibitors'] as const).map(async (table) => {
-      const { count, error } = await client
-        .from(table)
-        .select('id', { count: 'exact', head: true })
-        .eq('workspace_id', workspaceId)
-        .eq('event_id', eventId)
+    queries.map(async (query) => {
+      const { count, error } = await query.eq('workspace_id', workspaceId)
       if (error) {
         throw new Error(`Gagal memeriksa data turunan event: ${error.message}`)
       }

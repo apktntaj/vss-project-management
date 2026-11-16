@@ -31,7 +31,7 @@ export async function deleteEvent(currentUser: CurrentUser, eventId: string): Pr
   if (await hasDerivedData(eventId)) {
     throw new ApiError(
       409,
-      'Event memiliki data turunan. Batalkan atau arsipkan event alih-alih menghapus.',
+      'Event memiliki data turunan (job, exhibitor, atau surat penunjukan). Batalkan atau arsipkan event alih-alih menghapus.',
     )
   }
 

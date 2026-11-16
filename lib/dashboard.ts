@@ -1,5 +1,5 @@
 // Dashboard operasional: empat daftar kesiapan kedatangan barang (event belum ada job, ETA dekat
-// dokumen kurang, ETA belum diisi) + bobot event. Dihitung MURNI dari satu bacaan data (aggregate
+// dokumen kurang, ETA belum diisi) + bobot event + special instruction per event. Dihitung MURNI dari satu bacaan data (aggregate
 // `jobs` + jadwal event ACTIVE; pola `lib/job-readiness.ts`/`lib/job-list.ts`: derivasi murni,
 // tanpa I/O). Orkestrasi pembacaan data ada di `features/dashboard/use-cases/get-dashboard.ts`.
 
@@ -56,11 +56,21 @@ export type EventWeightRow = {
   score: number // jobCount + koliCount
 }
 
+/** Special instruction job aktif pada satu event (peringatan permintaan khusus klien). */
+export type EventSpecialInstructionsRow = {
+  eventId: string
+  eventName: string
+  venueName: string
+  startsOn: string | null
+  jobs: Array<{ jobId: string; jobTitle: string; text: string }>
+}
+
 export type OperationsDashboard = {
   eventsWithoutJob: EventWithoutJobRow[]
   etaDocsMissing: JobDocsRow[]
   etaMissing: JobEtaMissingRow[]
   eventWeights: EventWeightRow[]
+  specialInstructions: EventSpecialInstructionsRow[]
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
@@ -221,5 +231,33 @@ export function buildOperationsDashboard(input: {
       collate(a.eventName, b.eventName),
   )
 
-  return { eventsWithoutJob, etaDocsMissing, etaMissing, eventWeights }
+  // 5. Special instruction (permintaan khusus klien) job aktif, dikelompokkan per event. Tidak
+  // dibatasi tanggal pameran: instruksi seperti "urgent re-export" justru relevan setelah selesai.
+  const instructionGroups = new Map<string, EventSpecialInstructionsRow>()
+  for (const job of active) {
+    const text = job.specialInstructions?.trim()
+    const event = eventById.get(job.eventId)
+    if (!text || !event) continue
+    const group = instructionGroups.get(event.id) ?? {
+      eventId: event.id,
+      eventName: event.name,
+      venueName: event.venueName,
+      startsOn: event.startsOn,
+      jobs: [],
+    }
+    group.jobs.push({ jobId: job.id, jobTitle: jobTitle(job), text })
+    instructionGroups.set(event.id, group)
+  }
+  const specialInstructions = [...instructionGroups.values()]
+  for (const group of specialInstructions) group.jobs.sort((a, b) => collate(a.jobTitle, b.jobTitle))
+  specialInstructions.sort((a, b) => {
+    if (a.startsOn !== b.startsOn) {
+      if (a.startsOn === null) return 1
+      if (b.startsOn === null) return -1
+      return a.startsOn.localeCompare(b.startsOn)
+    }
+    return collate(a.eventName, b.eventName)
+  })
+
+  return { eventsWithoutJob, etaDocsMissing, etaMissing, eventWeights, specialInstructions }
 }

@@ -7,6 +7,7 @@ import Link from 'next/link'
 import type { EventListItem } from '@/domain/event/types'
 
 import { ClickableRow } from '@/features/events/components/clickable-row'
+import { EventAppointmentLetterLink } from '@/features/events/components/event-appointment-letter-link'
 import { EventCardActions } from '@/features/events/components/event-card-actions'
 import {
   DISPLAY_STATUS_BADGE,
@@ -40,7 +41,7 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
 
   return (
     <div className="card max-h-[65vh] overflow-auto lg:max-h-none lg:min-h-0 lg:flex-1">
-      <table className="min-w-[1060px] w-full table-fixed text-left text-sm">
+      <table className="min-w-[1250px] w-full table-fixed text-left text-sm">
         <colgroup>
           <col className="w-[44px]" />
           <col />
@@ -49,6 +50,7 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
           <col className="w-[215px]" />
           <col className="w-[180px]" />
           <col className="w-[56px]" />
+          <col className="w-[190px]" />
           <col className="w-[48px]" />
         </colgroup>
         <thead className="text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -71,6 +73,9 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
             <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2">PIC</th>
             <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2 text-right">
               Jobs
+            </th>
+            <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2">
+              Surat Penunjukan
             </th>
             <th className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2">
               <span className="sr-only">Aksi</span>
@@ -159,6 +164,15 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
                     <span className="text-sm text-slate-300">—</span>
                   )}
                 </td>
+                {item.appointmentLetter ? (
+                  <td className="px-2 py-2 align-top" data-row-click-ignore>
+                    <EventAppointmentLetterLink letter={item.appointmentLetter} className="-mx-1 max-w-full text-xs" />
+                  </td>
+                ) : (
+                  <td className="px-2 py-2 align-top">
+                    <p className="text-sm text-slate-300">Belum ada</p>
+                  </td>
+                )}
                 <td className="px-2 py-2 align-top text-right" data-row-click-ignore>
                   <EventCardActions
                     event={{
@@ -172,6 +186,7 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
                       endsOn: item.endsOn ?? '',
                       moveInOn: item.moveInOn ?? '',
                       moveOutOn: item.moveOutOn ?? '',
+                      appointmentLetter: item.appointmentLetter,
                     }}
                     lifecycle={item.lifecycle}
                     venues={venues}

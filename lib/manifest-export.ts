@@ -6,7 +6,7 @@
 //     baris pertamanya; sel TIDAK digabung supaya garis sel tetap muncul di setiap baris (seperti
 //     dokumen klien), sehingga milestone tidak tampak seolah milik koli tertentu,
 //   - Total Package berupa angka (dapat dijumlah); subtotal & total juga menjumlah paket,
-//   - baris kepala job hanya nilai identitas kiriman `PIHAK / nomor B/L / muatan` (tanpa label); angka total di subtotal,
+//   - baris kepala job hanya nilai identitas kiriman `PIHAK / nomor B/L / LCL atau FCL+ukuran / jumlah package / total berat / total volume` (tanpa label),
 //   - label koli di kolom CASE; kolom Bare Case, Empty Storage, dan Re-export tidak diekspor.
 //
 //   Sheet tunggal "Inward Manifest": judul (nama pameran) · "Exhibits Details For Inward Movement" · venue
@@ -95,27 +95,58 @@ const ddmmyyyy = (value: string) => value.split('-').reverse().join('/')
 
 const CONTAINER_LABEL: Record<ContainerSize, string> = { K20: "20'", K40: "40'", K40HQ: "40'HQ" }
 
-/** "LCL", "1X40'HQ", "1X20' + 1X40'". */
-function loadLabel(view: ManifestBlockView): string | null {
-  const configuration = view.inward?.loadConfiguration
-  if (!configuration) return null
-  if (configuration.kind === 'LCL') return 'LCL'
-  const counts = new Map<ContainerSize, number>()
-  for (const container of configuration.containers) {
-    counts.set(container.size, (counts.get(container.size) ?? 0) + 1)
-  }
-  return (['K20', 'K40', 'K40HQ'] as const)
-    .filter((size) => counts.has(size))
-    .map((size) => `${counts.get(size)}X${CONTAINER_LABEL[size]}`)
-    .join(' + ')
+/** "20'", "40'", "40'HQ" dari teks bebas B/L ("40'HQ", "40HC", "20GP", "40 High Cube"); teks mentah bila tak terbaca. */
+export function normalizeContainerSize(size: string | null, type: string | null): string | null {
+  const text = `${size ?? ''} ${type ?? ''}`.toUpperCase()
+  const feet = text.match(/(?<!\d)(20|40|45)(?!\d)/)?.[1]
+  if (!feet) return (size ?? type)?.trim().toUpperCase() || null
+  return /HQ|HC|HIGH\s*CUBE/.test(text) ? `${feet}'HQ` : `${feet}'`
 }
 
-/** Baris kepala job = nilai saja tanpa label, urutan tetap: PIHAK / NOMOR B/L atau AWB / MUATAN. */
-export function blockHeaderText(view: ManifestBlockView): string {
+/** "FCL 1X40'HQ", "FCL 1X20' + 1X40'"; "FCL" saja bila belum ada kontainer. */
+function fclLabel(sizes: ReadonlyArray<string | null>): string {
+  if (!sizes.length) return 'FCL'
+  const counts = new Map<string, number>()
+  for (const size of sizes) counts.set(size ?? '?', (counts.get(size ?? '?') ?? 0) + 1)
+  const groups = [...counts]
+    .sort(([a], [b]) => a.localeCompare(b, 'en', { numeric: true }))
+    .map(([size, count]) => `${count}X${size}`)
+  return `FCL ${groups.join(' + ')}`
+}
+
+/**
+ * "LCL" atau "FCL <ukuran>". Sumber utama: B/L/AWB job (`transportDocument.loadType` + kontainer);
+ * bila belum diisi, konfigurasi muatan pada blok inward manifest. Null bila keduanya kosong.
+ */
+export function loadLabel(job: Job): string | null {
+  const transport = job.transportDocument
+  if (transport?.loadType === 'LCL') return 'LCL'
+  if (transport?.loadType === 'FCL') {
+    return fclLabel(transport.containers.map((container) => normalizeContainerSize(container.size, container.type)))
+  }
+  const configuration = job.inward?.loadConfiguration
+  if (!configuration) return null
+  if (configuration.kind === 'LCL') return 'LCL'
+  return fclLabel(configuration.containers.map((container) => CONTAINER_LABEL[container.size]))
+}
+
+const formatNumber = (value: number, digits: number) =>
+  value.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })
+
+/**
+ * Baris kepala job = nilai saja tanpa label, urutan tetap:
+ * PIHAK / NOMOR B/L atau AWB / LCL atau FCL+ukuran / jumlah package / total berat / total volume.
+ */
+export function blockHeaderText(job: Job, view: ManifestBlockView): string {
   const parts = [view.partyName.toUpperCase()]
   if (view.transportDocument) parts.push(view.transportDocument.number)
-  const load = loadLabel(view)
+  const load = loadLabel(job)
   if (load) parts.push(load)
+  parts.push(
+    `${view.totals.totalCount} PKG`,
+    `${formatNumber(view.totals.weightKg, 2)} KGS`,
+    `${formatNumber(view.totals.volumeCbm, 3)} CBM`,
+  )
   return parts.join(' / ')
 }
 
@@ -177,6 +208,7 @@ export const INWARD_COLUMNS = [
   'Hall',
   'Booth No',
   'Notes',
+  'Special Instructions',
 ] as const
 const COL = {
   jobNo: 0,
@@ -192,6 +224,7 @@ const COL = {
   hall: 10,
   booth: 11,
   notes: 12,
+  specialInstructions: 13,
 } as const
 const LAST = INWARD_COLUMNS.length - 1
 const letter = (column: number) => String.fromCharCode(65 + column)
@@ -255,7 +288,7 @@ function inwardSheet(
 
     for (const job of sectionJobs) {
       const view = buildManifestView(job)
-      rows.push(merged('BLOCK_HEADER', blockHeaderText(view), section.tone))
+      rows.push(merged('BLOCK_HEADER', blockHeaderText(job, view), section.tone))
 
       const blockStart = rows.length // indeks 0-based baris data pertama
       for (const peserta of view.peserta) {
@@ -307,6 +340,11 @@ function inwardSheet(
         row.cells[COL.notes] = note.text
         if (note.highlight) row.highlight = [COL.notes]
       })
+      // Special instruction (permintaan khusus klien) milik job: baris pertama, disorot merah sebagai peringatan.
+      if (job.specialInstructions) {
+        first.cells[COL.specialInstructions] = job.specialInstructions
+        first.highlight = [...(first.highlight ?? []), COL.specialInstructions]
+      }
 
       const firstRow = blockStart + 1
       const lastRow = rows.length
@@ -333,7 +371,7 @@ function inwardSheet(
 
   return {
     name: 'Inward Manifest',
-    columnWidths: [16, 52, 10, 12, 8, 8, 8, 10, 12, 22, 8, 12, 36],
+    columnWidths: [16, 52, 10, 12, 8, 8, 8, 10, 12, 22, 8, 12, 36, 30],
     rows,
     columnFormats: { [COL.cbm]: '0.000', [COL.weight]: '#,##0.00', [COL.totalPackage]: '0' },
   }

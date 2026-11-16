@@ -8,11 +8,18 @@
 // inline di dekat input (tidak diganti toast); kegagalan mutasi memunculkan toast dari field
 // `error` respons (kontrak error seragam). Teks pengguna bahasa Indonesia.
 
-import { useId, useState, type FormEvent } from 'react'
+import { useId, useRef, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { X } from 'lucide-react'
+import { FileText, Upload, X } from 'lucide-react'
 
 import { toast } from '@/components/toast'
+import { removeEventAppointmentLetter, uploadEventAppointmentLetter } from '@/lib/data-client'
+import {
+  APPOINTMENT_LETTER_MIME_TYPES,
+  appointmentLetterFileError,
+  type EventAppointmentLetter,
+} from '@/domain/event/appointment-letter'
+import { EventAppointmentLetterLink } from '@/features/events/components/event-appointment-letter-link'
 
 // Opsi master data (venue/EO/PIC) diteruskan dari induk (Server Component). Endpoint opsi master
 // belum ada di slice ini (task 14 menanganinya); karena itu daftar boleh kosong dan form jatuh ke
@@ -37,6 +44,8 @@ export type EventFormValues = {
   /** Penanda logistik venue (opsional): tanggal barang masuk/keluar venue, bukan tanggal pameran. */
   moveInOn?: string | null
   moveOutOn?: string | null
+  /** Surat penunjukan EO saat ini (mode edit); diganti/dihapus lewat field form. */
+  appointmentLetter?: EventAppointmentLetter | null
 }
 
 type EventFormModalProps = EventFormOptions & {
@@ -92,9 +101,25 @@ export function EventFormModal({
   const [values, setValues] = useState<EventFormValues>(event ?? EMPTY)
   const [errors, setErrors] = useState<FieldErrors>({})
   const [submitting, setSubmitting] = useState(false)
+  // Surat penunjukan: file baru dipilih (ganti/unggah) atau penanda hapus; diterapkan saat submit.
+  const currentLetter = event?.appointmentLetter ?? null
+  const letterInputRef = useRef<HTMLInputElement>(null)
+  const [letterFile, setLetterFile] = useState<File | null>(null)
+  const [removeLetter, setRemoveLetter] = useState(false)
+  const [letterError, setLetterError] = useState<string | null>(null)
 
   function update<K extends keyof EventFormValues>(key: K, value: EventFormValues[K]) {
     setValues((current) => ({ ...current, [key]: value }))
+  }
+
+  function chooseLetter(file: File | undefined) {
+    if (letterInputRef.current) letterInputRef.current.value = ''
+    if (!file) return
+    const fileError = appointmentLetterFileError(file)
+    setLetterError(fileError)
+    if (fileError) return
+    setLetterFile(file)
+    setRemoveLetter(false)
   }
 
   async function handleSubmit(formEvent: FormEvent<HTMLFormElement>) {
@@ -140,7 +165,17 @@ export function EventFormModal({
         return
       }
 
-      toast(isEdit ? 'Event diperbarui.' : 'Event dibuat.', 'success')
+      // Surat penunjukan disimpan setelah data event berhasil (butuh id event untuk mode buat).
+      const savedId = isEdit ? event?.id : ((await response.json().catch(() => null)) as { id?: string } | null)?.id
+      const eventLabel = isEdit ? 'Event diperbarui' : 'Event dibuat'
+      try {
+        if (savedId && letterFile) await uploadEventAppointmentLetter(savedId, letterFile)
+        else if (savedId && removeLetter) await removeEventAppointmentLetter(savedId)
+        toast(`${eventLabel}.`, 'success')
+      } catch (caught) {
+        const reason = caught instanceof Error ? caught.message : 'Surat penunjukan tidak dapat disimpan.'
+        toast(`${eventLabel}, tetapi surat penunjukan gagal disimpan: ${reason}`, 'error')
+      }
       router.refresh()
       onSaved()
     } catch {
@@ -165,7 +200,7 @@ export function EventFormModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-black/10 bg-white p-6 shadow-2xl"
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-black/10 bg-white p-6 text-left shadow-2xl"
       >
         <div className="flex items-start justify-between gap-4">
           <h2 id={titleId} className="text-lg font-bold">
@@ -321,6 +356,60 @@ export function EventFormModal({
                 <p className="mt-1 text-sm text-rose-600">{errors.moveOutOn}</p>
               ) : null}
             </div>
+          </div>
+
+          <div>
+            <p id={`${titleId}-letter`} className="label">
+              Surat penunjukan
+            </p>
+            <input
+              ref={letterInputRef}
+              type="file"
+              accept={APPOINTMENT_LETTER_MIME_TYPES.join(',')}
+              className="hidden"
+              aria-labelledby={`${titleId}-letter`}
+              onChange={(inputEvent) => chooseLetter(inputEvent.target.files?.[0])}
+            />
+            {letterFile ? (
+              <div className="flex items-center gap-2 text-sm">
+                <FileText size={14} className="shrink-0 text-emerald-600" aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate font-medium text-slate-700" title={letterFile.name}>
+                  {letterFile.name}
+                </span>
+                <button type="button" className="text-xs text-slate-500 hover:text-slate-800" disabled={submitting} onClick={() => setLetterFile(null)}>
+                  Batalkan
+                </button>
+              </div>
+            ) : currentLetter && !removeLetter ? (
+              <div className="flex items-center gap-2 text-sm">
+                <EventAppointmentLetterLink letter={currentLetter} className="-mx-1 flex-1" />
+                <button type="button" className="text-xs text-slate-500 hover:text-slate-800" disabled={submitting} onClick={() => letterInputRef.current?.click()}>
+                  Ganti
+                </button>
+                <button type="button" className="text-xs text-rose-600 hover:text-rose-700" disabled={submitting} onClick={() => setRemoveLetter(true)}>
+                  Hapus
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 text-sm">
+                <button type="button" className="btn-secondary gap-2" disabled={submitting} onClick={() => letterInputRef.current?.click()}>
+                  <Upload size={15} aria-hidden="true" />
+                  Pilih file
+                </button>
+                {removeLetter ? (
+                  <span className="text-xs text-slate-500">
+                    Surat lama dihapus saat disimpan.{' '}
+                    <button type="button" className="font-medium text-slate-700 underline" disabled={submitting} onClick={() => setRemoveLetter(false)}>
+                      Urungkan
+                    </button>
+                  </span>
+                ) : null}
+              </div>
+            )}
+            <p className="mt-1 text-xs text-slate-500">
+              Surat resmi dari EO yang menunjuk kita menangani event. PDF, JPG, atau PNG, maks. 10 MB.
+            </p>
+            {letterError ? <p className="mt-1 text-sm text-rose-600">{letterError}</p> : null}
           </div>
 
           <div className="mt-6 flex justify-end gap-3">

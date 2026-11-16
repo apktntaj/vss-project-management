@@ -25,11 +25,13 @@ export async function POST(request: NextRequest) {
     const ownerId = form.get('ownerId')
     const kind = form.get('kind')
     const file = form.get('file')
-    if (typeof id !== 'string' || typeof ownerId !== 'string' || typeof ownerType !== 'string' || !owners.has(ownerType) || !(file instanceof File)) {
+    // Lampiran EVENT (surat penunjukan) hanya lewat /api/events/[eventId]/appointment-letter yang
+    // menegakkan otorisasi pengelola event dan aturan satu surat per event.
+    if (typeof id !== 'string' || typeof ownerId !== 'string' || ownerType !== 'JOB' || !(file instanceof File)) {
       return NextResponse.json({ error: 'Lampiran tidak valid.' }, { status: 400 })
     }
-    if (ownerType === 'JOB') await assertJobAcceptsAttachments(ownerId)
-    return NextResponse.json(await uploadAttachment({ id, ownerId, ownerType: ownerType as AttachmentOwner, kind: typeof kind === 'string' ? kind : null, file }))
+    await assertJobAcceptsAttachments(ownerId)
+    return NextResponse.json(await uploadAttachment({ id, ownerId, ownerType, kind: typeof kind === 'string' ? kind : null, file }))
   } catch (error) {
     if (error instanceof ApiError) return toErrorResponse(error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Lampiran tidak dapat diunggah.' }, { status: 503 })

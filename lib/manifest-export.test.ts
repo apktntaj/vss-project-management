@@ -4,6 +4,7 @@ import {
   INWARD_COLUMNS,
   blockHeaderText,
   buildEventManifestWorkbook,
+  normalizeContainerSize,
   formatVenueLine,
 } from './manifest-export'
 import { buildManifestView } from './manifest-view'
@@ -77,8 +78,8 @@ const s1 = job({
 })
 // Kepala job = nilai saja, tanpa label "B/L": PIHAK / NOMOR DOKUMEN / MUATAN.
 assert.equal(
-  blockHeaderText(buildManifestView(s1)),
-  'SHENZHEN BOBON LOGISTICS CO.,LTD / SHFPSJKT26026454 / LCL',
+  blockHeaderText(s1, buildManifestView(s1)),
+  'SHENZHEN BOBON LOGISTICS CO.,LTD / SHFPSJKT26026454 / LCL / 3 PKG / 1,093.00 KGS / 3.947 CBM',
 )
 const fcl = job({
   manifestSeq: 2,
@@ -94,7 +95,21 @@ const fcl = job({
     notes: [],
   },
 })
-assert.match(blockHeaderText(buildManifestView(fcl)), / \/ 1X20' \+ 1X40'$/)
+assert.match(blockHeaderText(fcl, buildManifestView(fcl)), / \/ FCL 1X20' \+ 1X40' \/ 0 PKG \/ 0\.00 KGS \/ 0\.000 CBM$/)
+
+// B/L job (loadType + kontainer teks bebas "40'" / "40HC") menang atas konfigurasi inward; ukuran dinormalkan.
+const fromBl = job({
+  manifestSeq: 3,
+  transportDocument: {
+    loadType: 'FCL',
+    containers: [{ containerNumber: 'TGHU1234567', size: "40'", type: '40HC', sealNumber: null }],
+  } as Job['transportDocument'],
+})
+assert.match(blockHeaderText(fromBl, buildManifestView(fromBl)), / \/ FCL 1X40'HQ \/ /)
+assert.equal(normalizeContainerSize('20', 'GP'), "20'")
+assert.equal(normalizeContainerSize(null, '40 High Cube'), "40'HQ")
+const bareFcl = job({ transportDocument: { loadType: 'FCL', containers: [] } as unknown as Job['transportDocument'] })
+assert.match(blockHeaderText(bareFcl, buildManifestView(bareFcl)), / \/ FCL \/ /)
 
 const road = job({ internationalJenis: 'ROAD_SHIPMENT', manifestPrefix: 'R', transportMode: 'ROAD', party: { kind: 'AGENT', id: 'e', name: 'EASYGO' }, inward: null, transportDocumentNumber: null })
 const local = job({
@@ -138,7 +153,7 @@ assert.equal(rows[4].cells[col('L')], 'L')
 // Urutan bagian: TPPB (tanpa judul) → ROAD SHIPMENT → LOCAL; S.01 sebelum S.02.
 const order = rows
   .filter((row) => row.kind === 'SECTION' || row.kind === 'BLOCK_HEADER')
-  .map((row) => `${row.kind}:${String(row.cells[0]).slice(0, 18)}`)
+  .map((row) => `${row.kind}:${String(row.cells[0]).split(' / ')[0].slice(0, 18)}`)
 assert.deepEqual(order, [
   'BLOCK_HEADER:SHENZHEN BOBON LOG',
   'BLOCK_HEADER:SHENZHEN BOBON LOG',
@@ -196,9 +211,21 @@ assert.equal(rows[roadStart].cells[col('Job No')], 'R.-')
 assert.equal(rows[roadStart].cells[col('Exhibitor Name')], 'Belum ada baris CIPL')
 
 // LOCAL: kepala blok nama pihak; PIC ikut di sel nama exhibitor.
-const localHeader = rows.findIndex((row) => row.cells[0] === 'PT. REPASSA')
+const localHeader = rows.findIndex((row) => String(row.cells[0]).startsWith('PT. REPASSA'))
 assert.equal(rows[localHeader].tone, 'NONE')
 assert.equal(rows[localHeader + 1].cells[col('Exhibitor Name')], 'PT. REPASSA\nPIC : Bpk. Charles')
+
+// Kolom Special Instructions di ujung kanan: special instruction job di baris pertama blok (disorot), kosong bila tidak ada.
+assert.equal(INWARD_COLUMNS[INWARD_COLUMNS.length - 1], 'Special Instructions')
+assert.equal(sheet.columnWidths.length, INWARD_COLUMNS.length)
+assert.equal(rows[tppbHeader + 1].cells[col('Special Instructions')], null)
+const urgent = buildEventManifestWorkbook(
+  { name: 'x', venueName: null, startsOn: null, endsOn: null },
+  [job({ manifestSeq: 4, inward: null, specialInstructions: 'Butuh vacuum pack' })],
+).sheets[0].rows
+const urgentFirst = urgent[urgent.findIndex((row) => row.kind === 'BLOCK_HEADER') + 1]
+assert.equal(urgentFirst.cells[col('Special Instructions')], 'Butuh vacuum pack')
+assert.deepEqual(urgentFirst.highlight, [col('Special Instructions')])
 const total = rows[rows.length - 1]
 assert.equal(total.kind, 'TOTAL')
 assert.equal(total.cells[col('Exhibitor Name')], 'TOTAL')
