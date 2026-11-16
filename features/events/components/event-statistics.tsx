@@ -51,7 +51,7 @@ export function EventStatistics({ insights }: { insights: EventInsights }) {
                 <span className="w-20 shrink-0 text-muted-foreground">{formatMonth(month.month)}</span>
                 <span className="h-2 flex-1 overflow-hidden rounded-full bg-secondary">
                   <span
-                    className="block h-full rounded-full bg-primary"
+                    className="block h-full rounded-full bg-[#30a14e]"
                     style={{ width: `${Math.round((month.count / maxMonth) * 100)}%` }}
                   />
                 </span>

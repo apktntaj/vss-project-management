@@ -96,7 +96,7 @@ export function EventCardActions({ event, lifecycle, venues, organizers, pics }:
         aria-label={`Menu aksi untuk ${event.name}`}
         aria-expanded={menuAnchor !== null}
         aria-haspopup="menu"
-        className="rounded-lg p-2 text-slate-500 hover:bg-orange-50 hover:text-orange-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+        className="rounded-lg p-2 text-slate-500 hover:bg-orange-50 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
       >
         <MoreVertical size={20} aria-hidden="true" />
       </button>

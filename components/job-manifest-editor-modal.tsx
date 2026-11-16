@@ -327,7 +327,7 @@ export function JobManifestEditorModal({
                   event.target.value = ''
                 }}
               />
-              {importing && <p className="mt-2 text-sm font-medium text-orange-700">Memparsing manifest…</p>}
+              {importing && <p className="mt-2 text-sm font-medium text-slate-700">Memparsing manifest…</p>}
               {importError && <p className="mt-2 text-sm text-rose-700">{importError}</p>}
               {importResult && (
                 <div className="mt-3 space-y-2 text-sm">

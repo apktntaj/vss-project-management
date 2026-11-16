@@ -181,7 +181,7 @@ function PdfSplitter() {
     <section className="card p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 flex-1 gap-3">
-          <Scissors className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
+          <Scissors className="mt-0.5 size-5 shrink-0 text-foreground" aria-hidden="true" />
           <div>
             <h2 className="font-semibold">Potong PDF</h2>
             <p className="mt-1 text-xs text-slate-500">Ambil halaman tertentu dari satu PDF.</p>
@@ -205,7 +205,7 @@ function PdfSplitter() {
                   key={entry.value}
                   className={`cursor-pointer rounded-lg border px-3 py-1.5 text-sm ${
                     mode === entry.value
-                      ? 'border-orange-500 bg-orange-50 text-orange-700'
+                      ? 'border-orange-500 bg-orange-50 text-slate-700'
                       : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
@@ -346,7 +346,7 @@ function PdfMerger() {
     <section className="card p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 flex-1 gap-3">
-          <Combine className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
+          <Combine className="mt-0.5 size-5 shrink-0 text-foreground" aria-hidden="true" />
           <div>
             <h2 className="font-semibold">Gabung PDF</h2>
             <p className="mt-1 text-xs text-slate-500">Satukan beberapa PDF sesuai urutan di daftar.</p>

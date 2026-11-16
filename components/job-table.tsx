@@ -90,7 +90,7 @@ export function JobTable({ jobs, sort, onSortChange, onGenerate }: JobTableProps
                     type="button"
                     onClick={() => onSortChange(nextJobSort(sort, key))}
                     title={`Urutkan berdasarkan ${text}`}
-                    className={`inline-flex max-w-full items-center gap-1 uppercase hover:text-orange-700 ${direction ? 'text-slate-700' : ''}`}
+                    className={`inline-flex max-w-full items-center gap-1 uppercase hover:text-slate-900 ${direction ? 'text-slate-700' : ''}`}
                   >
                     <span className="truncate">{text}</span>
                     <Icon size={13} aria-hidden="true" className={direction ? 'shrink-0' : 'shrink-0 opacity-50'} />
@@ -141,7 +141,7 @@ function JobTableRow({
       <td className="px-2 py-1.5 align-middle">
         <Link
           href={`/jobs/${job.id}`}
-          className="block truncate font-semibold text-slate-600 hover:text-orange-700"
+          className="block truncate font-semibold text-slate-600 hover:text-slate-900"
           aria-label={`Buka job ${jobLabel(job)}`}
         >
           {jobLabel(job)}
@@ -230,7 +230,7 @@ function JobRowMenu({
         aria-label={`Menu aksi untuk ${name}`}
         aria-expanded={menuAnchor !== null}
         aria-haspopup="menu"
-        className="rounded-lg p-1 text-slate-500 hover:bg-orange-50 hover:text-orange-700"
+        className="rounded-lg p-1 text-slate-500 hover:bg-orange-50 hover:text-slate-900"
       >
         <MoreVertical size={18} />
       </button>

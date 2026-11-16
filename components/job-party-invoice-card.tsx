@@ -258,7 +258,7 @@ export function JobPartyInvoiceCard({
     editing === target || job.status === 'CANCELLED' ? null : (
       <button
         type="button"
-        className="inline-flex items-center gap-1 text-xs font-semibold text-orange-700 hover:text-orange-800"
+        className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-slate-900"
         onClick={() => setEditing(target)}
       >
         <Pencil size={12} aria-hidden="true" /> {label}
@@ -271,7 +271,7 @@ export function JobPartyInvoiceCard({
         <div>
           <div className="flex items-center justify-between gap-2">
             <h2 className="flex items-center gap-2 font-semibold">
-              <UserRound size={18} className="text-orange-600" aria-hidden="true" /> Pihak
+              <UserRound size={18} className="text-slate-600" aria-hidden="true" /> Pihak
             </h2>
             {editButton('party', 'Ubah')}
           </div>
@@ -290,7 +290,7 @@ export function JobPartyInvoiceCard({
         <div>
           <div className="flex items-center justify-between gap-2">
             <h2 className="flex items-center gap-2 font-semibold">
-              <Receipt size={18} className="text-orange-600" aria-hidden="true" /> Tagihan
+              <Receipt size={18} className="text-slate-600" aria-hidden="true" /> Tagihan
             </h2>
             {canEditBilling && editButton('invoice', 'Ubah')}
           </div>
@@ -355,14 +355,14 @@ export function JobBillingDialog({
         </h2>
         <section className="mt-4">
           <h3 className="flex items-center gap-2 font-semibold">
-            <UserRound size={18} className="text-orange-600" aria-hidden="true" /> Pihak
+            <UserRound size={18} className="text-slate-600" aria-hidden="true" /> Pihak
           </h3>
           <PartyEditor job={job} exhibitors={exhibitors} onSaved={onSaved} onCancel={onClose} />
         </section>
         {canEditBilling && (
           <section className="mt-6 border-t pt-4">
             <h3 className="flex items-center gap-2 font-semibold">
-              <Receipt size={18} className="text-orange-600" aria-hidden="true" /> Tagihan
+              <Receipt size={18} className="text-slate-600" aria-hidden="true" /> Tagihan
             </h3>
             <InvoiceEditor job={job} onSaved={onSaved} onCancel={onClose} />
           </section>

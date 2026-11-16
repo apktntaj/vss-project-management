@@ -40,6 +40,7 @@ export {
   listEventGrantees,
 } from './event-access'
 export { listLegacyEventRows, queryEventInsights, queryEventList } from './event-queries'
+export { serverToday } from './shared'
 export {
   findVenueTppbProfile,
   insertEventOrganizer,

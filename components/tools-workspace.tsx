@@ -36,7 +36,7 @@ export function ToolsWorkspace({ initialTab }: { initialTab?: string }) {
           <TabsTrigger
             key={value}
             value={value}
-            className="h-auto rounded-lg px-4 py-1.5 text-slate-500 hover:bg-orange-50 hover:text-orange-700 data-active:bg-orange-600 data-active:text-white data-active:shadow-sm"
+            className="h-auto rounded-lg px-4 py-1.5 text-slate-500 hover:bg-orange-50 hover:text-slate-900 data-active:bg-orange-600 data-active:text-white data-active:shadow-sm"
           >
             <Icon size={14} aria-hidden="true" />
             {label}

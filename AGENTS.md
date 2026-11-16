@@ -52,6 +52,11 @@ Quick orientation:
 - **Form feedback:** every mutation result MUST produce a toast for success and failure, rendered only
   at the bottom-right of the viewport. Keep field-level validation errors near their inputs; do not
   replace them with, or duplicate them as, toasts.
+- **Orange color:** orange (`--primary`, `bg-primary`, `bg-orange-*`) is a button/surface accent
+  and reads as an "alert", like red. NEVER use orange for font color (`text-orange-*`,
+  `text-primary`, `hover:text-orange-*`) or for chart/progress bar fills; use `text-foreground`,
+  `text-muted-foreground`, or slate (`bg-slate-600` for bars). Orange text is allowed only for a
+  genuine alert/warning message. Buttons, active nav, and tinted surfaces keep their orange.
 - **Validation commands:** `npx tsc --noEmit` (currently clean — keep it that way),
   `npm run domain:test` (bun, explicit file list; new test files must be added to the script or they
   never run), `npm run build`. Use the narrowest relevant command for documentation-only changes.

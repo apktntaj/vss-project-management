@@ -14,6 +14,7 @@ import {
   formatDateRange,
   lifecycleBadge,
 } from '@/features/events/components/event-presentation'
+import { wibDateOf } from '@/lib/wib-date'
 
 type EventListProps = {
   items: EventListItem[]
@@ -25,8 +26,9 @@ type EventListProps = {
 
 /** Daftar event sebagai baris tabel. Kosong → pesan ramah; selain itu satu baris per item. */
 export function EventList({ items, venues, organizers, pics }: EventListProps) {
-  // "Hari ini" sisi-server sebagai dasar hitungan "n hari lagi" (ISO tanggal-saja).
-  const today = new Date().toISOString().slice(0, 10)
+  // "Hari ini" WIB — sama dengan `serverToday()` yang menurunkan display status — sebagai dasar
+  // hitungan "n hari lagi" (ISO tanggal-saja).
+  const today = wibDateOf(new Date())
   if (items.length === 0) {
     return (
       <div className="card p-8 text-center">
@@ -93,7 +95,7 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
                 <td className="px-2 py-2 align-top">
                   <Link
                     href={`/events/${item.id}`}
-                    className="block truncate font-semibold text-slate-600 hover:text-orange-700"
+                    className="block truncate font-semibold text-slate-600 hover:text-slate-900"
                     title={item.name}
                   >
                     {item.name}

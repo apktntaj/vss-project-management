@@ -134,7 +134,7 @@ export default function JobsPage() {
         <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
           <label className="relative w-full lg:w-auto lg:min-w-48 lg:max-w-80 lg:flex-1">
             <span className="sr-only">Cari job</span>
-            <Search className="absolute left-3 top-2.5 text-orange-500" size={18} aria-hidden="true" />
+            <Search className="absolute left-3 top-2.5 text-slate-600" size={18} aria-hidden="true" />
             <input
               type="search"
               value={filters.search}
@@ -204,7 +204,7 @@ export default function JobsPage() {
           <button
             type="button"
             onClick={() => setFilters(initialFilters)}
-            className="mt-3 text-sm font-semibold text-orange-700 hover:text-orange-800"
+            className="mt-3 text-sm font-semibold text-slate-700 hover:text-slate-900"
           >
             Reset filter
           </button>

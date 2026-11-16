@@ -75,7 +75,7 @@ export function EventAccessCard({ event }: { event: { id: string; picId: string 
   return (
     <section className="card p-6 sm:p-8">
       <div className="flex items-center gap-2">
-        <KeyRound size={18} className="text-orange-600" />
+        <KeyRound size={18} className="text-slate-600" />
         <h2 className="text-lg font-semibold">Akses event</h2>
       </div>
       <p className="mt-1 text-sm text-slate-500">

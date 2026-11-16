@@ -108,7 +108,7 @@ export function ToolsLartasChecker() {
       <section className="card p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 flex-1 gap-3">
-            <FileSpreadsheet className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
+            <FileSpreadsheet className="mt-0.5 size-5 shrink-0 text-foreground" aria-hidden="true" />
             <div>
               <h2 className="font-semibold">Cek LARTAS dari invoice Excel</h2>
               <p className="mt-1 text-xs text-slate-500">
@@ -295,7 +295,7 @@ export function ToolsLartasChecker() {
                             <span className="text-slate-400">—</span>
                           ) : (
                             <details>
-                              <summary className="cursor-pointer text-sm text-primary">
+                              <summary className="cursor-pointer text-sm text-foreground">
                                 {documents.length} dokumen / izin
                               </summary>
                               <ul className="mt-2 space-y-1 text-xs text-slate-600">
@@ -313,7 +313,7 @@ export function ToolsLartasChecker() {
                                           href={document.link}
                                           target="_blank"
                                           rel="noreferrer"
-                                          className="text-primary hover:underline"
+                                          className="text-foreground hover:underline"
                                         >
                                           detail
                                         </a>

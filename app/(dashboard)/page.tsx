@@ -1,57 +1,47 @@
 import { redirect } from 'next/navigation'
 
 import { requireCurrentUser } from '@/features/auth'
-import { listEventInsights } from '@/features/events'
-import type { EventInsights } from '@/domain/event/types'
+import { getDashboard, type DashboardData } from '@/features/dashboard'
 import { ApiError } from '@/lib/server/errors'
 
 import { DashboardOverview } from '@/app/(dashboard)/dashboard-overview'
-import {
-  EventArchiveCandidates,
-  EventInsightsPanel,
-} from '@/features/events/components/event-insights-panel'
+import { DashboardVenueActivity } from '@/app/(dashboard)/dashboard-venue-activity'
 import { EventStatistics } from '@/features/events/components/event-statistics'
 
 export const dynamic = 'force-dynamic'
 
 /**
- * Dashboard = overview client (metrik via data-client) + laporan insight server-side.
- * Susunan mengikuti prioritas urgensi: metrik ringkas → "Perlu tindakan" (disisipkan lewat
- * insightsSlot agar posisinya tepat di bawah metrik) → statistik perencanaan dan
- * kandidat arsip (informatif, paling bawah). Gagal memuat insight TIDAK mematikan overview —
- * seksi insight diganti pemberitahuan agar tidak terbaca sebagai "tidak ada masalah".
+ * Dashboard operasional — sepenuhnya Server Component dari SATU bacaan data (`getDashboard`:
+ * satu kali `jobs`, satu kali event ACTIVE): judul → statistik event → venue activity → event
+ * belum ada job → ETA dekat dokumen kurang → ETA belum diisi → bobot event (`DashboardOverview`).
+ * Gagal memuat → satu kartu peringatan, bukan data parsial.
  */
 export default async function DashboardPage() {
-  let insights: EventInsights | null = null
+  let data: DashboardData | null = null
   try {
     const currentUser = await requireCurrentUser()
-    insights = await listEventInsights(currentUser)
+    data = await getDashboard(currentUser)
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) redirect('/login')
   }
 
+  if (data === null) {
+    return (
+      <section className="card p-8" role="alert">
+        <h1 className="text-xl font-semibold">Dashboard belum dapat dimuat</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Muat ulang halaman untuk mencoba lagi.
+        </p>
+      </section>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-7">
-      <DashboardOverview
-        insightsSlot={
-          insights ? (
-            <EventInsightsPanel insights={insights} />
-          ) : (
-            <section className="card p-5 sm:p-6" role="alert" aria-label="Perlu tindakan">
-              <h2 className="text-lg font-semibold tracking-tight">Perlu tindakan</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Daftar tindakan belum dapat dimuat. Muat ulang halaman untuk mencoba lagi.
-              </p>
-            </section>
-          )
-        }
-      />
-      {insights ? (
-        <>
-          <EventStatistics insights={insights} />
-          <EventArchiveCandidates insights={insights} />
-        </>
-      ) : null}
+      <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+      <EventStatistics insights={data.insights} />
+      <DashboardVenueActivity today={data.today} events={data.insights.venueEvents} />
+      <DashboardOverview today={data.today} operations={data.operations} />
     </div>
   )
 }

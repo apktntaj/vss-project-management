@@ -91,7 +91,7 @@ export function EventFilters({
         <label className="relative w-full lg:w-80 lg:flex-none">
           <span className="sr-only">Cari event</span>
           <Search
-            className="absolute left-3 top-[7px] text-orange-500"
+            className="absolute left-3 top-[7px] text-slate-600"
             size={14}
             aria-hidden="true"
           />
@@ -144,7 +144,7 @@ export function EventFilters({
             setSearchInput('')
             applyParams({ search: null, status: null, pic: null })
           }}
-          className="mt-3 text-sm font-semibold text-orange-700 hover:text-orange-800"
+          className="mt-3 text-sm font-semibold text-slate-700 hover:text-slate-900"
         >
           Reset filter
         </button>

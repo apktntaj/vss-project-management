@@ -109,7 +109,7 @@ export function AppShell({
         >
           <div className={`min-w-0 ${collapsed ? 'md:hidden' : ''}`}>
             <p className="text-2xl font-bold leading-none tracking-wider text-white">VISSASA</p>
-            <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-orange-400">
+            <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">
               Parama Nati
             </p>
           </div>

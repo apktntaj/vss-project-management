@@ -269,7 +269,7 @@ export function ToolsHsBtki() {
     <div className="space-y-4">
       <section className="card p-5">
         <div className="flex gap-3">
-          <FileSearch className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
+          <FileSearch className="mt-0.5 size-5 shrink-0 text-foreground" aria-hidden="true" />
           <div>
             <h2 className="font-semibold">HS invoice → pos BTKI 8 digit</h2>
             <p className="mt-1 text-xs text-slate-500">

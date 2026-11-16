@@ -65,7 +65,7 @@ export function JobLartasCard({
     <section className="card p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex gap-3">
-          <ShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
+          <ShieldCheck className="mt-0.5 size-5 shrink-0 text-foreground" aria-hidden="true" />
           <div>
             <h2 className="font-semibold">Cek LARTAS</h2>
             <p className="mt-1 text-xs text-slate-500">
@@ -87,7 +87,7 @@ export function JobLartasCard({
       {valid.length === 0 && (
         <p className="mt-2 text-sm text-slate-500">
           Belum ada HS code 8 digit pada barang job ini. Lengkapi CIPL atau cek manual di{' '}
-          <Link href="/tools?tab=lartas" className="font-medium text-primary hover:underline">
+          <Link href="/tools?tab=lartas" className="font-medium text-foreground hover:underline">
             halaman Cek LARTAS
           </Link>
           .

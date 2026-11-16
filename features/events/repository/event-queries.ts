@@ -11,12 +11,12 @@ import {
   type TuntasJobShape,
 } from '@/domain/event/tuntas'
 import type {
-  EventInsightItem,
   EventInsights,
   EventListItem,
   EventListPage,
   EventListQuery,
   EventNameCount,
+  EventScheduleRef,
 } from '@/domain/event/types'
 import {
   deriveDisplayStatus,
@@ -26,17 +26,6 @@ import {
   type EventJoinedRow,
 } from './shared'
 
-// Dua rentang tanggal inklusif beririsan bila masing-masing mulai tidak setelah akhir yang lain.
-function rangesOverlap(aStart: string, aEnd: string, bStart: string, bEnd: string): boolean {
-  return aStart <= bEnd && bStart <= aEnd
-}
-
-// Tanggal ISO + N hari, tanpa objek Date zona-lokal (aritmetika UTC pada tanggal-saja).
-function addDays(iso: string, days: number): string {
-  const date = new Date(`${iso}T00:00:00Z`)
-  date.setUTCDate(date.getUTCDate() + days)
-  return date.toISOString().slice(0, 10)
-}
 
 // ── Insight operasional (panel "Perlu tindakan" + statistik) ─────────────────────────────────
 
@@ -91,10 +80,12 @@ type InsightRow = {
   venue: { legal_name: string } | { legal_name: string }[] | null
   organizer: { legal_name: string } | { legal_name: string }[] | null
   pic: { full_name: string } | { full_name: string }[] | null
+  // Hall exhibitor event — sumber data hall untuk venue activity.
+  exhibitors: { hall: string | null }[] | null
 }
 
 const INSIGHT_COLUMNS =
-  'id, name, starts_on, ends_on, venue_id, event_organizer_id, pic_id, venue:venues(legal_name), organizer:event_organizers(legal_name), pic:app_users!events_pic_id_fkey(full_name)'
+  'id, name, starts_on, ends_on, venue_id, event_organizer_id, pic_id, venue:venues(legal_name), organizer:event_organizers(legal_name), pic:app_users!events_pic_id_fkey(full_name), exhibitors(hall)'
 
 // Naikkan penghitung nama dalam Map ranking (beban PIC, EO, venue).
 function bumpCount(map: Map<string, EventNameCount>, name: string): void {
@@ -104,57 +95,15 @@ function bumpCount(map: Map<string, EventNameCount>, name: string): void {
 }
 
 /**
- * Hitung seluruh insight dari baris event ACTIVE + himpunan eventId yang sudah punya job. Murni
- * (tanpa I/O) agar mudah diuji terpisah. Horizon: dueSoon = H+14, soonWithoutJob = H+30; keduanya
- * hanya menghitung event yang belum dimulai — yang sedang berjalan sudah terwakili ringkasan
- * "Berlangsung". Konflik venue dikelompokkan per venue dari gabungan pasangan yang beririsan.
+ * Hitung seluruh insight dari baris event ACTIVE. Murni (tanpa I/O) agar mudah diuji terpisah.
+ * Kalender venue activity dihitung di dashboard dari `venueEvents` (tanggal mulai bisa diubah).
  */
-function computeInsights(
-  rows: InsightRow[],
-  jobsByEvent: Map<string, TuntasJobShape[]>,
-  today: string,
-): EventInsights {
-  const horizon14 = addDays(today, 14)
-  const horizon30 = addDays(today, 30)
-  const jobEventIds = new Set(jobsByEvent.keys())
-
-  const toItem = (row: InsightRow): EventInsightItem => ({
-    id: row.id,
-    name: row.name,
-    startsOn: row.starts_on ?? '',
-    endsOn: row.ends_on ?? '',
-    venueName: firstRelation(row.venue)?.legal_name ?? '',
-  })
-
-  const dueSoon: EventInsightItem[] = []
-  const soonWithoutJob: EventInsightItem[] = []
-  const unfinishedAfterShow: EventInsightItem[] = []
-  const archivable: EventInsightItem[] = []
+function computeInsights(rows: InsightRow[]): EventInsights {
   const picCounts = new Map<string, EventNameCount>()
   const eoCounts = new Map<string, EventNameCount>()
   const venueCounts = new Map<string, EventNameCount>()
   const monthCounts = new Map<string, number>()
-
   for (const row of rows) {
-    // Semua seksi berbasis tanggal hanya menghitung event yang sudah dijadwalkan.
-    if (row.starts_on && row.starts_on >= today && row.starts_on <= horizon14) {
-      dueSoon.push(toItem(row))
-    }
-    if (
-      row.starts_on &&
-      row.starts_on >= today &&
-      row.starts_on <= horizon30 &&
-      !jobEventIds.has(row.id)
-    ) {
-      soonWithoutJob.push(toItem(row))
-    }
-    if (row.ends_on && row.ends_on < today) {
-      archivable.push(toItem(row))
-      // Pameran sudah lewat namun masih ada job yang belum tuntas — pekerjaan menggantung.
-      if (eventTuntas(jobsByEvent.get(row.id) ?? []) === 'BELUM_TUNTAS') {
-        unfinishedAfterShow.push(toItem(row))
-      }
-    }
     bumpCount(picCounts, firstRelation(row.pic)?.full_name ?? 'Tanpa PIC')
     bumpCount(eoCounts, firstRelation(row.organizer)?.legal_name ?? 'Tanpa EO')
     bumpCount(venueCounts, firstRelation(row.venue)?.legal_name ?? 'Tanpa venue')
@@ -164,52 +113,21 @@ function computeInsights(
     }
   }
 
-  let scheduleOverlapCount = 0
-  const conflictsByVenue = new Map<
-    string,
-    { venueName: string; events: Map<string, EventInsightItem> }
-  >()
-  for (let i = 0; i < rows.length; i += 1) {
-    for (let j = i + 1; j < rows.length; j += 1) {
-      const a = rows[i]
-      const b = rows[j]
-      // Event tanpa tanggal (belum dijadwalkan) tidak bisa beririsan dengan apa pun.
-      if (!a.starts_on || !a.ends_on || !b.starts_on || !b.ends_on) continue
-      if (!rangesOverlap(a.starts_on, a.ends_on, b.starts_on, b.ends_on)) continue
-      scheduleOverlapCount += 1
-      // Dua event sama-sama tanpa venue bukan konflik venue — konflik butuh venue yang sama.
-      if (!a.venue_id || a.venue_id !== b.venue_id) continue
-      let group = conflictsByVenue.get(a.venue_id)
-      if (!group) {
-        group = { venueName: firstRelation(a.venue)?.legal_name ?? '', events: new Map() }
-        conflictsByVenue.set(a.venue_id, group)
-      }
-      group.events.set(a.id, toItem(a))
-      group.events.set(b.id, toItem(b))
-    }
-  }
-
-  const byStartsAsc = (a: EventInsightItem, b: EventInsightItem) =>
-    a.startsOn.localeCompare(b.startsOn)
-  dueSoon.sort(byStartsAsc)
-  soonWithoutJob.sort(byStartsAsc)
-  // Paling lama menggantung di atas — yang paling mendesak ditindak.
-  unfinishedAfterShow.sort((a, b) => a.endsOn.localeCompare(b.endsOn))
-  archivable.sort((a, b) => a.endsOn.localeCompare(b.endsOn))
+  const venueEvents = rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    startsOn: row.starts_on,
+    endsOn: row.ends_on,
+    venueId: row.venue_id,
+    venueName: firstRelation(row.venue)?.legal_name ?? '',
+    halls: [...new Set((row.exhibitors ?? []).map((exhibitor) => exhibitor.hall))],
+  }))
 
   const ranked = (counts: Map<string, EventNameCount>) =>
     [...counts.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
 
   return {
-    dueSoon,
-    soonWithoutJob,
-    unfinishedAfterShow,
-    venueConflicts: [...conflictsByVenue.values()].map((group) => ({
-      venueName: group.venueName,
-      events: [...group.events.values()].sort(byStartsAsc),
-    })),
-    scheduleOverlapCount,
-    archivable,
+    venueEvents,
     picLoad: ranked(picCounts),
     eoRanking: ranked(eoCounts).slice(0, 5),
     perMonth: [...monthCounts.entries()]
@@ -219,13 +137,12 @@ function computeInsights(
   }
 }
 
-/**
- * Seluruh insight operasional untuk halaman events. Dua query: (a) event ACTIVE + nama master data,
- * (b) payload `jobs` dikelompokkan per event untuk rollup tuntas (dokumen BC + kepulangan).
- */
-export async function queryEventInsights(): Promise<EventInsights> {
+/** Insight operasional + jadwal event ACTIVE untuk dashboard, dari satu query event ACTIVE. */
+export async function queryEventInsights(): Promise<{
+  insights: EventInsights
+  events: EventScheduleRef[]
+}> {
   const { client, workspaceId } = await withWorkspace()
-  const today = serverToday()
 
   const { data: rows, error: rowsError } = await client
     .from('events')
@@ -238,8 +155,14 @@ export async function queryEventInsights(): Promise<EventInsights> {
     throw new Error(`Gagal memuat event untuk insight: ${rowsError.message}`)
   }
 
-  const jobsByEvent = await fetchJobsGroupedByEvent(client, workspaceId)
-  return computeInsights(rows ?? [], jobsByEvent, today)
+  const events: EventScheduleRef[] = (rows ?? []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    venueName: firstRelation(row.venue)?.legal_name ?? '',
+    startsOn: row.starts_on,
+    endsOn: row.ends_on,
+  }))
+  return { insights: computeInsights(rows ?? []), events }
 }
 
 /**

@@ -52,22 +52,45 @@ export type EventListPage = {
 }
 
 // ── Insight operasional (turunan event ACTIVE × jobs) ─────────────────────────────────────────
-// Satu item insight: cukup identitas + tanggal + venue agar panel dapat menautkan ke detail event
-// tanpa query ulang.
-
-export type EventInsightItem = {
-  id: string
-  name: string
-  startsOn: string
-  endsOn: string
-  venueName: string
+// Kalender venue activity (lihat `domain/event/venue-calendar.ts`): satu hari berwarna bila ≥2
+// event di venue yang sama berlangsung hari itu (dengan hall yang sama pada mode bawaan).
+export type VenueCalendarDay = {
+  date: string
+  // Jumlah event terbanyak yang berbagi satu hall pada hari ini (0/1 = tidak beririsan).
+  overlapCount: number
+  // Intensitas warna 0–4 (0 = tidak beririsan).
+  level: 0 | 1 | 2 | 3 | 4
+  // Kelompok yang beririsan hari ini beserta event-nya, terbanyak dulu. `hall` null pada mode
+  // ANY_HALL (hall diabaikan — satu kelompok per venue).
+  groups: { hall: string | null; events: { id: string; name: string }[] }[]
 }
 
-// Konflik venue yang dikelompokkan per venue: daftar event di venue sama dengan rentang tanggal
-// yang beririsan (gabungan pasangan unik, bukan pasangan mentah).
-export type EventVenueConflictGroup = {
+export type VenueCalendar = {
+  startsOn: string // Senin pertama
+  endsOn: string // Minggu terakhir
+  // Hall yang beririsan pada hari mana pun dalam jendela, urut natural (kosong pada ANY_HALL).
+  sharedHalls: string[]
+  // Tepat 28 hari berurutan dari `startsOn`.
+  days: VenueCalendarDay[]
+}
+
+// Satu venue pada daftar pilihan kalender venue activity.
+export type VenueSummary = {
+  venueId: string
   venueName: string
-  events: EventInsightItem[]
+  eventCount: number
+}
+
+// Jadwal satu event untuk kalender venue (dihitung ulang di klien saat tanggal mulai/mode berganti).
+export type VenueScheduleEvent = {
+  id: string
+  name: string
+  startsOn: string | null
+  endsOn: string | null
+  venueId: string | null
+  venueName: string
+  /** Teks hall exhibitor event ini, unik, apa adanya (boleh kosong). */
+  halls: readonly (string | null)[]
 }
 
 // Nama + jumlah untuk ranking (EO, venue) dan beban PIC.
@@ -81,22 +104,11 @@ export type EventMonthCount = {
   count: number
 }
 
-// Panel "Perlu tindakan" + statistik perencanaan. Semua turunan event ACTIVE; horizon tanggal
-// dihitung terhadap "hari ini" sisi-server.
+// Statistik turunan event ACTIVE untuk dashboard.
 export type EventInsights = {
-  // starts_on antara hari ini dan H+14, urut terdekat.
-  dueSoon: EventInsightItem[]
-  // starts_on antara hari ini dan H+30 tanpa satu pun job terkait — sinyal follow-up.
-  soonWithoutJob: EventInsightItem[]
-  // Pameran sudah lewat (ends_on < hari ini) namun masih ada job yang belum tuntas —
-  // pekerjaan menggantung setelah pameran tutup; urut paling lama menggantung.
-  unfinishedAfterShow: EventInsightItem[]
-  // Venue dengan ≥2 event yang rentangnya beririsan.
-  venueConflicts: EventVenueConflictGroup[]
-  // Total pasangan event (venue apa pun) dengan jadwal beririsan.
-  scheduleOverlapCount: number
-  // ends_on < hari ini namun masih ACTIVE — kandidat arsip.
-  archivable: EventInsightItem[]
+  // Seluruh event ACTIVE (semua usia) sebagai bahan kalender venue activity
+  // (`domain/event/venue-calendar.ts`); kalendernya dihitung di dashboard.
+  venueEvents: VenueScheduleEvent[]
   // Jumlah event ACTIVE per PIC, urut terbanyak.
   picLoad: EventNameCount[]
   // EO dengan event ACTIVE terbanyak (top 5).
@@ -105,6 +117,15 @@ export type EventInsights = {
   perMonth: EventMonthCount[]
   // Venue dengan event ACTIVE terbanyak (top 5).
   venueRanking: EventNameCount[]
+}
+
+// Jadwal event ACTIVE yang dibutuhkan dashboard (kesiapan kedatangan + bobot event).
+export type EventScheduleRef = {
+  id: string
+  name: string
+  venueName: string
+  startsOn: string | null
+  endsOn: string | null
 }
 
 export type VenueInput = {

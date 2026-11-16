@@ -106,7 +106,7 @@ export function Bc23DraftDemo() {
 
   return <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 sm:p-6">
     <header className="space-y-2">
-      <p className="text-sm font-medium text-primary">Demo lokal · tidak mengirim ke CEISA</p>
+      <p className="text-sm font-medium text-foreground">Demo lokal · tidak mengirim ke CEISA</p>
       <h1 className="text-2xl font-semibold tracking-tight">Draft BC 2.3 dari dokumen sumber</h1>
       <p className="max-w-3xl text-sm text-muted-foreground">Unggah Commercial Invoice dan B/L atau AWB. Sistem mengisi data yang tercetak, lalu operator melengkapi field wajib yang belum tersedia.</p>
     </header>

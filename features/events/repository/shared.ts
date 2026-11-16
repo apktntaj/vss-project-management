@@ -4,6 +4,7 @@ import 'server-only'
 // import efektif pertama tetap dipasang di SETIAP modul repository (bukan hanya barrel) agar batas
 // server/klien dijaga per-modul, bukan hanya di pintu masuk (Req 3.2, 20.2).
 
+import { wibDateOf } from '@/lib/wib-date'
 import type { EventDisplayStatus, EventLifecycle } from '@/domain/event/types'
 
 // Select bentuk daftar/ringkasan: kolom event + nama master data lewat foreign-table select.
@@ -40,10 +41,10 @@ export function firstRelation<T>(relation: T | T[] | null): T | null {
   return Array.isArray(relation) ? (relation[0] ?? null) : relation
 }
 
-// Tanggal "hari ini" sisi-server sebagai YYYY-MM-DD. Dipakai untuk menurunkan display status.
+// Tanggal "hari ini" versi WIB sebagai YYYY-MM-DD. Dipakai untuk menurunkan display status.
 // Perbandingan string ISO leksikografis setara perbandingan tanggal, jadi tak perlu objek Date.
 export function serverToday(): string {
-  return new Date().toISOString().slice(0, 10)
+  return wibDateOf(new Date())
 }
 
 // Turunkan display status dari tanggal terhadap hari ini (Req 16.5): soon bila hari ini < startsOn,

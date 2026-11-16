@@ -184,7 +184,7 @@ export default function EventDetailPage() {
         <h2 className="sr-only">Informasi event</h2>
         <dl className="grid gap-3 text-sm md:grid-cols-3">
           <div className="flex items-start gap-3">
-            <CalendarDays className="mt-0.5 shrink-0 text-orange-600" size={18} />
+            <CalendarDays className="mt-0.5 shrink-0 text-slate-600" size={18} />
             <div>
               <dt className="text-slate-500">Tanggal event</dt>
               <dd className="mt-0.5 font-medium text-slate-900">
@@ -277,7 +277,7 @@ export default function EventDetailPage() {
                     type="button"
                     onClick={() => setOpenJenis((value) => ({ ...value, [group.key]: !isOpen }))}
                     aria-expanded={isOpen}
-                    className="flex w-full items-center gap-3 bg-slate-50 px-5 py-4 text-left hover:text-orange-700"
+                    className="flex w-full items-center gap-3 bg-slate-50 px-5 py-4 text-left hover:text-slate-900"
                   >
                     <span className="text-slate-400">
                       {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}

@@ -229,7 +229,7 @@ function PartyFields({
   const update = (patch: Partial<JobDocumentParty>) => onChange({ ...value, ...patch })
   return (
     <FieldSet className="rounded-lg border bg-background p-4">
-      <FieldLegend className="text-primary">{legend}</FieldLegend>
+      <FieldLegend className="text-foreground">{legend}</FieldLegend>
       <FieldGroup className="grid gap-4 md:grid-cols-2">
         <TextField
           id={`${prefix}-name`}
@@ -304,14 +304,14 @@ export function InvoiceEditor({
               Items ({value.items.length})
             </TabsTrigger>
           </TabsList>
-          <p aria-live="polite" className="hidden text-xs font-medium text-primary sm:block">
+          <p aria-live="polite" className="hidden text-xs font-medium text-foreground sm:block">
             Tampilan aktif: {activeView === 'header' ? 'Header' : 'Items'}
           </p>
         </div>
         <TabsContent value="header" className="min-h-0 overflow-y-auto px-4 py-5 sm:px-6">
           <div className="flex flex-col gap-5">
             <FieldSet className="rounded-xl border border-primary/15 bg-primary/5 p-4 sm:p-5">
-              <FieldLegend className="flex items-center gap-2 text-primary">
+              <FieldLegend className="flex items-center gap-2 text-foreground">
                 <FileText aria-hidden="true" />
                 Informasi dokumen
               </FieldLegend>
@@ -378,7 +378,7 @@ export function InvoiceEditor({
               </FieldGroup>
             </FieldSet>
             <FieldSet className="rounded-xl border bg-accent/50 p-4 sm:p-5">
-              <FieldLegend className="flex items-center gap-2 text-primary">
+              <FieldLegend className="flex items-center gap-2 text-foreground">
                 <PackageSearch aria-hidden="true" />
                 Ringkasan kemasan dan berat
               </FieldLegend>
@@ -415,7 +415,7 @@ export function InvoiceEditor({
               </FieldGroup>
             </FieldSet>
             <div className="rounded-xl border border-primary/10 bg-muted/40 p-4 sm:p-5">
-              <div className="mb-4 flex items-center gap-2 text-base font-medium text-primary">
+              <div className="mb-4 flex items-center gap-2 text-base font-medium text-foreground">
                 <UsersRound aria-hidden="true" />
                 Pihak pada invoice
               </div>
@@ -440,7 +440,7 @@ export function InvoiceEditor({
           <FieldSet className="min-h-full">
             <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-primary/15 bg-primary/5 p-4">
               <div>
-                <FieldLegend className="text-primary">Item invoice</FieldLegend>
+                <FieldLegend className="text-foreground">Item invoice</FieldLegend>
                 <FieldDescription>
                   Tambahkan atau koreksi barang yang tercantum pada invoice.
                 </FieldDescription>

@@ -43,7 +43,7 @@ export function ToolsCbmCalculator() {
     <section className="card p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 flex-1 gap-3">
-          <Calculator className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
+          <Calculator className="mt-0.5 size-5 shrink-0 text-foreground" aria-hidden="true" />
           <div>
             <h2 className="font-semibold">Kalkulator CBM</h2>
             <p className="mt-1 text-xs text-slate-500">

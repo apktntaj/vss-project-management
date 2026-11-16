@@ -73,7 +73,7 @@ function EmptyTabState({ tab }: { tab: JobDetailTab }) {
   const Icon = emptyTabIcons[tab]
   return (
     <section className="card flex flex-col items-center px-6 py-12 text-center">
-      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-50 text-orange-600 ring-8 ring-orange-50/60">
+      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-50 text-slate-600 ring-8 ring-orange-50/60">
         <Icon size={26} strokeWidth={1.75} aria-hidden="true" />
       </span>
       <p className="mt-4 text-sm font-medium text-slate-500">Belum ada data</p>
@@ -199,7 +199,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
         <div>
           <Link
             href="/jobs"
-            className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-orange-700"
+            className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-900"
           >
             <ArrowLeft size={16} /> Kembali ke Jobs
           </Link>
@@ -234,7 +234,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
             <button
               type="button"
               onClick={() => setHeaderOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-orange-50 hover:text-orange-700"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-orange-50 hover:text-slate-900"
             >
               <Pencil size={14} aria-hidden="true" /> Ubah header
             </button>
@@ -251,7 +251,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
             aria-expanded={menuAnchor !== null}
             aria-haspopup="menu"
             title="Menu aksi"
-            className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 hover:bg-orange-50 hover:text-orange-700"
+            className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 hover:bg-orange-50 hover:text-slate-900"
           >
             <MoreVertical size={18} />
           </button>
@@ -340,7 +340,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
               <TabsTrigger
                 key={value}
                 value={value}
-                className="h-auto rounded-lg px-4 py-1.5 text-slate-500 hover:bg-orange-50 hover:text-orange-700 data-active:bg-orange-600 data-active:text-white data-active:shadow-sm"
+                className="h-auto rounded-lg px-4 py-1.5 text-slate-500 hover:bg-orange-50 hover:text-slate-900 data-active:bg-orange-600 data-active:text-white data-active:shadow-sm"
               >
                 {text}
               </TabsTrigger>
@@ -350,7 +350,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
             <button
               type="button"
               onClick={openTabEditor}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-orange-50 hover:text-orange-700"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-orange-50 hover:text-slate-900"
             >
               <Pencil size={14} aria-hidden="true" /> {tabActionLabel(tab, job)}
             </button>

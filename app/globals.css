@@ -37,9 +37,6 @@
   .card {
     @apply rounded-2xl border border-border bg-white shadow-sm transition-shadow;
   }
-  .dashboard-metric {
-    @apply card relative flex flex-col gap-4 p-5 transition hover:-translate-y-0.5 hover:shadow-md;
-  }
   .workspace-nav {
     @apply flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors;
   }
@@ -60,7 +57,7 @@
     animation-play-state: paused;
   }
   .eyebrow {
-    @apply text-xs font-bold uppercase tracking-[0.18em] text-orange-600;
+    @apply text-xs font-bold uppercase tracking-[0.18em] text-slate-600;
   }
   .btn {
     @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;

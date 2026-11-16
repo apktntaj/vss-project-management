@@ -115,7 +115,7 @@ export function JobRow({
         <div className="flex items-center gap-2 whitespace-nowrap">
           <Link
             href={`/jobs/${job.id}`}
-            className="min-w-0 truncate font-semibold text-slate-900 hover:text-orange-700"
+            className="min-w-0 truncate font-semibold text-slate-900 hover:text-slate-900"
           >
             {nomor || jobLabel(job)}
           </Link>
@@ -127,7 +127,7 @@ export function JobRow({
             {event ? (
               <Link
                 href={`/events/${event.id}`}
-                className="min-w-0 truncate font-medium text-slate-800 hover:text-orange-700"
+                className="min-w-0 truncate font-medium text-slate-800 hover:text-slate-900"
                 title={event.name}
               >
                 {event.name}
@@ -190,7 +190,7 @@ export function JobRow({
               aria-expanded={menuAnchor !== null}
               aria-haspopup="menu"
               title="Menu"
-              className="rounded-lg p-2 text-slate-500 hover:bg-orange-50 hover:text-orange-700"
+              className="rounded-lg p-2 text-slate-500 hover:bg-orange-50 hover:text-slate-900"
             >
               <MoreVertical size={18} />
             </button>

@@ -40,7 +40,7 @@ const cell = (value: number | null | undefined) =>
 function chip(tone: 'slate' | 'orange' | 'emerald' | 'amber' | 'violet', extra = '') {
   const tones = {
     slate: 'bg-slate-100 text-slate-600 ring-slate-200',
-    orange: 'bg-orange-50 text-orange-700 ring-orange-200',
+    orange: 'bg-orange-50 text-slate-700 ring-orange-200',
     emerald: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
     amber: 'bg-amber-50 text-amber-800 ring-amber-200',
     violet: 'bg-violet-50 text-violet-700 ring-violet-200',

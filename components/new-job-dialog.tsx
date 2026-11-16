@@ -55,7 +55,7 @@ export function NewJobDialog({
             onClick={() => onSelectCategory('EVENT')}
             className="flex w-full items-center gap-3 rounded-xl border border-black/10 px-4 py-3 text-left hover:border-orange-300 hover:bg-orange-50"
           >
-            <CalendarDays size={18} className="shrink-0 text-orange-700" aria-hidden="true" />
+            <CalendarDays size={18} className="shrink-0 text-slate-700" aria-hidden="true" />
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-semibold text-slate-900">Event</span>
               <span className="block text-xs text-slate-500">

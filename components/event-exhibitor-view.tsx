@@ -39,7 +39,7 @@ export function EventExhibitorView({ groups, by }: { groups: ExhibitorGroup[]; b
               type="button"
               onClick={() => setClosed((value) => ({ ...value, [group.key]: isOpen }))}
               aria-expanded={isOpen}
-              className="flex w-full items-center gap-3 bg-slate-50 px-5 py-4 text-left hover:text-orange-700"
+              className="flex w-full items-center gap-3 bg-slate-50 px-5 py-4 text-left hover:text-slate-900"
             >
               <span className="text-slate-400">
                 {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
@@ -110,7 +110,7 @@ export function EventExhibitorView({ groups, by }: { groups: ExhibitorGroup[]; b
                         <td className="px-3 py-2.5 align-middle">
                           <Link
                             href={`/jobs/${row.jobId}`}
-                            className="block truncate font-semibold text-slate-900 hover:text-orange-700"
+                            className="block truncate font-semibold text-slate-900 hover:text-slate-900"
                           >
                             {row.jobNo}
                           </Link>

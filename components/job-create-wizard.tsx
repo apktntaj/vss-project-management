@@ -369,7 +369,7 @@ export function JobCreateWizard({
                     type="button"
                     onClick={() => setCreatingNew(true)}
                     disabled={tanpaAgent}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-orange-700 hover:text-orange-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Plus size={13} aria-hidden="true" />
                     Tambah agent
@@ -421,7 +421,7 @@ export function JobCreateWizard({
                   <button
                     type="button"
                     onClick={() => setCreatingNew(false)}
-                    className="mt-3 text-xs font-semibold text-orange-700 hover:text-orange-800"
+                    className="mt-3 text-xs font-semibold text-slate-700 hover:text-slate-900"
                   >
                     Pilih agent tersimpan
                   </button>
