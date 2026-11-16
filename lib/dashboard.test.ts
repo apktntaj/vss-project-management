@@ -42,7 +42,7 @@ function makeJob(overrides: Partial<Job> = {}): Job {
     assignedToId: null,
     createdById: null,
     assignedTo: null,
-    operational: emptyOperationalDetails(),
+    operational: emptyOperationalDetails(null),
     inward: null,
     kepulangan: null,
     emptyStorage: null,
@@ -65,7 +65,7 @@ function makeEvent(overrides: Partial<EventScheduleRef> = {}): EventScheduleRef 
   }
 }
 
-function withEta(date: string, operational: JobOperationalDetails = emptyOperationalDetails()) {
+function withEta(date: string, operational: JobOperationalDetails = emptyOperationalDetails(null)) {
   return {
     operational: {
       ...operational,

@@ -25,7 +25,7 @@ assert.deepEqual(details.outbound, { mode: null, carrier: null, scheduleAt: null
 assert.equal('billing' in details.customs.BC_2_3, false)
 
 const fresh = normalizeOperationalDetails(null)
-assert.deepEqual(fresh, emptyOperationalDetails())
+assert.deepEqual(fresh, emptyOperationalDetails(null))
 
 // Hanya BC milik tahap yang applicable; tanpa tahap (Local/Road) tidak ada.
 const applicable = (stage: Parameters<typeof emptyOperationalDetails>[0]) =>
