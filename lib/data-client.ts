@@ -721,7 +721,7 @@ function eventFromRow(row: Record<string, unknown>): LocalEvent {
     id: String(row.id),
     name: String(row.name),
     officialName: String(row.name),
-    alias: null,
+    alias: typeof row.alias === 'string' && row.alias ? row.alias : null,
     venueId: String(row.venue_id),
     eventOrganizerId: String(row.event_organizer_id ?? ''),
     eoId: String(row.event_organizer_id ?? ''),

@@ -17,8 +17,8 @@ function groupTitle(by: ExhibitorGroupBy, label: string | null) {
 
 /** Baris exhibitor seluruh job event, dikelompokkan per hall atau per agent. */
 export function EventExhibitorView({ groups, by }: { groups: ExhibitorGroup[]; by: ExhibitorGroupBy }) {
-  // Hanya grup yang ditutup yang disimpan; default semua terbuka.
-  const [closed, setClosed] = useState<Record<string, boolean>>({})
+  // Hanya grup yang dibuka yang disimpan; default semua tertutup (sama dengan tab "Job").
+  const [opened, setOpened] = useState<Record<string, boolean>>({})
 
   if (groups.length === 0) {
     return (
@@ -31,13 +31,13 @@ export function EventExhibitorView({ groups, by }: { groups: ExhibitorGroup[]; b
   return (
     <div className="space-y-4">
       {groups.map((group) => {
-        const isOpen = !closed[group.key]
+        const isOpen = opened[group.key] ?? false
         const { totals } = group
         return (
           <section key={group.key} className="overflow-hidden rounded-xl border border-black/10">
             <button
               type="button"
-              onClick={() => setClosed((value) => ({ ...value, [group.key]: isOpen }))}
+              onClick={() => setOpened((value) => ({ ...value, [group.key]: !isOpen }))}
               aria-expanded={isOpen}
               className="flex w-full items-center gap-3 bg-slate-50 px-5 py-4 text-left hover:text-slate-900"
             >

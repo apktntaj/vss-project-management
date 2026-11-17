@@ -16,10 +16,26 @@ export const DISPLAY_STATUS_LABEL: Record<EventDisplayStatus, string> = {
 
 // Kelas badge per display status — warna menandai makna.
 export const DISPLAY_STATUS_BADGE: Record<EventDisplayStatus, string> = {
-  unscheduled: 'bg-slate-100 text-slate-400',
+  unscheduled: 'bg-slate-100 text-slate-600',
   soon: 'bg-blue-100 text-blue-800',
-  ongoing: 'bg-emerald-50 text-emerald-700',
+  ongoing: 'bg-emerald-100 text-emerald-800',
   done: 'bg-slate-100 text-slate-600',
+}
+
+// Event yang mulai dalam rentang ini ditandai lebih menonjol (amber) agar mudah dipindai.
+const IMMINENT_DAYS = 7
+
+// Kelas badge final: "soon" yang tinggal ≤7 hari memakai amber (latar saja; teks tetap gelap,
+// bukan orange), selain itu mengikuti DISPLAY_STATUS_BADGE.
+export function displayStatusBadgeClass(
+  displayStatus: EventDisplayStatus,
+  startsOn: string | null,
+  today: string,
+): string {
+  if (displayStatus === 'soon' && startsOn && daysUntil(today, startsOn) <= IMMINENT_DAYS) {
+    return 'bg-amber-100 text-amber-900'
+  }
+  return DISPLAY_STATUS_BADGE[displayStatus]
 }
 
 // Hari dari tanggal `from` ke `to` (ISO tanggal-saja, aritmetika UTC tanpa zona).

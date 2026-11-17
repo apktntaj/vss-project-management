@@ -315,6 +315,7 @@ export async function listLegacyEventRows(): Promise<Record<string, unknown>[]> 
     .from('events')
     .select(
       'id, name, alias, venue_id, event_organizer_id, pic_id, starts_on, ends_on, status, created_at, created_by_id, updated_at, ' +
+        'pic:app_users!events_pic_id_fkey(full_name), ' +
         'venues(id, legal_name, alias_name, city, created_at, updated_at), ' +
         'event_organizers(id, legal_name, created_at, updated_at), ' +
         'event_cancellations(event_id, reason, cancelled_at, cancelled_by_id), ' +

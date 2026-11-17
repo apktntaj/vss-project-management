@@ -92,7 +92,7 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
       <h1 className="sr-only">Events</h1>
 
       <section className="flex min-h-0 flex-1 flex-col gap-3">
-        <EventFilters pics={pics}>
+        <EventFilters pics={pics} resultCount={page?.items.length}>
           <div className="flex items-center gap-3">
             <EventExportButton />
             <EventCreateButton venues={venues} organizers={organizers} pics={pics} />

@@ -9,9 +9,18 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Menu } from '@base-ui/react/menu'
 import { Archive, MoreVertical, Pencil, Trash2 } from 'lucide-react'
 
 import { toast } from '@/components/toast'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   EventFormModal,
   type EventFormOptions,
@@ -32,9 +41,6 @@ type EventCardActionsProps = EventFormOptions & {
  */
 export function EventCardActions({ event, lifecycle, venues, organizers, pics }: EventCardActionsProps) {
   const router = useRouter()
-  // Menu di-anchor fixed dari getBoundingClientRect (pola JobRow) supaya tidak terpotong oleh
-  // wadah tabel yang overflow-x-auto.
-  const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null)
   const [editing, setEditing] = useState(false)
   const [confirmingArchive, setConfirmingArchive] = useState(false)
   const [archiving, setArchiving] = useState(false)
@@ -85,73 +91,45 @@ export function EventCardActions({ event, lifecycle, venues, organizers, pics }:
 
   return (
     <div className="relative shrink-0">
-      <button
-        type="button"
-        onClick={(clickEvent) => {
-          const rect = clickEvent.currentTarget.getBoundingClientRect()
-          setMenuAnchor((current) =>
-            current ? null : { top: rect.bottom + 4, left: rect.right - 176 },
-          )
-        }}
-        aria-label={`Menu aksi untuk ${event.name}`}
-        aria-expanded={menuAnchor !== null}
-        aria-haspopup="menu"
-        className="rounded-lg p-2 text-slate-500 hover:bg-orange-50 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
-      >
-        <MoreVertical size={20} aria-hidden="true" />
-      </button>
-
-      {menuAnchor ? (
-        <>
-          <div
-            className="fixed inset-0 z-40"
-            role="presentation"
-            onClick={() => setMenuAnchor(null)}
-          />
-          <div
-            role="menu"
-            aria-label={`Aksi untuk ${event.name}`}
-            className="fixed z-50 w-44 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg"
-            style={{ top: menuAnchor.top, left: menuAnchor.left }}
-          >
-            <button
-              role="menuitem"
-              type="button"
-              onClick={() => {
-                setMenuAnchor(null)
-                setEditing(true)
-              }}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+      {/* Menu base-ui: dirender di portal (tidak terpotong tabel overflow), navigasi panah, Esc
+          menutup, fokus kembali ke tombol. */}
+      <Menu.Root>
+        <Menu.Trigger
+          aria-label={`Menu aksi untuk ${event.name}`}
+          className="rounded-lg p-2 text-slate-600 hover:bg-orange-50 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+        >
+          <MoreVertical size={20} aria-hidden="true" />
+        </Menu.Trigger>
+        <Menu.Portal>
+          <Menu.Positioner align="end" sideOffset={4} className="z-50">
+            <Menu.Popup
+              aria-label={`Aksi untuk ${event.name}`}
+              className="w-44 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg outline-none"
             >
-              <Pencil size={15} aria-hidden="true" /> Edit
-            </button>
-            {lifecycle !== 'ARCHIVED' ? (
-              <button
-                role="menuitem"
-                type="button"
-                onClick={() => {
-                  setMenuAnchor(null)
-                  setConfirmingArchive(true)
-                }}
-                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+              <Menu.Item
+                onClick={() => setEditing(true)}
+                className="flex cursor-default items-center gap-2.5 px-3 py-2 text-sm text-slate-700 outline-none data-[highlighted]:bg-slate-100"
               >
-                <Archive size={15} aria-hidden="true" /> Arsipkan
-              </button>
-            ) : null}
-            <button
-              role="menuitem"
-              type="button"
-              onClick={() => {
-                setMenuAnchor(null)
-                setConfirmingDelete(true)
-              }}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
-            >
-              <Trash2 size={15} aria-hidden="true" /> Hapus
-            </button>
-          </div>
-        </>
-      ) : null}
+                <Pencil size={15} aria-hidden="true" /> Edit
+              </Menu.Item>
+              {lifecycle !== 'ARCHIVED' ? (
+                <Menu.Item
+                  onClick={() => setConfirmingArchive(true)}
+                  className="flex cursor-default items-center gap-2.5 px-3 py-2 text-sm text-slate-700 outline-none data-[highlighted]:bg-slate-100"
+                >
+                  <Archive size={15} aria-hidden="true" /> Arsipkan
+                </Menu.Item>
+              ) : null}
+              <Menu.Item
+                onClick={() => setConfirmingDelete(true)}
+                className="flex cursor-default items-center gap-2.5 px-3 py-2 text-sm text-rose-700 outline-none data-[highlighted]:bg-rose-50"
+              >
+                <Trash2 size={15} aria-hidden="true" /> Hapus
+              </Menu.Item>
+            </Menu.Popup>
+          </Menu.Positioner>
+        </Menu.Portal>
+      </Menu.Root>
 
       {editing ? (
         <EventFormModal
@@ -164,96 +142,78 @@ export function EventCardActions({ event, lifecycle, venues, organizers, pics }:
         />
       ) : null}
 
-      {confirmingArchive ? (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-          role="presentation"
-          onMouseDown={(mouseEvent) => {
-            if (!archiving && mouseEvent.target === mouseEvent.currentTarget) {
-              setConfirmingArchive(false)
-            }
-          }}
-        >
-          <div
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="archive-event-title"
-            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
-          >
-            <h2 id="archive-event-title" className="text-lg font-bold">
-              Arsipkan event?
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
+      {/* Dialog konfirmasi: focus trap, Esc, dan pengembalian fokus dari primitif Dialog. Selama
+          permintaan berjalan, penutupan (Esc/klik luar) ditahan agar hasil tidak hilang. */}
+      <Dialog
+        open={confirmingArchive}
+        onOpenChange={(next) => {
+          if (!next && !archiving) setConfirmingArchive(false)
+        }}
+      >
+        <DialogContent role="alertdialog" showCloseButton={false} className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold">Arsipkan event?</DialogTitle>
+            <DialogDescription className="leading-6 text-slate-600">
               <span className="font-semibold">{event.name}</span> akan ditandai sebagai Diarsipkan.
               Data event dan job tetap utuh; status dapat dibedakan lewat badge pada daftar.
-            </p>
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setConfirmingArchive(false)}
-                disabled={archiving}
-                className="btn-secondary"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleArchive}
-                disabled={archiving}
-                className="inline-flex items-center gap-2 rounded-lg bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-              >
-                <Archive size={15} aria-hidden="true" />
-                {archiving ? 'Mengarsipkan…' : 'Arsipkan'}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setConfirmingArchive(false)}
+              disabled={archiving}
+              className="btn-secondary"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleArchive}
+              disabled={archiving}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+            >
+              <Archive size={15} aria-hidden="true" />
+              {archiving ? 'Mengarsipkan…' : 'Arsipkan'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {confirmingDelete ? (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-          role="presentation"
-          onMouseDown={(mouseEvent) => {
-            if (!deleting && mouseEvent.target === mouseEvent.currentTarget) {
-              setConfirmingDelete(false)
-            }
-          }}
-        >
-          <div
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="delete-event-title"
-            className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-6 shadow-2xl"
-          >
-            <h2 id="delete-event-title" className="text-lg font-bold">
-              Hapus event?
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
+      <Dialog
+        open={confirmingDelete}
+        onOpenChange={(next) => {
+          if (!next && !deleting) setConfirmingDelete(false)
+        }}
+      >
+        <DialogContent role="alertdialog" showCloseButton={false} className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold">Hapus event?</DialogTitle>
+            <DialogDescription className="leading-6 text-slate-600">
               <span className="font-semibold">{event.name}</span> akan dihapus. Tindakan ini tidak
               dapat dibatalkan.
-            </p>
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setConfirmingDelete(false)}
-                disabled={deleting}
-                className="btn-secondary"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={deleting}
-                className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
-              >
-                {deleting ? 'Menghapus…' : 'Hapus'}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(false)}
+              disabled={deleting}
+              className="btn-secondary"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+            >
+              {deleting ? 'Menghapus…' : 'Hapus'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

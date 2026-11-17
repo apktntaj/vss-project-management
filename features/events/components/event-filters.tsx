@@ -35,8 +35,11 @@ type StatusValue = (typeof STATUS_OPTIONS)[number][0]
 export function EventFilters({
   children,
   pics,
+  resultCount,
 }: {
   children?: ReactNode
+  /** Jumlah event hasil filter saat ini; disembunyikan bila undefined (daftar gagal dimuat). */
+  resultCount?: number
   /** Opsi PIC untuk filter; bila undefined (master data gagal dimuat) kontrol disembunyikan. */
   pics?: { id: string; name: string }[]
 }) {
@@ -103,21 +106,31 @@ export function EventFilters({
             placeholder="Cari event..."
           />
         </label>
-        <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-2 px-0 py-2">
+        <fieldset className="inline-flex w-fit flex-wrap rounded-lg bg-slate-100 p-1">
           <legend className="sr-only">Filter status event</legend>
-          {STATUS_OPTIONS.map(([value, label]) => (
-            <label key={value} className="flex items-center gap-2 text-sm text-slate-500">
-              <input
-                type="radio"
-                name="event-status"
-                value={value}
-                checked={currentStatus === value}
-                onChange={() => applyParams({ status: value === 'all' ? null : value })}
-                className="h-4 w-4 accent-orange-600"
-              />
-              {label}
-            </label>
-          ))}
+          {STATUS_OPTIONS.map(([value, label]) => {
+            const checked = currentStatus === value
+            return (
+              <label
+                key={value}
+                className={`flex min-h-8 cursor-pointer items-center rounded-md px-3 text-sm font-medium transition-colors has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-primary ${
+                  checked
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="event-status"
+                  value={value}
+                  checked={checked}
+                  onChange={() => applyParams({ status: value === 'all' ? null : value })}
+                  className="sr-only"
+                />
+                {label}
+              </label>
+            )
+          })}
         </fieldset>
         {pics ? (
           <select
@@ -136,18 +149,24 @@ export function EventFilters({
         ) : null}
         {children ? <div className="flex-none lg:ml-auto">{children}</div> : null}
       </div>
-      {hasFilters ? (
-        <button
-          type="button"
-          onClick={() => {
-            window.clearTimeout(debounceTimer.current)
-            setSearchInput('')
-            applyParams({ search: null, status: null, pic: null })
-          }}
-          className="mt-3 text-sm font-semibold text-slate-700 hover:text-slate-900"
-        >
-          Reset filter
-        </button>
+      {resultCount !== undefined || hasFilters ? (
+        // Tinggi baris tetap (min-h) agar daftar tidak bergeser saat "Reset filter" muncul.
+        <div className="mt-2 flex min-h-6 items-center gap-3 text-sm text-slate-600" aria-live="polite">
+          {resultCount !== undefined ? <span>{resultCount} event</span> : null}
+          {hasFilters ? (
+            <button
+              type="button"
+              onClick={() => {
+                window.clearTimeout(debounceTimer.current)
+                setSearchInput('')
+                applyParams({ search: null, status: null, pic: null })
+              }}
+              className="font-semibold text-slate-700 underline-offset-2 hover:text-slate-900 hover:underline"
+            >
+              Reset filter
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   )

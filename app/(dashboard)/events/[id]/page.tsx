@@ -3,14 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { Menu } from '@base-ui/react/menu'
 import {
+  AlertTriangle,
   Building2,
   CalendarDays,
   ChevronDown,
   ChevronRight,
   Download,
-  FileCheck2,
-  FileSpreadsheet,
   Loader2,
   MapPin,
   Plus,
@@ -20,7 +20,6 @@ import {
   downloadEventManifest,
   downloadJobKanwilLetter,
   downloadJobTppbGoodsForm,
-  getEventAppointmentLetter,
   listEventJobs,
   listEventsWithExhibitors,
   type LocalEvent,
@@ -31,6 +30,8 @@ import { sortJobsForTable } from '@/lib/job-list'
 import { withStageGoods } from '@/domain/job/stages'
 import { buildExhibitorGroups, type ExhibitorGroupBy } from '@/lib/exhibitor-view'
 import { PageSkeleton } from '@/components/loading-skeletons'
+import { toast } from '@/components/toast'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ContextTicketList } from '@/components/context-ticket-list'
 import { JobCreateWizard } from '@/components/job-create-wizard'
 import { JobRow } from '@/components/job-row'
@@ -38,8 +39,14 @@ import { EventExhibitorView } from '@/components/event-exhibitor-view'
 import { CancelJobDialog } from '@/components/cancel-job-dialog'
 import { KanwilLetterDialog, type KanwilLetterFormInput } from '@/components/kanwil-letter-dialog'
 import { jobLabel } from '@/domain/job/numbering'
-import type { EventAppointmentLetter } from '@/domain/event/appointment-letter'
-import { EventAppointmentLetterLink } from '@/features/events/components/event-appointment-letter-link'
+import {
+  displayStatusBadgeClass,
+  displayStatusLabel,
+  formatDateRange as formatEventRange,
+  lifecycleBadge,
+} from '@/features/events/components/event-presentation'
+import type { EventDisplayStatus } from '@/domain/event/types'
+import { wibDateOf } from '@/lib/wib-date'
 
 function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -50,14 +57,23 @@ function saveBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-function formatDateRange(startsAt: string, endsAt: string) {
-  const formatter = new Intl.DateTimeFormat('id-ID', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
-  return `${formatter.format(new Date(startsAt))} - ${formatter.format(new Date(endsAt))}`
+// Display status turunan tanggal — aturan yang sama dengan daftar event (server), dihitung di klien
+// karena halaman ini membaca event lewat data-client.
+function deriveDisplayStatus(startsOn: string, endsOn: string, today: string): EventDisplayStatus {
+  if (!startsOn || !endsOn) return 'unscheduled'
+  if (today < startsOn) return 'soon'
+  if (today > endsOn) return 'done'
+  return 'ongoing'
 }
+
+const VIEW_TABS = [
+  ['jenis', 'Job'],
+  ['hall', 'Hall'],
+  ['agent', 'Agent'],
+] as const
+
+const TABLE_HEAD =
+  'whitespace-nowrap border-b border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500'
 
 export default function EventDetailPage() {
   const params = useParams<{ id: string }>()
@@ -66,13 +82,11 @@ export default function EventDetailPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [view, setView] = useState<'jenis' | ExhibitorGroupBy>('jenis')
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [showNewJob, setShowNewJob] = useState(false)
   const [openJenis, setOpenJenis] = useState<Record<string, boolean>>({})
   const [cancellingJob, setCancellingJob] = useState<Job | null>(null)
   const [letterJob, setLetterJob] = useState<Job | null>(null)
-  // undefined = sedang dimuat; null = belum ada surat.
-  const [letter, setLetter] = useState<EventAppointmentLetter | null | undefined>(undefined)
-  const [letterError, setLetterError] = useState<string | null>(null)
 
   const jobsById = useMemo(() => new Map(jobs.map((job) => [job.id, job])), [jobs])
 
@@ -84,49 +98,29 @@ export default function EventDetailPage() {
 
   const loadData = useCallback(() => {
     setLoading(true)
-    Promise.all([listEventsWithExhibitors(), listEventJobs(params.id)]).then(
-      ([{ events }, eventJobs]) => {
+    setLoadError(null)
+    Promise.all([listEventsWithExhibitors(), listEventJobs(params.id)])
+      .then(([{ events }, eventJobs]) => {
         setEvent(events.find((item) => item.id === params.id) ?? null)
         setJobs(eventJobs)
-        setLoading(false)
-      },
-    )
+      })
+      .catch((caught) => {
+        setLoadError(caught instanceof Error ? caught.message : 'Data event tidak dapat dimuat.')
+      })
+      .finally(() => setLoading(false))
   }, [params.id])
 
   useEffect(() => {
     loadData()
   }, [loadData])
 
-  useEffect(() => {
-    let active = true
-    setLetter(undefined)
-    setLetterError(null)
-    getEventAppointmentLetter(params.id)
-      .then((value) => {
-        if (active) setLetter(value)
-      })
-      .catch((caught) => {
-        if (!active) return
-        setLetter(null)
-        setLetterError(caught instanceof Error ? caught.message : 'Surat penunjukan tidak dapat dimuat.')
-      })
-    return () => {
-      active = false
-    }
-  }, [params.id])
-
   // Routing "Job baru" dari halaman /jobs: ?newJob=1 langsung membuka form inisiasi job.
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('newJob') === '1') setShowNewJob(true)
   }, [])
 
-  const showToast = (message: string, tone: 'info' | 'error' = 'info') => {
-    window.dispatchEvent(
-      new CustomEvent('vss:toast', {
-        detail: { message, tone: tone === 'error' ? 'error' : 'success' },
-      }),
-    )
-  }
+  const showToast = (message: string, tone: 'info' | 'error' = 'info') =>
+    toast(message, tone === 'error' ? 'error' : 'success')
   const [exporting, setExporting] = useState<'inward' | 'outward' | null>(null)
   async function exportManifest(direction: 'inward' | 'outward') {
     setExporting(direction)
@@ -175,11 +169,31 @@ export default function EventDetailPage() {
     return <PageSkeleton cards={2} rows={5} />
   }
 
+  if (loadError) {
+    return (
+      <div className="card mx-auto max-w-xl p-8 text-center" role="alert">
+        <AlertTriangle className="mx-auto text-rose-500" size={28} aria-hidden="true" />
+        <h1 className="mt-3 text-xl font-bold">Data event gagal dimuat</h1>
+        <p className="mt-2 text-sm text-slate-600">{loadError}</p>
+        <div className="mt-6 flex justify-center gap-3">
+          <button type="button" onClick={loadData} className="btn-primary">
+            Coba lagi
+          </button>
+          <Link href="/events" className="btn-secondary">
+            Kembali ke events
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
   if (!event) {
     return (
       <div className="card mx-auto max-w-xl p-8 text-center">
         <h1 className="text-xl font-bold">Event tidak ditemukan</h1>
-        <p className="mt-2 text-sm text-slate-500">Event ini tidak tersedia di perangkat ini.</p>
+        <p className="mt-2 text-sm text-slate-600">
+          Event ini tidak ada atau Anda tidak punya akses ke event tersebut.
+        </p>
         <Link href="/events" className="btn-primary mt-6">
           Kembali ke events
         </Link>
@@ -187,92 +201,94 @@ export default function EventDetailPage() {
     )
   }
 
+  const today = wibDateOf(new Date())
+  const displayStatus = deriveDisplayStatus(event.startsOn, event.endsOn, today)
+  const cancelled = lifecycleBadge(event.status === 'CANCELLED' ? 'CANCELLED' : 'ACTIVE')
+
   return (
     <div className="-mt-3 space-y-4 lg:-mt-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h1 className="text-3xl font-bold tracking-tight">{event.officialName}</h1>
-          {event.alias && <p className="mt-1 text-sm text-slate-500">{event.alias}</p>}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 className="text-3xl font-bold tracking-tight">{event.officialName}</h1>
+            <span
+              className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${displayStatusBadgeClass(displayStatus, event.startsOn, today)}`}
+            >
+              {displayStatusLabel(displayStatus, event.startsOn, today)}
+            </span>
+            {cancelled ? (
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${cancelled.className}`}>
+                {cancelled.label}
+              </span>
+            ) : null}
+          </div>
+          {event.picName && <p className="mt-1 text-sm text-slate-600">{event.picName}</p>}
+          {event.alias && <p className="text-sm text-slate-600">{event.alias}</p>}
         </div>
-        <div className="flex shrink-0 gap-2">
-          <button
-            type="button"
-            onClick={() => exportManifest('inward')}
+        <Menu.Root>
+          <Menu.Trigger
             disabled={exporting !== null}
             className="btn-secondary shrink-0 gap-2"
-            title="Unduh inward manifest event ini (Excel, format dokumen klien)"
+            title="Unduh manifest event ini (Excel)"
           >
-            {exporting === 'inward' ? (
+            {exporting ? (
               <Loader2 className="animate-spin" size={16} aria-hidden="true" />
             ) : (
               <Download size={16} aria-hidden="true" />
             )}
-            Inward Manifest
-          </button>
-          <button
-            type="button"
-            onClick={() => exportManifest('outward')}
-            disabled={exporting !== null}
-            className="btn-secondary shrink-0 gap-2"
-            title="Unduh outward manifest event ini (barang re-ekspor, Excel)"
-          >
-            {exporting === 'outward' ? (
-              <Loader2 className="animate-spin" size={16} aria-hidden="true" />
-            ) : (
-              <Download size={16} aria-hidden="true" />
-            )}
-            Outward Manifest
-          </button>
-        </div>
+            {exporting ? 'Mengekspor…' : 'Export manifest'}
+            <ChevronDown size={14} aria-hidden="true" />
+          </Menu.Trigger>
+          <Menu.Portal>
+            <Menu.Positioner align="end" sideOffset={6} className="z-50">
+              <Menu.Popup className="w-60 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg outline-none">
+                <Menu.Item
+                  onClick={() => void exportManifest('inward')}
+                  className="cursor-default px-3 py-2 text-sm text-slate-800 outline-none data-[highlighted]:bg-slate-100"
+                >
+                  <span className="block font-medium">Inward manifest</span>
+                  <span className="block text-xs text-slate-600">Format dokumen klien (Excel)</span>
+                </Menu.Item>
+                <Menu.Item
+                  onClick={() => void exportManifest('outward')}
+                  className="cursor-default px-3 py-2 text-sm text-slate-800 outline-none data-[highlighted]:bg-slate-100"
+                >
+                  <span className="block font-medium">Outward manifest</span>
+                  <span className="block text-xs text-slate-600">Barang re-ekspor (Excel)</span>
+                </Menu.Item>
+              </Menu.Popup>
+            </Menu.Positioner>
+          </Menu.Portal>
+        </Menu.Root>
       </div>
 
       <section className="card px-5 py-3.5">
         <h2 className="sr-only">Informasi event</h2>
-        <dl className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
+        <dl className="grid gap-x-6 gap-y-3 text-sm md:grid-cols-3">
           <div className="flex items-start gap-3">
-            <CalendarDays className="mt-0.5 shrink-0 text-slate-600" size={18} />
-            <div>
-              <dt className="text-slate-500">Tanggal event</dt>
+            <CalendarDays className="mt-0.5 shrink-0 text-blue-600" size={18} aria-hidden="true" />
+            <div className="min-w-0">
+              <dt className="text-slate-600">Tanggal event</dt>
               <dd className="mt-0.5 font-medium text-slate-900">
-                {formatDateRange(event.startsAt, event.endsAt)}
+                {formatEventRange(event.startsOn, event.endsOn)}
               </dd>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <MapPin className="mt-0.5 shrink-0 text-blue-600" size={18} />
-            <div>
-              <dt className="text-slate-500">Venue</dt>
-              <dd className="mt-0.5 font-medium text-slate-900">
-                {event.venue?.officialName || 'Venue belum diinput'}
-              </dd>
-              {event.venue?.address && (
-                <p className="mt-0.5 text-slate-500">{event.venue.address}</p>
-              )}
-            </div>
-          </div>
-          <div className="flex items-start gap-3">
-            <Building2 className="mt-0.5 shrink-0 text-emerald-600" size={18} />
-            <div>
-              <dt className="text-slate-500">Event organizer</dt>
+            <Building2 className="mt-0.5 shrink-0 text-emerald-600" size={18} aria-hidden="true" />
+            <div className="min-w-0">
+              <dt className="text-slate-600">Event organizer</dt>
               <dd className="mt-0.5 font-medium text-slate-900">
                 {event.eventOrganizer?.legalName || 'Belum diinput'}
               </dd>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <FileCheck2 className="mt-0.5 shrink-0 text-slate-600" size={18} />
-            <div className="min-w-0 flex-1">
-              <dt className="text-slate-500">Surat penunjukan</dt>
-              <dd className="mt-0.5">
-                {letter === undefined ? (
-                  <span className="text-slate-400">Memuat…</span>
-                ) : letterError ? (
-                  <span className="text-rose-600" role="alert">{letterError}</span>
-                ) : letter ? (
-                  <EventAppointmentLetterLink letter={letter} className="-mx-1 max-w-full" />
-                ) : (
-                  <span className="font-medium text-slate-400">Belum diunggah</span>
-                )}
+            <MapPin className="mt-0.5 shrink-0 text-violet-600" size={18} aria-hidden="true" />
+            <div className="min-w-0">
+              <dt className="text-slate-600">Venue</dt>
+              <dd className="mt-0.5 font-medium text-slate-900">
+                {event.venue?.officialName || 'Venue belum diinput'}
               </dd>
             </div>
           </div>
@@ -286,9 +302,28 @@ export default function EventDetailPage() {
       </section>
 
       <section className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold">Detail Jobs</h2>
+        <h2 className="text-lg font-semibold">Detail Jobs</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span id="job-view-label" className="text-sm font-medium text-slate-600">
+              Grouped by
+            </span>
+            <Tabs
+              value={view}
+              onValueChange={(value) => setView(value as 'jenis' | ExhibitorGroupBy)}
+            >
+              <TabsList aria-labelledby="job-view-label" className="h-9">
+                {VIEW_TABS.map(([value, text]) => (
+                  <TabsTrigger
+                    key={value}
+                    value={value}
+                    className="px-4 text-slate-600 hover:text-slate-900 data-[active]:bg-orange-600 data-[active]:font-semibold data-[active]:text-white data-[active]:shadow-sm data-[active]:hover:text-white"
+                  >
+                    {text}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
           </div>
           {event.status !== 'CANCELLED' && (
             <button
@@ -296,33 +331,9 @@ export default function EventDetailPage() {
               onClick={() => setShowNewJob(true)}
               className="btn-primary shrink-0"
             >
-              <Plus size={16} /> New Job
+              <Plus size={16} aria-hidden="true" /> New Job
             </button>
           )}
-        </div>
-        <div
-          className="inline-flex rounded-lg bg-slate-100 p-1 text-sm font-medium"
-          role="tablist"
-          aria-label="Tampilan job"
-        >
-          {(
-            [
-              ['jenis', 'Grouped By Job'],
-              ['hall', 'By Hall'],
-              ['agent', 'By Agent'],
-            ] as const
-          ).map(([value, text]) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={view === value}
-              onClick={() => setView(value)}
-              className={`rounded-md px-3 py-1.5 ${view === value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
-            >
-              {text}
-            </button>
-          ))}
         </div>
         {view !== 'jenis' ? (
           // `key`: status buka/tutup grup tidak terbawa antar dimensi (key grup '' dipakai keduanya).
@@ -340,9 +351,9 @@ export default function EventDetailPage() {
                     type="button"
                     onClick={() => setOpenJenis((value) => ({ ...value, [group.key]: !isOpen }))}
                     aria-expanded={isOpen}
-                    className="flex w-full items-center gap-3 bg-slate-50 px-5 py-4 text-left hover:text-slate-900"
+                    className="flex w-full items-center gap-3 bg-slate-50 px-5 py-3 text-left hover:bg-slate-100"
                   >
-                    <span className="text-slate-400">
+                    <span className="text-slate-600">
                       {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                     </span>
                     <span className="min-w-0 flex-1 truncate font-semibold text-slate-900">
@@ -356,23 +367,23 @@ export default function EventDetailPage() {
                     <div className="overflow-x-auto">
                       <table className="min-w-[1030px] w-full table-fixed text-left text-sm">
                         <colgroup>
-                          <col className="w-[140px]" />
-                          <col className="w-[260px]" />
                           <col className="w-[200px]" />
-                          <col className="w-[150px]" />
-                          <col className="w-[110px]" />
+                          <col className="w-[240px]" />
+                          <col className="w-[180px]" />
+                          <col className="w-[140px]" />
                           <col className="w-[100px]" />
-                          <col className="w-[70px]" />
+                          <col className="w-[90px]" />
+                          <col className="w-[60px]" />
                         </colgroup>
-                        <thead className="whitespace-nowrap border-b bg-white text-slate-900 font-semibold uppercase tracking-wider">
+                        <thead>
                           <tr>
-                            <th className="px-3 py-3">No Job</th>
-                            <th className="px-3 py-3">Agent</th>
-                            <th className="px-3 py-3">BL/AWB</th>
-                            <th className="px-3 py-3">ETA</th>
-                            <th className="px-3 py-3">Packages</th>
-                            <th className="px-3 py-3">CBM</th>
-                            <th className="px-3 py-3">Aksi</th>
+                            <th className={TABLE_HEAD}>No Job</th>
+                            <th className={TABLE_HEAD}>Agent</th>
+                            <th className={TABLE_HEAD}>BL/AWB</th>
+                            <th className={TABLE_HEAD}>ETA</th>
+                            <th className={TABLE_HEAD}>Packages</th>
+                            <th className={TABLE_HEAD}>CBM</th>
+                            <th className={TABLE_HEAD}>Aksi</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -400,7 +411,7 @@ export default function EventDetailPage() {
             })}
           </div>
         ) : (
-          <p className="rounded-xl border border-dashed border-black/15 px-4 py-8 text-center text-sm text-slate-500">
+          <p className="rounded-xl border border-dashed border-black/15 px-4 py-8 text-center text-sm text-slate-600">
             Belum ada job untuk event ini.
           </p>
         )}
