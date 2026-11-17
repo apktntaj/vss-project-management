@@ -33,12 +33,23 @@ const line = (overrides: Partial<JobCiplLine>): JobCiplLine => ({
   ...overrides,
 })
 
-// Tahap yang diharapkan dari disposisi: tanpa item = tidak ada; TIDAK_DISEBUT dihitung re-ekspor.
-assert.deepEqual(expectedDerivedStages([line({})]), [])
-assert.deepEqual(expectedDerivedStages([line({ items: [item('TIDAK_DISEBUT')] })]), ['RE_EXPORT'])
+// Tahap yang diharapkan dari disposisi menurut rezim: tanpa item = tidak ada; TIDAK_DISEBUT
+// dihitung re-ekspor; ATA tidak punya disposal; Permanent Import tidak punya turunan.
+assert.deepEqual(expectedDerivedStages([line({})], 'TPPB_BC_23'), [])
+assert.deepEqual(expectedDerivedStages([line({ items: [item('TIDAK_DISEBUT')] })], 'TPPB_BC_23'), [
+  'RE_EXPORT',
+])
 assert.deepEqual(
-  expectedDerivedStages([line({ items: [item('RE_EXPORT'), item('GIVE_AWAY')] })]),
+  expectedDerivedStages([line({ items: [item('RE_EXPORT'), item('GIVE_AWAY')] })], 'TPPB_BC_23'),
   ['DISPOSAL', 'RE_EXPORT'],
+)
+assert.deepEqual(
+  expectedDerivedStages([line({ items: [item('RE_EXPORT'), item('DISPOSED')] })], 'ATA_CARNET'),
+  ['RE_EXPORT'],
+)
+assert.deepEqual(
+  expectedDerivedStages([line({ items: [item('RE_EXPORT'), item('DISPOSED')] })], 'PERMANENT_IMPORT'),
+  [],
 )
 
 // Baris campuran: k1 dirujuk item re-ekspor, k2 hanya item disposal, k3 tak dirujuk.
@@ -74,13 +85,20 @@ const noItems = line({ koli: { totalCount: 1, bareCaseCount: null, details: [pk(
 assert.deepEqual(stageCiplLines([noItems], 'RE_EXPORT'), [noItems])
 assert.deepEqual(stageCiplLines([noItems], 'DISPOSAL'), [])
 
-// Selisih CIPL vs job turunan aktif.
+// Selisih CIPL vs job turunan aktif (menurut rezim).
 const reExportOnly = [line({ items: [item('RE_EXPORT')] })]
-assert.deepEqual(stageReconciliation(reExportOnly, []), [{ stage: 'RE_EXPORT', kind: 'MISSING' }])
-assert.deepEqual(stageReconciliation(reExportOnly, ['RE_EXPORT', 'DISPOSAL']), [
+assert.deepEqual(stageReconciliation(reExportOnly, [], 'TPPB_BC_23'), [
+  { stage: 'RE_EXPORT', kind: 'MISSING' },
+])
+assert.deepEqual(stageReconciliation(reExportOnly, ['RE_EXPORT', 'DISPOSAL'], 'TPPB_BC_23'), [
   { stage: 'DISPOSAL', kind: 'UNEXPECTED' },
 ])
-assert.deepEqual(stageReconciliation([line({})], ['DISPOSAL']), [])
+assert.deepEqual(stageReconciliation([line({})], ['DISPOSAL'], 'TPPB_BC_23'), [])
+// ATA: job disposal aktif selalu UNEXPECTED walau ada barang disposal di CIPL.
+assert.deepEqual(
+  stageReconciliation([line({ items: [item('DISPOSED')] })], ['DISPOSAL'], 'ATA_CARNET'),
+  [{ stage: 'DISPOSAL', kind: 'UNEXPECTED' }],
+)
 
 // Tahap job baru: hanya international non-road yang bertahap.
 assert.equal(stageForNewJob('INTERNATIONAL', 'TPPB_BC_23'), 'INBOUND')

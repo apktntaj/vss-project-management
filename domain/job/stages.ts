@@ -1,9 +1,10 @@
-// Turunan tahap job (BC 2.3 / 2.5 / 3.0) dari disposisi barang CIPL. Murni tanpa I/O: dipakai
-// use-case saat menyimpan CIPL job masuk (sumber kebenaran pembuatan job turunan) dan UI saat
-// menampilkan barang job turunan. Invarian: tiap koli masuk milik tepat satu tahap.
+// Turunan tahap job dari disposisi barang CIPL, mengikuti rezim (`derivedStagesOf`). Murni tanpa
+// I/O: dipakai use-case saat menyimpan CIPL job masuk (sumber kebenaran pembuatan job turunan) dan
+// UI saat menampilkan barang job turunan. Invarian: tiap koli masuk milik tepat satu tahap.
 
 import type { DisposisiBarang } from '@/domain/exhibition/cipl-document'
 import { koliTersendiri, type KoliCollection } from '@/domain/job/manifest'
+import { derivedStagesOf } from '@/domain/job/regime'
 import type {
   DerivedJobStage,
   InternationalJobJenis,
@@ -29,15 +30,18 @@ export const stageOfDisposisi: Record<DisposisiBarang, DerivedJobStage> = {
   GIVE_AWAY: 'DISPOSAL',
 }
 
-/** Tahap turunan yang harus ada dari baris CIPL, urut tetap; [] bila belum ada item sama sekali. */
+/** Tahap turunan yang harus ada dari baris CIPL menurut rezim, urut tetap; [] bila belum ada
+ * item sama sekali atau rezim tanpa turunan (Permanent Import). */
 export function expectedDerivedStages(
   lines: ReadonlyArray<Pick<JobCiplLine, 'items'>>,
+  jenis: InternationalJobJenis | null | undefined,
 ): DerivedJobStage[] {
+  const allowed = derivedStagesOf(jenis)
   const stages = new Set<DerivedJobStage>()
   for (const line of lines) {
     for (const item of line.items) stages.add(stageOfDisposisi[item.disposisi])
   }
-  return (['DISPOSAL', 'RE_EXPORT'] as const).filter((stage) => stages.has(stage))
+  return allowed.filter((stage) => stages.has(stage))
 }
 
 // Koli yang dikosongkan hanya milik barang disposal: dirujuk ≥1 item DISPOSAL dan 0 item RE_EXPORT.
@@ -129,13 +133,14 @@ export function withStageGoods(job: Job, source: Job | null | undefined): Job {
 
 export type StageWarning = { stage: DerivedJobStage; kind: 'MISSING' | 'UNEXPECTED' }
 
-/** Selisih baris CIPL vs job turunan aktif: tahap yang semestinya ada tapi tidak (MISSING) dan
- * sebaliknya (UNEXPECTED). Tanpa item sama sekali → tidak ada yang bisa diselisihkan. */
+/** Selisih baris CIPL vs job turunan aktif menurut rezim: tahap yang semestinya ada tapi tidak
+ * (MISSING) dan sebaliknya (UNEXPECTED). Tanpa item sama sekali → tidak ada yang bisa diselisihkan. */
 export function stageReconciliation(
   lines: ReadonlyArray<Pick<JobCiplLine, 'items'>>,
   activeStages: ReadonlyArray<DerivedJobStage>,
+  jenis: InternationalJobJenis | null | undefined,
 ): StageWarning[] {
-  const expected = expectedDerivedStages(lines)
+  const expected = expectedDerivedStages(lines, jenis)
   if (expected.length === 0 && lines.every((line) => line.items.length === 0)) return []
   const active = new Set(activeStages)
   const warnings: StageWarning[] = []

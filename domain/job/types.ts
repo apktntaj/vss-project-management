@@ -51,35 +51,45 @@ export const internationalJobJenisLabels: Record<InternationalJobJenis, string> 
   ROAD_SHIPMENT: 'Road Shipment',
 }
 
-/** Dokumen BC yang dilayani job; BC 2.7 dipakai untuk pengalihan barang (inward manifest ALLPACK). */
-export const bcDocumentKinds = ['BC_2_3', 'BC_2_5', 'BC_3_0', 'BC_2_7'] as const
+/**
+ * Dokumen BC yang dikenal sistem. BC 2.0 = PIB (impor biasa/impor sementara non-TPPB);
+ * BC 2.7 = pengalihan barang antar-TPB (inward manifest ALLPACK), bukan tahap job.
+ */
+export const bcDocumentKinds = ['BC_2_0', 'BC_2_3', 'BC_2_5', 'BC_3_0', 'BC_2_7'] as const
 export type BcDocumentKind = (typeof bcDocumentKinds)[number]
 
 export const bcDocumentLabels: Record<BcDocumentKind, string> = {
+  BC_2_0: 'BC 2.0',
   BC_2_3: 'BC 2.3',
   BC_2_5: 'BC 2.5',
   BC_3_0: 'BC 3.0',
   BC_2_7: 'BC 2.7',
 }
 
-// Tahap job dalam rangkaian dokumen BC: kiriman international non-road terbelah menjadi satu job
-// masuk (INBOUND = BC 2.3) plus job turunan per dokumen keluar — DISPOSAL = BC 2.5 (barang
-// disposal), RE_EXPORT = BC 3.0 (barang kembali). Road Shipment dan Local tidak punya tahap.
+/**
+ * Seluruh dokumen kepabeanan yang dilayani sebuah tahap job: dokumen BC ditambah Carnet untuk
+ * job ATA (bukan dokumen BC — pencatatannya tetap bentuk yang sama: status + nomor + tanggal).
+ */
+export const customsDocumentKinds = [...bcDocumentKinds, 'CARNET'] as const
+export type CustomsDocumentKind = (typeof customsDocumentKinds)[number]
+
+export const customsDocumentLabels: Record<CustomsDocumentKind, string> = {
+  ...bcDocumentLabels,
+  CARNET: 'Carnet',
+}
+
+// Tahap job dalam rangkaian pabean: kiriman international non-road terbelah menjadi satu job
+// masuk (INBOUND) plus job turunan per dokumen keluar — DISPOSAL (barang tidak kembali) dan
+// RE_EXPORT (barang kembali). Dokumen tiap tahap mengikuti rezim (`domain/job/regime.ts`):
+// TPPB = BC 2.3/2.5/3.0, Temporary Import = BC 2.0/BC 2.0 definitif/BC 3.0, ATA Carnet =
+// Carnet tanpa disposal, Permanent Import = BC 2.0 tanpa turunan. Road Shipment dan Local
+// tidak punya tahap.
 export const jobStages = ['INBOUND', 'DISPOSAL', 'RE_EXPORT'] as const
 export type JobStage = (typeof jobStages)[number]
 export const derivedJobStages = ['DISPOSAL', 'RE_EXPORT'] as const
 export type DerivedJobStage = (typeof derivedJobStages)[number]
 export const isDerivedJobStage = (stage: JobStage | null | undefined): stage is DerivedJobStage =>
   (derivedJobStages as readonly (JobStage | null | undefined)[]).includes(stage)
-
-export const jobStageBcDocument: Record<JobStage, BcDocumentKind> = {
-  INBOUND: 'BC_2_3',
-  DISPOSAL: 'BC_2_5',
-  RE_EXPORT: 'BC_3_0',
-}
-
-/** Label singkat tahap: 'BC 2.3' | 'BC 2.5' | 'BC 3.0'. */
-export const jobStageLabel = (stage: JobStage) => bcDocumentLabels[jobStageBcDocument[stage]]
 
 // ---------------------------------------------------------------------------------------------
 // Bagian dalam aggregate Job. Dibaca-tulis bersama job dan dijaga `domain/job/validation.ts`.
@@ -126,7 +136,7 @@ export const jobCustomsStatusLabels: Record<(typeof jobCustomsStatuses)[number],
   ON_HOLD: 'Ditahan',
 }
 
-/** Status dokumen BC. Penagihan TIDAK di sini: satu job = satu tagihan (`Job.invoice`). */
+/** Status dokumen kepabeanan (BC atau Carnet). Penagihan TIDAK di sini: satu job = satu tagihan. */
 export type JobCustomsDocument = {
   applicable: boolean
   status: (typeof jobCustomsStatuses)[number]
@@ -136,15 +146,50 @@ export type JobCustomsDocument = {
   warehouseName: string | null
 }
 
+/** Jenis jaminan impor sementara (Temporary Import non-TPPB). */
+export const guaranteeKinds = ['CASH', 'BANK_GUARANTEE', 'CUSTOMS_BOND', 'CORPORATE_GUARANTEE'] as const
+export type GuaranteeKind = (typeof guaranteeKinds)[number]
+
+export const guaranteeKindLabels: Record<GuaranteeKind, string> = {
+  CASH: 'Uang jaminan (cash)',
+  BANK_GUARANTEE: 'Bank guarantee',
+  CUSTOMS_BOND: 'Customs bond',
+  CORPORATE_GUARANTEE: 'Jaminan perusahaan',
+}
+
+/**
+ * Identitas carnet job ATA: diisi pada job masuk, diturunkan tampilannya ke job re-ekspor.
+ * Penjamin default KADIN Indonesia (penjamin carnet nasional) — boleh dikosongkan/ditulis lain.
+ */
+export type JobCarnet = {
+  number: string | null
+  issuingCountry: string | null
+  guarantor: string | null
+  validUntil: string | null
+}
+
+/** Jaminan PIB impor sementara (Temporary Import): jenis, nomor, nilai, tenggat re-ekspor. */
+export type JobGuarantee = {
+  kind: GuaranteeKind | null
+  number: string | null
+  amount: number | null
+  currency: string | null
+  reExportDeadline: string | null
+}
+
 export type JobOperationalDetails = {
   inbound: JobTransportLeg
   outbound: JobTransportLeg
   /** Nomor + baris commercial invoice hasil ekstraksi (bagian CI dari CIPL). */
   invoiceNumber?: string | null
   invoiceItems?: JobInvoiceItem[]
-  /** Hasil ekstraksi commercial invoice lengkap; sumber BC 2.3 dan pembanding B/L. */
+  /** Hasil ekstraksi commercial invoice lengkap; sumber dokumen masuk dan pembanding B/L. */
   invoice?: JobInvoiceExtraction | null
-  customs: Record<BcDocumentKind, JobCustomsDocument>
+  customs: Record<CustomsDocumentKind, JobCustomsDocument>
+  /** Identitas carnet — hanya bermakna untuk job ATA Carnet; null pada rezim lain. */
+  carnet: JobCarnet | null
+  /** Jaminan impor sementara — hanya bermakna untuk job Temporary Import; null pada rezim lain. */
+  guarantee: JobGuarantee | null
 }
 
 export const jobDocumentKinds = [
@@ -156,6 +201,7 @@ export const jobDocumentKinds = [
   'COMMERCIAL_INVOICE',
   'CIPL',
   'PACKING_LIST',
+  'BC_2_0',
   'BC_2_3',
   'BC_2_5',
   'BC_3_0',
@@ -173,6 +219,7 @@ export const jobDocumentKindLabels: Record<JobDocumentKind, string> = {
   COMMERCIAL_INVOICE: 'Commercial invoice',
   CIPL: 'CIPL',
   PACKING_LIST: 'Packing list',
+  BC_2_0: 'BC 2.0',
   BC_2_3: 'BC 2.3',
   BC_2_5: 'BC 2.5',
   BC_3_0: 'BC 3.0',

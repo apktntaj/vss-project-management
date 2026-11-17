@@ -147,14 +147,14 @@ PorsiReEkspor terdiri dari:
 **Interpretasi** — porsi yang **diproses VSS**. `kepulangan` adalah `KepulanganJob` yang **sudah
 ada** (di-reuse, bukan disalin): `ModusKepulangan` (FCL kontainer | LCL jumlah koli), `tujuan`,
 `shippingLine`, `bookingNumber`, `vessel`, `etd`, `eta`. Sesuai B3 (terkunci), `tujuan`
-tetap **per-job** — tidak turun ke level item/exhibitor. `dokumenBc` menunjuk `DokumenBC` berjenis
-`BC_2_5` (re-ekspor) milik job; boleh kosong (draft sebelum diajukan — `DokumenBC` mengizinkan
+tetap **per-job** — tidak turun ke level item/exhibitor. `dokumenBc` menunjuk dokumen re-ekspor
+milik job menurut rezim: `BC_3_0` (TPPB, Temporary Import) atau Carnet (ATA — tanpa BC); boleh kosong (draft sebelum diajukan — `DokumenBC` mengizinkan
 nomor AJU/registrasi kosong). `kepulangan`/`dokumenBc` boleh kosong karena tujuan & dokumen bisa
 diketahui belakangan (B: "waktu diketahuinya negara tujuan tidak pasti" — `KepulanganJob.tujuan`
 memang sudah opsional; jangan jadikan invariant awal).
 
 **Contoh** — S.12: `items` = baris 1–31,33; `kepulangan = KepulanganJob(mode FCL[OOCU8067803...],
-tujuan Shanghai, vessel ..., etd/eta)`; `dokumenBc = BC_2_5 (nomor AJU terisi)`.
+tujuan Shanghai, vessel ..., etd/eta)`; `dokumenBc = BC_3_0 (nomor AJU terisi)`.
 
 ### `PandanganOutward` (pandangan turunan per job)
 
@@ -268,9 +268,9 @@ peringatanCloseOut : PandanganOutward -> List<Peringatan>
 3. **OQ-B3 (re-ekspor sebagian):** satu job bisa punya sebagian kontainer re-ekspor dan sebagian
    barang DISPOSED. `KepulanganJob` (mode/tujuan tunggal per-job) menanggung porsi RE_EXPORT saja;
    perlu konfirmasi bahwa satu `ModusKepulangan` cukup untuk porsi re-ekspor yang tercampur.
-4. **OQ-B4 (BC 2.5 wajib?):** apakah setiap job dengan porsi RE_EXPORT wajib punya `DokumenBC
-   BC_2_5`, atau ada jalur re-ekspor lain (mis. ATA Carnet yang tak pakai BC 2.5)?
-   `internationalJenis` ATA_CARNET bisa mengubah dokumen penutupnya.
+4. **OQ-B4 (dokumen re-ekspor — terjawab 2026-11-17):** BC 3.0 untuk TPPB dan Temporary Import
+   (asumsi untuk TI, menunggu konfirmasi); ATA Carnet tidak memakai BC — re-exportation voucher
+   yang di-endorse pabean dicatat sebagai dokumen `CARNET`. Lihat `domain/job/regime.ts`.
 5. **OQ-B5 (verifikasi fisik vs tanggal dokumen):** B1 menetapkan penanda = tanggal dokumen
    per-job. Perlu konfirmasi apakah ada kebutuhan membedakan "dokumen muat terbit" dari "fisik
    sudah di kapal" (relevan bila running cost dihitung sampai fisik naik kapal, bukan sampai

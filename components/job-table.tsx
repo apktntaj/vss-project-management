@@ -19,7 +19,7 @@ import { JobContextBadge } from '@/components/job-context-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { label } from '@/components/job-row'
 import { jobLabel, jobNumberLabel } from '@/domain/job/numbering'
-import { jobStageLabel } from '@/domain/job/types'
+import { jobStageLabel } from '@/domain/job/regime'
 import { nextJobSort, type JobSortKey, type JobTableSort } from '@/lib/job-list'
 
 const INVOICE_BADGE: Record<Job['invoice']['status'], string> = {
@@ -150,7 +150,7 @@ function JobTableRow({
           </Link>
           {job.stage && (
             <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-              {jobStageLabel(job.stage)}
+              {jobStageLabel(job.internationalJenis, job.stage)}
             </span>
           )}
         </div>

@@ -2,7 +2,9 @@
 // Awalan diturunkan database dari jalur + jenis (kolom `jobs.manifest_prefix`, satu-satunya tabel
 // awalan); urutan ditetapkan operator per event per awalan; akhiran = commercial invoice pengirim.
 
-import { isDerivedJobStage, jobStageLabel, type JobStage } from '@/domain/job/types'
+import { isDerivedJobStage } from '@/domain/job/types'
+import type { Job, JobStage } from '@/domain/job/types'
+import { jobStageLabel } from '@/domain/job/regime'
 
 /** Urutan minimal dua digit (01, 02, ...), tidak pernah dipotong (100 tetap 100). */
 export function formatManifestSequence(seq: number): string {
@@ -54,13 +56,14 @@ export function jobBaseLabel(job: {
 
 /**
  * No Job persis seperti ditampilkan ke pengguna. Job turunan berawalan "EX" (`EXS.01/234YFN`,
- * `EXS.-`): job BC 2.5 / BC 3.0 itu "ex" job masuk (BC 2.3); nomor di data tetap milik job masuk.
+ * `EXS.-`): job turunan itu "ex" job masuknya; nomor di data tetap milik job masuk.
  * Job masuk dan job tanpa tahap tetap polos; "Belum bernomor" bukan nomor, jadi tidak diawali.
  */
 export function jobNumberLabel(job: {
   jobNumber: string | null
   manifestPrefix: string | null
   stage?: JobStage | null
+  internationalJenis?: Job['internationalJenis']
 }): string {
   const base = jobBaseLabel(job)
   return isDerivedJobStage(job.stage) && (job.jobNumber || job.manifestPrefix) ? `EX${base}` : base
@@ -68,16 +71,20 @@ export function jobNumberLabel(job: {
 
 /**
  * Label job di UI (toast, dialog, tiket). Job turunan: `EXS.01/234YFN · BC 2.5` — awalan "EX"
- * saja tidak membedakan BC 2.5 dari BC 3.0, jadi tahapnya ditambahkan di belakang.
+ * saja tidak membedakan tahap, jadi label dokumennya ditambahkan di belakang.
  */
 export function jobLabel(job: {
   jobNumber: string | null
   manifestPrefix: string | null
   stage?: JobStage | null
+  internationalJenis?: Job['internationalJenis']
 }): string {
   const label = jobNumberLabel(job)
-  return isDerivedJobStage(job.stage) ? `${label} · ${jobStageLabel(job.stage)}` : label
+  return isDerivedJobStage(job.stage)
+    ? `${label} · ${jobStageLabel(job.internationalJenis, job.stage)}`
+    : label
 }
+
 
 /**
  * Nama file ekspor job: No Job seperti ditampilkan (job turunan berawalan "EX") tanpa karakter

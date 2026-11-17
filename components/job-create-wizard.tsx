@@ -30,19 +30,22 @@ const jobTypeOptions: Array<{ value: JobTypeSelection; description: string }> = 
   },
   {
     value: 'ATA_CARNET',
-    description: 'Impor sementara dengan paspor barang ATA Carnet.',
+    description:
+      'Paspor barang ATA Carnet; tanpa dokumen BC — seluruh barang wajib kembali (re-ekspor).',
   },
   {
     value: 'TEMPORARY_IMPORT',
-    description: 'Impor sementara biasa dengan jaminan; barang wajib keluar kembali.',
+    description:
+      'Impor sementara non-TPPB: PIB (BC 2.0) dengan jaminan; barang wajib keluar kembali.',
   },
   {
     value: 'PERMANENT_IMPORT',
-    description: 'Impor tetap (Genco); barang tetap berada di Indonesia.',
+    description: 'Impor tetap (Genco) via PIB (BC 2.0); barang tetap berada di Indonesia.',
   },
   {
     value: 'ROAD_SHIPMENT',
-    description: 'Pengangkutan darat / pengalihan barang antar tempat (BC 2.7).',
+    description:
+      'Antar barang dari gudang klien ke pameran lalu kembali; tanpa dokumen kepabeanan.',
   },
   {
     value: 'LOCAL',

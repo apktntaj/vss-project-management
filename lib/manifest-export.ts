@@ -28,7 +28,8 @@ import {
 } from '@/domain/job/manifest'
 import { formatJobNumber, jobLabel, jobNumberLabel } from '@/domain/job/numbering'
 import { stageCiplLines } from '@/domain/job/stages'
-import type { InternationalJobJenis, Job } from '@/domain/job/types'
+import { customsDocumentLabels, type InternationalJobJenis, type Job } from '@/domain/job/types'
+import { stageCustomsDocument } from '@/domain/job/regime'
 import {
   buildManifestView,
   pesertaFromLine,
@@ -504,6 +505,7 @@ export function buildEventOutwardManifestWorkbook(
     ).flatMap((job) => {
       const source = byId.get(job.sourceJobId!)
       if (!source) return []
+      const document = stageCustomsDocument(job.internationalJenis, 'RE_EXPORT')
       const peserta = stageCiplLines(source.ciplLines, 'RE_EXPORT').map(pesertaFromLine)
       const totals = summarizeKoliCollections(peserta.map((item) => item.logistics.koli))
       const kepulangan = job.kepulangan
@@ -529,7 +531,14 @@ export function buildEventOutwardManifestWorkbook(
           peserta,
           exhibitorLabel: (item: ManifestPeserta) => item.name,
           remarks: [
-            remark('BC 3.0', job.operational.customs.BC_3_0.registrationNumber),
+            ...(document != null
+              ? [
+                  remark(
+                    customsDocumentLabels[document],
+                    job.operational.customs[document].registrationNumber,
+                  ),
+                ]
+              : []),
             remark('Booking', kepulangan?.bookingNumber),
             remark('Shipping Line', kepulangan?.shippingLine),
             remark('Vessel', kepulangan?.vessel),

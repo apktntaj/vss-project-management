@@ -8,7 +8,8 @@ import { useState } from 'react'
 import Link from 'next/link'
 
 import { createStageJob, type Job, type JobSummary } from '@/lib/data-client'
-import { derivedJobStages, isDerivedJobStage, jobStageLabel } from '@/domain/job/types'
+import { isDerivedJobStage } from '@/domain/job/types'
+import { derivedStagesOf, jobStageLabel } from '@/domain/job/regime'
 import { stageReconciliation } from '@/domain/job/stages'
 import { jobNumberLabel } from '@/domain/job/numbering'
 import type { DerivedJobStage } from '@/domain/job/types'
@@ -42,13 +43,14 @@ export function JobStageCard({
     series
       .map((summary) => summary.stage)
       .filter(isDerivedJobStage),
+    job.internationalJenis,
   )
 
   async function create(stage: DerivedJobStage) {
     setCreating(stage)
     try {
       await createStageJob(job.id, stage)
-      notify(`Job ${jobStageLabel(stage)} dibuat.`)
+      notify(`Job ${jobStageLabel(job.internationalJenis, stage)} dibuat.`)
       onCreated()
     } catch (caught) {
       notify(caught instanceof Error ? caught.message : 'Job tidak dapat dibuat.', 'error')
@@ -62,10 +64,10 @@ export function JobStageCard({
 
   return (
     <section className="card p-5">
-      <h2 className="font-semibold">Rangkaian job BC</h2>
+      <h2 className="font-semibold">Rangkaian job</h2>
       <dl className="mt-3 space-y-2 text-sm">
         <div className="flex flex-wrap items-center gap-2">
-          <dt className="w-20 shrink-0 font-medium text-slate-500">BC 2.3</dt>
+          <dt className="w-20 shrink-0 font-medium text-slate-500">{jobStageLabel(job.internationalJenis, 'INBOUND')}</dt>
           <dd className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             {job.stage === 'INBOUND' ? (
               <span className="text-slate-700">Job ini</span>
@@ -84,12 +86,12 @@ export function JobStageCard({
             )}
           </dd>
         </div>
-        {derivedJobStages.map((stage) => {
+        {derivedStagesOf(job.internationalJenis).map((stage) => {
           const other = stagesById.get(stage)
           return (
             <div key={stage} className="flex flex-wrap items-center gap-2">
               <dt className="w-20 shrink-0 font-medium text-slate-500">
-                {jobStageLabel(stage)}
+                {jobStageLabel(job.internationalJenis, stage)}
               </dt>
               <dd className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                 {job.stage === stage ? (
@@ -114,7 +116,7 @@ export function JobStageCard({
                         disabled={creating !== null}
                         className="btn-secondary"
                       >
-                        {creating === stage ? 'Membuat…' : `Buat job ${jobStageLabel(stage)}`}
+                        {creating === stage ? 'Membuat…' : `Buat job ${jobStageLabel(job.internationalJenis, stage)}`}
                       </button>
                     )}
                   </>
@@ -131,8 +133,8 @@ export function JobStageCard({
           className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
         >
           {warning.kind === 'MISSING'
-            ? `Ada barang ${STAGE_NOUN[warning.stage]} di CIPL, tetapi job ${jobStageLabel(warning.stage)} belum ada.`
-            : `Job ${jobStageLabel(warning.stage)} ada, tetapi tidak ada barang ${STAGE_NOUN[warning.stage]} di CIPL. Batalkan job itu bila tidak diperlukan.`}
+            ? `Ada barang ${STAGE_NOUN[warning.stage]} di CIPL, tetapi job ${jobStageLabel(job.internationalJenis, warning.stage)} belum ada.`
+            : `Job ${jobStageLabel(job.internationalJenis, warning.stage)} ada, tetapi tidak ada barang ${STAGE_NOUN[warning.stage]} di CIPL. Batalkan job itu bila tidak diperlukan.`}
         </p>
       ))}
     </section>

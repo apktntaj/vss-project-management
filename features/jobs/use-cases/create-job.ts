@@ -46,7 +46,7 @@ export async function createJob(currentUser: CurrentUser, input: JobCreateInput)
       created_by_id: currentUser.id,
       stage,
       source_job_id: null,
-      operational: emptyOperationalDetails(stage),
+      operational: emptyOperationalDetails(stage, input.internationalJenis),
     })
   } catch (error) {
     translateConstraint(error)

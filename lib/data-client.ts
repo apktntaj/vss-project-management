@@ -230,8 +230,10 @@ function id() {
 }
 
 /** Bentuk operational lengkap untuk tampilan (server sudah menyimpan bentuk utuh). */
-export function getOperationalDetails(job: Pick<Job, 'operational'>): JobOperationalDetails {
-  return normalizeOperationalDetails(job.operational)
+export function getOperationalDetails(
+  job: Pick<Job, 'operational' | 'stage' | 'internationalJenis'>,
+): JobOperationalDetails {
+  return normalizeOperationalDetails(job.operational, job.stage, job.internationalJenis)
 }
 
 async function saveFile(file: StoredFile) {

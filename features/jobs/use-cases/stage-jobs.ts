@@ -18,7 +18,7 @@ import {
 import { authorizeJobWriteInEvent } from '@/features/jobs/use-cases/job-guards'
 import { emptyOperationalDetails } from '@/domain/job/operational'
 import { expectedDerivedStages } from '@/domain/job/stages'
-import { jobStageLabel } from '@/domain/job/types'
+import { derivedStagesOf, jobStageLabel } from '@/domain/job/regime'
 import { ApiError } from '@/lib/server/errors'
 import type { CurrentUser } from '@/domain/auth/types'
 import type { DerivedJobStage, Job } from '@/domain/job/types'
@@ -41,7 +41,7 @@ async function insertStageJob(
       created_by_id: currentUser.id,
       stage,
       source_job_id: inbound.id,
-      operational: emptyOperationalDetails(stage),
+      operational: emptyOperationalDetails(stage, inbound.internationalJenis),
     })
   } catch (error) {
     translateConstraint(error)
@@ -54,7 +54,7 @@ async function insertStageJob(
  * `jobs_source_stage_active_key` ditelan karena berarti dibuat orang lain hampir bersamaan.
  */
 export async function ensureStageJobs(currentUser: CurrentUser, inbound: Job): Promise<void> {
-  const expected = expectedDerivedStages(inbound.ciplLines)
+  const expected = expectedDerivedStages(inbound.ciplLines, inbound.internationalJenis)
   if (!expected.length) return
   const existing = new Set((await listDerivedJobs(inbound.id)).map((job) => job.stage))
   for (const stage of expected) {
@@ -84,12 +84,20 @@ export async function createStageJob(
   await authorizeJobWriteInEvent(currentUser, 'job:create', source.eventId)
   assertNotCancelled(source)
   if (source.stage !== 'INBOUND') {
-    throw new ApiError(400, 'Job BC 2.5 / BC 3.0 hanya dibuat dari job masuk (BC 2.3).')
+    throw new ApiError(400, 'Job turunan hanya dibuat dari job masuk rangkaian ini.')
+  }
+  if (!derivedStagesOf(source.internationalJenis).includes(stage)) {
+    throw new ApiError(
+      400,
+      source.internationalJenis === 'ATA_CARNET'
+        ? 'ATA Carnet: seluruh barang wajib kembali — tidak ada job disposal.'
+        : 'Permanent Import tidak punya job turunan.',
+    )
   }
   const existing = await listDerivedJobs(source.id)
   const alreadyExists = existing.some((job) => job.stage === stage && job.status !== 'CANCELLED')
   if (alreadyExists) {
-    throw new ApiError(409, `Job ${jobStageLabel(stage)} untuk kiriman ini sudah ada.`)
+    throw new ApiError(409, `Job ${jobStageLabel(source.internationalJenis, stage)} untuk kiriman ini sudah ada.`)
   }
   try {
     return await insertStageJob(currentUser, source, stage)
@@ -98,7 +106,7 @@ export async function createStageJob(
       error instanceof JobConstraintError &&
       error.constraint === 'jobs_source_stage_active_key'
     ) {
-      throw new ApiError(409, `Job ${jobStageLabel(stage)} untuk kiriman ini sudah ada.`)
+      throw new ApiError(409, `Job ${jobStageLabel(source.internationalJenis, stage)} untuk kiriman ini sudah ada.`)
     }
     throw error
   }

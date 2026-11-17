@@ -43,8 +43,8 @@ export async function updateJobDetails(
   await authorizeJobWrite(currentUser, 'job:update', jobId)
   const columns: JobWritableColumns = {}
 
-  // Pihak & jalur butuh konteks job (jenis, event) untuk divalidasi.
-  if (patch.party !== undefined || patch.transportMode !== undefined) {
+  // Pihak, jalur, dan operational butuh konteks job (jenis, tahap, event) untuk divalidasi.
+  if (patch.party !== undefined || patch.transportMode !== undefined || patch.operational !== undefined) {
     const job = await loadJobForWrite(jobId, patch.version)
     if (patch.party !== undefined) {
       const { agentId, exhibitorId } = patch.party
@@ -67,6 +67,13 @@ export async function updateJobDetails(
       }
       columns.transport_mode = patch.transportMode
     }
+    if (patch.operational !== undefined) {
+      columns.operational = normalizeOperationalDetails(
+        patch.operational,
+        job.stage,
+        job.internationalJenis,
+      )
+    }
   }
 
   if (patch.status !== undefined) columns.status = patch.status
@@ -84,9 +91,7 @@ export async function updateJobDetails(
   if (patch.specialInstructions !== undefined) columns.special_instructions = patch.specialInstructions
   if (patch.emptyStorage !== undefined) columns.empty_storage = patch.emptyStorage
   if (patch.reExport !== undefined) columns.re_export = patch.reExport
-  if (patch.operational !== undefined) {
-    columns.operational = normalizeOperationalDetails(patch.operational)
-  }
+
   return writeJob(jobId, patch.version, columns)
 }
 
@@ -151,8 +156,19 @@ export async function saveJobCipl(
   if (current.sourceJobId) {
     throw new ApiError(
       400,
-      'CIPL job BC 2.5 / BC 3.0 mengikuti job masuk (BC 2.3). Ubah CIPL di job masuknya.',
+      'CIPL job turunan mengikuti job masuknya. Ubah CIPL di job masuknya.',
     )
+  }
+  if (current.internationalJenis === 'ATA_CARNET') {
+    const disposal = input.lines.some((line) =>
+      line.items.some((item) => item.disposisi === 'DISPOSED' || item.disposisi === 'GIVE_AWAY'),
+    )
+    if (disposal) {
+      throw new ApiError(
+        400,
+        'ATA Carnet: seluruh barang wajib kembali ke luar negeri. Ubah disposisi item menjadi re-ekspor, atau pisahkan barang itu ke job non-carnet.',
+      )
+    }
   }
   let saved: boolean
   try {

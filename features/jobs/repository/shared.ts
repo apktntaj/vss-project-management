@@ -241,7 +241,7 @@ export function toJob(
     assignedToId: row.assigned_to_id,
     createdById: row.created_by_id,
     assignedTo: assignedTo ? { id: assignedTo.id, name: assignedTo.full_name } : null,
-    operational: normalizeOperationalDetails(row.operational, row.stage),
+    operational: normalizeOperationalDetails(row.operational, row.stage, row.international_jenis),
     inward: row.inward,
     kepulangan: row.kepulangan,
     emptyStorage: row.empty_storage,

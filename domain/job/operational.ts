@@ -6,15 +6,17 @@ import type {
   JobInvoiceExtraction,
   JobTransportExtraction,
 } from '@/domain/exhibition/source-documents'
-import { jobStageBcDocument } from '@/domain/job/types'
 import type {
-  BcDocumentKind,
+  CustomsDocumentKind,
+  InternationalJobJenis,
   JobCustomsDocument,
   JobOperationalDetails,
   JobStage,
   JobTransportLeg,
   TransportDocumentType,
 } from '@/domain/job/types'
+import { customsDocumentKinds } from '@/domain/job/types'
+import { stageCustomsDocument } from '@/domain/job/regime'
 
 function emptyLeg(): JobTransportLeg {
   return { mode: null, carrier: null, scheduleAt: null, actualAt: null }
@@ -32,46 +34,52 @@ export function emptyCustomsDocument(applicable = true): JobCustomsDocument {
 }
 
 /**
- * Bagian operational untuk job yang baru dibuat: hanya dokumen BC milik tahap job yang
- * applicable (job masuk = BC 2.3, turunan = BC 2.5/BC 3.0); tanpa tahap (Local/Road) tidak ada.
+ * Bagian operational untuk job yang baru dibuat: hanya dokumen milik tahap job menurut rezimnya
+ * yang applicable (`stageCustomsDocument`); tanpa tahap (Local/Road) tidak ada. Carnet/jaminan
+ * diisi operator setelahnya lewat kartu dokumen.
  */
-export function emptyOperationalDetails(stage: JobStage | null): JobOperationalDetails {
+export function emptyOperationalDetails(
+  stage: JobStage | null,
+  jenis: InternationalJobJenis | null = null,
+): JobOperationalDetails {
+  const own = stage != null ? stageCustomsDocument(jenis, stage) : null
   return {
     inbound: emptyLeg(),
     outbound: emptyLeg(),
     invoiceNumber: null,
-    customs: {
-      BC_2_3: emptyCustomsDocument(stage != null && jobStageBcDocument[stage] === 'BC_2_3'),
-      BC_2_5: emptyCustomsDocument(stage != null && jobStageBcDocument[stage] === 'BC_2_5'),
-      BC_3_0: emptyCustomsDocument(stage != null && jobStageBcDocument[stage] === 'BC_3_0'),
-      BC_2_7: emptyCustomsDocument(false),
-    },
+    customs: Object.fromEntries(
+      customsDocumentKinds.map((kind) => [kind, emptyCustomsDocument(kind === own)]),
+    ) as Record<CustomsDocumentKind, JobCustomsDocument>,
+    carnet: null,
+    guarantee: null,
   }
 }
 
 /**
- * Lengkapi bentuk operational yang belum utuh (mis. customs tanpa BC_2_7) dengan default, tanpa
- * menimpa nilai yang sudah ada. `null`/`undefined` menghasilkan operational kosong. Default
- * `applicable` mengikuti tahap job (tanpa tahap = tidak ada dokumen BC applicable).
+ * Lengkapi bentuk operational yang belum utuh (mis. customs tanpa BC_2_0/CARNET generasi lama)
+ * dengan default, tanpa menimpa nilai yang sudah ada. `null`/`undefined` menghasilkan operational
+ * kosong. Default `applicable` mengikuti tahap + rezim job (tanpa tahap = tidak ada yang applicable).
  */
 export function normalizeOperationalDetails(
   stored: Partial<JobOperationalDetails> | null | undefined,
   stage: JobStage | null = null,
+  jenis: InternationalJobJenis | null = null,
 ): JobOperationalDetails {
-  const base = emptyOperationalDetails(stage)
+  const base = emptyOperationalDetails(stage, jenis)
   if (!stored) return base
-  const customs = (stored.customs ?? {}) as Partial<Record<BcDocumentKind, JobCustomsDocument>>
+  const customs = (stored.customs ?? {}) as Partial<
+    Record<CustomsDocumentKind, JobCustomsDocument>
+  >
   return {
     ...base,
     ...stored,
     inbound: { ...base.inbound, ...stored.inbound },
     outbound: { ...base.outbound, ...stored.outbound },
-    customs: {
-      BC_2_3: customs.BC_2_3 ?? base.customs.BC_2_3,
-      BC_2_5: customs.BC_2_5 ?? base.customs.BC_2_5,
-      BC_3_0: customs.BC_3_0 ?? base.customs.BC_3_0,
-      BC_2_7: customs.BC_2_7 ?? base.customs.BC_2_7,
-    },
+    customs: Object.fromEntries(
+      customsDocumentKinds.map((kind) => [kind, customs[kind] ?? base.customs[kind]]),
+    ) as Record<CustomsDocumentKind, JobCustomsDocument>,
+    carnet: stored.carnet ?? null,
+    guarantee: stored.guarantee ?? null,
   }
 }
 

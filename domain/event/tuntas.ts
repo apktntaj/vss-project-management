@@ -25,9 +25,9 @@ export type TuntasJobShape = {
   } | null
 }
 
-// Kepulangan wajib hanya pada job re-ekspor (BC 3.0 — barang keluar negeri) dan Road Shipment
-// (kiriman road kembali tanpa terbelah tahap). Job masuk BC 2.3 dan job disposal BC 2.5 tidak
-// punya kepulangan; job lama tanpa stage mengikuti jenis international-nya.
+// Kepulangan wajib hanya pada job re-ekspor (barang keluar negeri lagi) dan Road Shipment
+// (kiriman road kembali tanpa terbelah tahap). Job masuk dan job disposal tidak punya kepulangan;
+// job lama tanpa stage mengikuti jenis international-nya.
 
 // Dokumen BC dianggap selesai bila staff menutupnya (status COMPLETED) ATAU bukti registrasi
 // DJBC sudah terisi — dua sinyal penutupan yang independen di data live.

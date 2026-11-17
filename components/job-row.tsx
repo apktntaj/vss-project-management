@@ -24,7 +24,7 @@ import type {
 } from '@/domain/exhibition/source-documents'
 import type { BcDocumentKind } from '@/domain/job/types'
 import { jobFileName, jobLabel, jobNumberLabel } from '@/domain/job/numbering'
-import { jobStageLabel } from '@/domain/job/types'
+import { jobStageLabel } from '@/domain/job/regime'
 
 export type DocumentClassification = {
   documentType:
@@ -119,7 +119,7 @@ export function JobRow({
           </Link>
           {job.stage && (
             <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-              {jobStageLabel(job.stage)}
+              {jobStageLabel(job.internationalJenis, job.stage)}
             </span>
           )}
         </div>

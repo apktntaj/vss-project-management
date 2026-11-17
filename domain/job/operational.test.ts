@@ -27,15 +27,33 @@ assert.equal('billing' in details.customs.BC_2_3, false)
 const fresh = normalizeOperationalDetails(null)
 assert.deepEqual(fresh, emptyOperationalDetails(null))
 
-// Hanya BC milik tahap yang applicable; tanpa tahap (Local/Road) tidak ada.
-const applicable = (stage: Parameters<typeof emptyOperationalDetails>[0]) =>
-  Object.entries(emptyOperationalDetails(stage).customs)
+// Hanya dokumen milik tahap + rezim yang applicable; tanpa tahap (Local/Road) tidak ada.
+const applicable = (
+  stage: Parameters<typeof emptyOperationalDetails>[0],
+  jenis: Parameters<typeof emptyOperationalDetails>[1] = 'TPPB_BC_23',
+) =>
+  Object.entries(emptyOperationalDetails(stage, jenis).customs)
     .filter(([, document]) => document.applicable)
     .map(([kind]) => kind)
 assert.deepEqual(applicable('INBOUND'), ['BC_2_3'])
 assert.deepEqual(applicable('DISPOSAL'), ['BC_2_5'])
 assert.deepEqual(applicable('RE_EXPORT'), ['BC_3_0'])
 assert.deepEqual(applicable(null), [])
+assert.deepEqual(applicable('INBOUND', 'TEMPORARY_IMPORT'), ['BC_2_0'])
+assert.deepEqual(applicable('DISPOSAL', 'TEMPORARY_IMPORT'), ['BC_2_0'])
+assert.deepEqual(applicable('RE_EXPORT', 'TEMPORARY_IMPORT'), ['BC_3_0'])
+assert.deepEqual(applicable('INBOUND', 'ATA_CARNET'), ['CARNET'])
+assert.deepEqual(applicable('RE_EXPORT', 'ATA_CARNET'), ['CARNET'])
+assert.deepEqual(applicable('DISPOSAL', 'ATA_CARNET'), [])
+assert.deepEqual(applicable('INBOUND', 'PERMANENT_IMPORT'), ['BC_2_0'])
+assert.deepEqual(applicable('INBOUND', 'ROAD_SHIPMENT'), [])
+
+// Operational generasi lama (tanpa BC_2_0/CARNET/carnet/guarantee) dilengkapi, nilai lama utuh.
+const legacy = normalizeOperationalDetails(partial, 'INBOUND', 'ATA_CARNET')
+assert.equal(legacy.customs.CARNET.applicable, true)
+assert.equal(legacy.customs.BC_2_0.applicable, false)
+assert.equal(legacy.carnet, null)
+assert.equal(legacy.guarantee, null)
 
 // Ekstraksi B/L: nomor & isi mentah menjadi milik job; leg inbound hanya carrier (ETA milik job, tidak ditimpa B/L).
 const transport: JobTransportExtraction = {

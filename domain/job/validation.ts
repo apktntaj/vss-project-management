@@ -9,8 +9,9 @@ import {
   operationalNoteSchema,
 } from '@/domain/job/manifest'
 import {
-  bcDocumentKinds,
+  customsDocumentKinds,
   derivedJobStages,
+  guaranteeKinds,
   internationalJobJenisValues,
   invoiceStatuses,
   jobCustomsStatuses,
@@ -141,11 +142,28 @@ const customsDocumentSchema = z.object({
 })
 
 const customsSchema = z.object(
-  Object.fromEntries(bcDocumentKinds.map((kind) => [kind, customsDocumentSchema])) as Record<
-    (typeof bcDocumentKinds)[number],
+  Object.fromEntries(customsDocumentKinds.map((kind) => [kind, customsDocumentSchema])) as Record<
+    (typeof customsDocumentKinds)[number],
     typeof customsDocumentSchema
   >,
 )
+
+/** Identitas carnet job ATA Carnet. */
+export const carnetSchema = z.object({
+  number: optionalText(60),
+  issuingCountry: optionalText(80),
+  guarantor: optionalText(120),
+  validUntil: optionalText(40),
+})
+
+/** Jaminan PIB impor sementara (Temporary Import). */
+export const guaranteeSchema = z.object({
+  kind: z.enum(guaranteeKinds).nullable(),
+  number: optionalText(100),
+  amount: nullableNumber,
+  currency: optionalText(8),
+  reExportDeadline: optionalText(40),
+})
 
 export const operationalDetailsSchema = z.object({
   inbound: transportLegSchema,
@@ -154,6 +172,8 @@ export const operationalDetailsSchema = z.object({
   invoiceItems: z.array(invoiceItemSchema).optional(),
   invoice: invoiceExtractionSchema.nullable().optional(),
   customs: customsSchema,
+  carnet: carnetSchema.nullable().optional(),
+  guarantee: guaranteeSchema.nullable().optional(),
 })
 
 // --- Baris CIPL --------------------------------------------------------------------------------

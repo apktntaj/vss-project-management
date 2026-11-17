@@ -23,12 +23,8 @@ import {
   type Job,
   type JobSummary,
 } from '@/lib/data-client'
-import {
-  bcDocumentLabels,
-  jobStageBcDocument,
-  jobStageLabel,
-  type BcDocumentKind,
-} from '@/domain/job/types'
+import { bcDocumentLabels, type BcDocumentKind } from '@/domain/job/types'
+import { jobStageLabel, stageCustomsDocument } from '@/domain/job/regime'
 import { withStageGoods } from '@/domain/job/stages'
 import { buildManifestView } from '@/lib/manifest-view'
 import { totalDokumen } from '@/domain/exhibition/cipl-document'
@@ -245,6 +241,11 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   const isEvent = context?.kind === 'EVENT'
   const cancelled = job.status === 'CANCELLED'
   const details = getOperationalDetails(job)
+  const stageDocument = job.stage != null ? stageCustomsDocument(job.internationalJenis, job.stage) : null
+  // Workbook BUP hanya untuk dokumen BC yang punya template (BC 2.3/2.5/3.0) — bukan Carnet/BC 2.0.
+  const workbookKind = (['BC_2_3', 'BC_2_5', 'BC_3_0'] as const).find(
+    (kind) => kind === stageDocument,
+  )
   const invoiceItems = details.invoiceItems ?? []
   return (
     <div className="space-y-6">
@@ -265,7 +266,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
             <StatusBadge status={job.status} />
             {job.stage && (
               <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                {jobStageLabel(job.stage)}
+                {jobStageLabel(job.internationalJenis, job.stage)}
               </span>
             )}
           </div>
@@ -325,22 +326,19 @@ export default function JobDetail({ params }: { params: { id: string } }) {
                 className="fixed z-50 w-52 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg"
                 style={{ top: menuAnchor.top, left: menuAnchor.left }}
               >
-                {job.stage && (
+                {workbookKind && (
                   <>
-                    {[jobStageBcDocument[job.stage]].map((kind) => (
-                      <button
-                        key={kind}
-                        role="menuitem"
-                        type="button"
-                        onClick={() => {
-                          setMenuAnchor(null)
-                          void exportWorkbook(kind)
-                        }}
-                        className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                      >
-                        <FileSpreadsheet size={15} /> Export workbook {bcDocumentLabels[kind]}
-                      </button>
-                    ))}
+                    <button
+                      role="menuitem"
+                      type="button"
+                      onClick={() => {
+                        setMenuAnchor(null)
+                        void exportWorkbook(workbookKind)
+                      }}
+                      className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      <FileSpreadsheet size={15} /> Export workbook {bcDocumentLabels[workbookKind]}
+                    </button>
                     <div className="my-1 border-t border-black/10" />
                   </>
                 )}

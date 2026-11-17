@@ -104,41 +104,53 @@ dapat diaktifkan kembali. Job batal tidak ikut hitungan tuntas event.
 **Definisi**
 
 ```text
-JenisInternational adalah salah satu dari TEMPORARY, ATA_CARNET, ROAD_SHIPMENT,
-PERMANENT_IMPORT.
+JenisInternational adalah salah satu dari TPPB_BC_23, ATA_CARNET, TEMPORARY_IMPORT,
+PERMANENT_IMPORT, ROAD_SHIPMENT.
 ```
 
-**Interpretasi** — sub-jenis job international pada event, menurut rezim kepabeanan
-pengirimannya: TEMPORARY impor sementara untuk event (BC 2.3, barang wajib keluar kembali);
-ATA_CARNET impor sementara dengan paspor barang ATA; ROAD_SHIPMENT pengangkutan
-darat/pengalihan antar tempat (BC 2.7); PERMANENT_IMPORT barang dijual/dipakai tetap di
-Indonesia (BC 3.0).
+**Interpretasi** — sub-jenis job international pada event = rezim kepabeanan pengirimannya.
+Keputusan 2026-11-17 (alur per rezim; implementasi: `domain/job/regime.ts`):
 
-Keputusan domain expert 2026-10-24: nilai `VENUE` (lama) diganti nama menjadi `TEMPORARY`
-(data lama dimigrasi), `TEMPORARY_EXPORT` (ekspor sementara barang Indonesia ke luar) dihapus
-dari taksonomi. Job Local tidak butuh agent; SEMUA jenis boleh dengan atau tanpa agent
-(biasanya dengan agent).
+| Rezim | Job masuk | Job turunan DISPOSAL | Job turunan RE_EXPORT | Data khusus |
+|---|---|---|---|---|
+| TPPB_BC_23 (venue berstatus TPPB) | BC 2.3 | BC 2.5 | BC 3.0 | venue TPPB sebagai pihak |
+| TEMPORARY_IMPORT (non-TPPB, venue bukan pihak) | BC 2.0 (PIB impor sementara) | BC 2.0 definitif *) | BC 3.0 *) | jaminan: jenis, nomor, nilai, tenggat re-ekspor |
+| ATA_CARNET | Carnet (bukan dokumen BC) | tidak ada — semua barang wajib kembali | Carnet (re-exportation voucher) | nomor carnet, negara penerbit, penjamin (default KADIN), masa berlaku |
+| PERMANENT_IMPORT (Genco) | BC 2.0 | tidak ada | tidak ada | — |
+| ROAD_SHIPMENT | tanpa tahap, tanpa dokumen pabean | | | barang di gudang klien → pameran → gudang klien |
 
-**Contoh** — `TEMPORARY`; `ATA_CARNET`.
+*) asumsi operasional, menunggu konfirmasi tim: dokumen keluar re-ekspor Temporary Import
+dan penutupan barang yang tidak kembali.
 
-**Open question:** ada indikasi beberapa jenis membawa data berbeda — ATA_CARNET
-memiliki nomor carnet, TEMPORARY memiliki tenggat kepulangan. Jika terbukti, bentuk yang
-benar adalah **itemization dengan structure per alternatif**, bukan enumeration (aturan: jangan
-pakai enumeration jika tiap alternatif membawa data berbeda). Tentukan sebelum implementasi.
+Ketentuan lain:
+
+- Pemetaan BC 2.5 = barang disposal/dijual/dipakai di Indonesia dan BC 3.0 = re-ekspor adalah
+  pemetaan regulasi yang benar (dokumen lama menuliskan kebalikannya — sudah dikoreksi).
+- ATA Carnet menolak item CIPL berdisposisi DISPOSED/GIVE_AWAY (validasi saat simpan CIPL).
+- Road Shipment bukan rezim pabean: klien yang mengurus pabean sendiri; VSS hanya mengantar.
+  Moda selalu ROAD; BC 2.7 (pengalihan antar-TPB) tidak dilayani job ini.
+- Job Local tidak butuh agent; jenis lain boleh dengan atau tanpa agent.
+
+**Contoh** — `TPPB_BC_23`; `ATA_CARNET`.
+
+Data khusus rezim (carnet, jaminan) disimpan di `operational.carnet` / `operational.guarantee`
+(null pada rezim lain) — struktur per alternatif, bukan enumeration polos.
 
 ### `JenisDokumenBC`
 
 **Definisi**
 
 ```text
-JenisDokumenBC adalah salah satu dari BC_2_3, BC_2_5, BC_3_0, BC_2_7.
+JenisDokumenBC adalah salah satu dari BC_2_0, BC_2_3, BC_2_5, BC_3_0, BC_2_7.
 ```
 
-**Interpretasi** — jenis dokumen kepabeanan Indonesia yang dilayani: BC 2.3 impor sementara
-(barang pameran); BC 2.5 re-ekspor; BC 3.0 impor permanen; BC 2.7 pengalihan barang antar
-pengusaha TPB / antar dokumen manifest.
+**Interpretasi** — jenis dokumen kepabeanan Indonesia yang dilayani: BC 2.0 = PIB (impor biasa
+/ impor sementara non-TPPB); BC 2.3 = pemasukan barang ke TPB (pameran TPPB); BC 2.5 = barang
+dijual/dipakai di Indonesia (penyelesaian bonded); BC 3.0 = PEB / re-ekspor; BC 2.7 =
+pengalihan barang antar pengusaha TPB. Carnet bukan dokumen BC: dicatat bersama dokumen
+pabean lain (`CustomsDocumentKind` = BC + `CARNET`).
 
-**Contoh** — `BC_2_3`; `BC_2_7`.
+**Contoh** — `BC_2_3`; `BC_2_0`.
 
 ### `DokumenBC`
 
@@ -280,8 +292,9 @@ tolak — perbaiki mapping, bukan tambahi flag.
 
 ```text
 dokumenBcUmum : JenisInternational -> Daftar JenisDokumenBC
-  // PROPOSAL (evidence: pola inward manifest): PERMANENT_IMPORT → [BC_3_0];
-  // TEMPORARY → [BC_2_3, BC_2_5]; ROAD_SHIPMENT → [BC_2_7].
+  // Terjawab 2026-11-17 — lihat tabel `JenisInternational` dan `domain/job/regime.ts`:
+  // TPPB_BC_23 → [BC_2_3, BC_2_5, BC_3_0]; TEMPORARY_IMPORT → [BC_2_0, BC_3_0];
+  // ATA_CARNET → [] (Carnet); PERMANENT_IMPORT → [BC_2_0]; ROAD_SHIPMENT → [].
   // Bukan aturan mutlak — user tetap dapat menambah/mengurangi per job.
 
 bisaDibatalkan : Job -> Bool

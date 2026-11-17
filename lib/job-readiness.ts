@@ -48,12 +48,14 @@ function customsStep(job: Job): JobReadinessStep {
   if (job.kind === 'LOCAL')
     return {
       key: 'customs',
-      label: 'Dokumen BC',
+      label: 'Dokumen pabean',
       detail: 'Tidak diperlukan',
       state: 'done',
       tab: 'transport',
     }
-  const documents = Object.values(normalizeOperationalDetails(job.operational, job.stage).customs)
+  const documents = Object.values(
+    normalizeOperationalDetails(job.operational, job.stage, job.internationalJenis).customs,
+  )
   const required = documents.filter((document) => document.applicable).length
   const completed = documents.filter(
     (document) => document.applicable && document.status === 'COMPLETED',
@@ -62,7 +64,7 @@ function customsStep(job: Job): JobReadinessStep {
     required === 0 || completed === required ? 'done' : completed > 0 ? 'doing' : 'todo'
   return {
     key: 'customs',
-    label: 'Dokumen BC',
+    label: 'Dokumen pabean',
     detail: required === 0 ? 'Tidak diperlukan' : `${completed}/${required} selesai`,
     state,
     tab: 'transport',
