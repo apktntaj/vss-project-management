@@ -1,0 +1,12 @@
+services:
+  # Local Supabase stack (Docker). Port 54321 is its API gateway; the command stays alive as long
+  # as the database container runs so Amp can supervise it.
+  supabase:
+    command: npx --yes supabase@3.2.0 start && exec docker wait supabase_db_vss-project-management
+    port: 54321
+  web:
+    command: npm run dev -- -p "$PORT"
+    portal:
+      url: /login
+      title: VSS dev (Supabase lokal)
+      description: Masuk dengan admin@vss.local / vss-dev-admin-123 (database lokal orb, bukan production).

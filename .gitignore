@@ -18,10 +18,14 @@ public/uploads/*
 /remotion-demo/
 
 # Alat kerja lokal — tidak untuk repo maupun deploy Vercel
-.agents/
+.agents/*
+!.agents/setup
 .kiro/
 .zcode/
 .vercel/
 
 # Cache unduhan data bahasa tesseract.js saat OCR
 eng.traineddata
+
+# Amp orb: generated portal links per orb
+.amp/portals/*

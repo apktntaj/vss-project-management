@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Prepares an Amp orb for local development against a local Supabase stack (Docker).
+# Never touches the hosted Supabase project: .env.local points at 127.0.0.1 only.
+# Safe to run repeatedly.
+set -euo pipefail
+
+SUPABASE_CLI=supabase@3.2.0
+# Local-only development account; the database it lives in never leaves the orb.
+DEV_ADMIN_EMAIL=admin@vss.local
+DEV_ADMIN_PASSWORD=vss-dev-admin-123
+
+step() { echo "==> $1 ($(date +%T))"; }
+
+step "npm ci"
+npm ci --no-audit --no-fund
+
+step "Docker daemon"
+sudo systemctl enable --now docker
+# This process may predate the docker group membership; new login shells have it.
+docker info >/dev/null 2>&1 || sudo chmod 666 /var/run/docker.sock
+
+step "Supabase start (pulls images, applies migrations on a fresh database)"
+npx --yes "$SUPABASE_CLI" start
+# `start` on an existing volume skips migrations added since; apply any pending ones.
+npx --yes "$SUPABASE_CLI" migration up --local
+
+step ".env.local"
+if [ ! -f .env.local ]; then
+  service_role_key=$(npx --yes "$SUPABASE_CLI" status -o json | jq -r .SERVICE_ROLE_KEY)
+  cat > .env.local <<EOF
+# Local Supabase (supabase start). Local-only keys, never production.
+SUPABASE_URL=http://127.0.0.1:54321
+SUPABASE_SERVICE_ROLE_KEY=$service_role_key
+AUTH_SECRET=$(openssl rand -base64 32)
+EOF
+fi
+
+step "Development admin account"
+VSS_USER_PASSWORD="$DEV_ADMIN_PASSWORD" npm run --silent supabase:create-user -- \
+  "$DEV_ADMIN_EMAIL" 'Admin Dev' CS true
+
+step "Stop Supabase so the snapshot holds a cleanly shut down database"
+npx --yes "$SUPABASE_CLI" stop
+
+step "Done"
