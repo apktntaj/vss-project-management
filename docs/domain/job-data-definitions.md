@@ -129,7 +129,11 @@ Ketentuan lain:
 - ATA Carnet menolak item CIPL berdisposisi DISPOSED/GIVE_AWAY (validasi saat simpan CIPL).
 - Road Shipment bukan rezim pabean: klien yang mengurus pabean sendiri; VSS hanya mengantar.
   Moda selalu ROAD; BC 2.7 (pengalihan antar-TPB) tidak dilayani job ini.
-- Job Local tidak butuh agent; jenis lain boleh dengan atau tanpa agent.
+- Job Local (kind terpisah, bukan `JenisInternational`): exhibitor dari dalam negeri, tanpa
+  dokumen pabean dan tanpa tahap, selalu dipegang exhibitor (tanpa agent). Sering terjadi
+  realtime di venue tanpa proses penawaran/inquiry lebih dulu — pembuatan job memang hanya
+  mensyaratkan event; pihak exhibitor boleh ditetapkan belakangan, saat CIPL disimpan
+  (exhibitor baru pun bisa dibuat di sana).
 
 **Contoh** — `TPPB_BC_23`; `ATA_CARNET`.
 
