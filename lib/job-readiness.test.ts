@@ -72,7 +72,7 @@ assert.deepEqual(
     number: 'header',
     transport: 'transport',
     cipl: 'muatan',
-    customs: 'transport',
+    customs: 'pabean',
     invoice: 'billing',
   },
 )

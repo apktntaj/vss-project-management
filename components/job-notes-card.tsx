@@ -1,13 +1,10 @@
 'use client'
 
 import { useState, type KeyboardEvent } from 'react'
-import { Pencil, Plus } from 'lucide-react'
+import { AlertTriangle, Pencil, Plus } from 'lucide-react'
 
 import { saveJobOperationalDetails, type Job } from '@/lib/data-client'
-
-function notify(message: string, tone: 'success' | 'error') {
-  window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
-}
+import { notify } from '@/lib/notify'
 
 type TextField = 'notes' | 'specialInstructions'
 
@@ -19,21 +16,11 @@ type FieldCopy = {
   add: string
   saved: string
   failed: string
-  /** Isi tampil sebagai peringatan (permukaan amber). */
+  /** Isi tampil menonjol sebagai peringatan (permukaan amber). */
   warning: boolean
 }
 
 const COPY: Record<TextField, FieldCopy> = {
-  notes: {
-    title: 'Catatan',
-    placeholder: 'Catatan operasional job',
-    maxLength: 5000,
-    empty: 'Tidak ada catatan.',
-    add: 'Tambah catatan',
-    saved: 'Catatan job disimpan.',
-    failed: 'Catatan tidak dapat disimpan.',
-    warning: false,
-  },
   specialInstructions: {
     title: 'Special instructions',
     placeholder: 'Permintaan khusus klien, mis. butuh vacuum pack, urgent re-export',
@@ -44,13 +31,27 @@ const COPY: Record<TextField, FieldCopy> = {
     failed: 'Special instruction tidak dapat disimpan.',
     warning: true,
   },
+  notes: {
+    title: 'Catatan',
+    placeholder: 'Catatan operasional job',
+    maxLength: 5000,
+    empty: 'Tidak ada catatan.',
+    add: 'Tambah catatan',
+    saved: 'Catatan job disimpan.',
+    failed: 'Catatan tidak dapat disimpan.',
+    warning: false,
+  },
 }
+
+/** Isi lebih panjang dari ini (karakter) atau lebih dari 3 baris dipotong dengan tombol "Selengkapnya". */
+const CLAMP_CHARS = 180
 
 /**
  * Satu field teks job, diedit di tempat. Kosong: hanya ajakan kecil "Tambah …" agar tidak
- * berisik; terisi: tampil dipotong tiga baris, klik untuk membuka kotak edit berisi teks utuh.
+ * berisik; terisi: tampil (dipotong bila panjang, ada "Selengkapnya"), tombol pensil membuka kotak
+ * edit berisi teks utuh. Special instructions yang terisi tampil menonjol (amber + ikon).
  */
-function JobTextFieldCard({
+function JobTextField({
   job,
   field,
   onSaved,
@@ -62,11 +63,13 @@ function JobTextFieldCard({
   const copy = COPY[field]
   const value = job[field]
   const [editing, setEditing] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
   // Job batal tidak dapat diubah lagi: isi hanya dibaca.
   const readOnly = job.status === 'CANCELLED'
   const highlighted = copy.warning && Boolean(value) && !editing
+  const long = Boolean(value) && (value!.length > CLAMP_CHARS || value!.split('\n').length > 3)
   function startEditing() {
     setDraft(value ?? '')
     setEditing(true)
@@ -96,37 +99,30 @@ function JobTextFieldCard({
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) void save()
   }
 
-  return (
-    <section className={`card flex flex-col p-5 ${highlighted ? 'border-amber-300 bg-amber-50' : ''}`}>
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold">{copy.title}</p>
-        {value && !editing && !readOnly ? (
-          <button
-            type="button"
-            onClick={startEditing}
-            aria-label={`Ubah ${copy.title.toLowerCase()}`}
-            className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-          >
-            <Pencil size={14} aria-hidden="true" />
-          </button>
-        ) : null}
-      </div>
-
-      {editing ? (
-        <div className="mt-3 flex flex-1 flex-col gap-3">
-          <textarea
-            autoFocus
-            rows={4}
-            maxLength={copy.maxLength}
-            value={draft}
-            disabled={saving}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={onKeyDown}
-            aria-label={copy.title}
-            placeholder={copy.placeholder}
-            className="input min-h-24 w-full"
-          />
-          <div className="flex justify-end gap-2">
+  if (editing) {
+    return (
+      <div className="space-y-2">
+        <label htmlFor={`job-${field}`} className="text-sm font-semibold">
+          {copy.title}
+        </label>
+        <textarea
+          id={`job-${field}`}
+          autoFocus
+          rows={4}
+          maxLength={copy.maxLength}
+          value={draft}
+          disabled={saving}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder={copy.placeholder}
+          aria-describedby={`job-${field}-count`}
+          className="input min-h-24 w-full"
+        />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p id={`job-${field}-count`} className="text-xs text-slate-600">
+            {draft.length}/{copy.maxLength} · Ctrl+Enter untuk menyimpan, Esc untuk membatalkan
+          </p>
+          <div className="flex gap-2">
             <button type="button" className="btn-secondary" disabled={saving} onClick={() => setEditing(false)}>
               Batal
             </button>
@@ -135,38 +131,83 @@ function JobTextFieldCard({
             </button>
           </div>
         </div>
-      ) : readOnly ? (
-        <p className="mt-2 text-sm whitespace-pre-wrap text-slate-600">
-          {value ?? <span className="text-slate-500">{copy.empty}</span>}
+      </div>
+    )
+  }
+
+  if (!value) {
+    return readOnly ? (
+      <p className="text-sm text-slate-600">
+        <span className="font-semibold text-foreground">{copy.title}:</span> {copy.empty}
+      </p>
+    ) : (
+      <button
+        type="button"
+        onClick={startEditing}
+        className="inline-flex min-h-8 w-fit items-center gap-1 rounded-md text-sm text-slate-600 hover:text-slate-900"
+      >
+        <Plus size={14} aria-hidden="true" /> {copy.add}
+      </button>
+    )
+  }
+
+  return (
+    <div
+      className={
+        highlighted ? 'rounded-xl border border-amber-300 bg-amber-50 p-3' : undefined
+      }
+    >
+      <div className="flex items-center justify-between gap-2">
+        <p
+          className={`flex items-center gap-1.5 text-sm font-semibold ${highlighted ? 'text-amber-900' : ''}`}
+        >
+          {highlighted && <AlertTriangle size={15} aria-hidden="true" />}
+          {copy.title}
         </p>
-      ) : value ? (
+        {!readOnly ? (
+          <button
+            type="button"
+            onClick={startEditing}
+            aria-label={`Ubah ${copy.title.toLowerCase()}`}
+            className="inline-flex size-8 items-center justify-center rounded-md text-slate-600 hover:bg-black/5 hover:text-slate-900"
+          >
+            <Pencil size={14} aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
+      <p
+        className={`mt-1 text-sm whitespace-pre-wrap ${expanded ? '' : 'line-clamp-3'} ${
+          highlighted ? 'font-medium text-slate-900' : 'text-slate-700'
+        }`}
+      >
+        {value}
+      </p>
+      {long ? (
         <button
           type="button"
-          onClick={startEditing}
-          title={`Klik untuk mengubah ${copy.title.toLowerCase()}`}
-          className={`mt-2 line-clamp-3 text-left text-sm whitespace-pre-wrap ${highlighted ? 'font-medium text-slate-800' : 'text-slate-600'}`}
+          onClick={() => setExpanded((current) => !current)}
+          aria-expanded={expanded}
+          className="mt-1 min-h-8 rounded text-xs font-semibold text-slate-700 underline underline-offset-2 hover:text-slate-900"
         >
-          {value}
+          {expanded ? 'Ringkas' : 'Selengkapnya'}
         </button>
-      ) : (
-        <button
-          type="button"
-          onClick={startEditing}
-          className="mt-2 inline-flex w-fit items-center gap-1 text-sm text-slate-500 hover:text-slate-700"
-        >
-          <Plus size={14} aria-hidden="true" /> {copy.add}
-        </button>
-      )}
-    </section>
+      ) : null}
+    </div>
   )
 }
 
-/** Catatan job (`job.notes`). */
-export function JobNotesCard(props: { job: Job; onSaved: (job: Job) => void }) {
-  return <JobTextFieldCard {...props} field="notes" />
-}
-
-/** Special instruction job (`job.specialInstructions`): permintaan khusus klien, tampil sebagai peringatan. */
-export function JobSpecialInstructionsCard(props: { job: Job; onSaved: (job: Job) => void }) {
-  return <JobTextFieldCard {...props} field="specialInstructions" />
+/**
+ * Satu kartu catatan job: special instructions (permintaan klien, menonjol bila terisi) lalu
+ * catatan operasional. Saat keduanya kosong kartu tetap ringkas (dua ajakan "Tambah …").
+ */
+export function JobNotesPanel({ job, onSaved }: { job: Job; onSaved: (job: Job) => void }) {
+  return (
+    <section className="card space-y-3 p-5" aria-labelledby="job-notes-heading">
+      <h2 id="job-notes-heading" className="text-sm font-semibold">
+        Catatan job
+      </h2>
+      <JobTextField job={job} field="specialInstructions" onSaved={onSaved} />
+      <JobTextField job={job} field="notes" onSaved={onSaved} />
+    </section>
+  )
 }

@@ -1,9 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
+  AlertTriangle,
   ArrowLeft,
   Ban,
   FileSpreadsheet,
@@ -41,16 +42,19 @@ import { JobTransportDocumentCard } from '@/components/job-transport-document-ca
 import { JobDocumentsCard } from '@/components/job-documents-card'
 import { JobStageCard } from '@/components/job-stage-card'
 import { JobCustomsCard } from '@/components/job-customs-card'
+import { JobCustomsPendingCard } from '@/components/job-customs-pending-card'
+import { JobDeadlineBanner } from '@/components/job-deadline-banner'
 import { JobLartasCard } from '@/components/job-lartas-card'
 import { JobBillingDialog, JobPartyInvoiceCard } from '@/components/job-party-invoice-card'
 import { JobContextBadge } from '@/components/job-context-badge'
 import { JobDetailSkeleton } from '@/components/loading-skeletons'
 import { JobReadinessBar } from '@/components/job-readiness-bar'
-import { JobNotesCard, JobSpecialInstructionsCard } from '@/components/job-notes-card'
+import { JobNotesPanel } from '@/components/job-notes-card'
 import { CancelJobDialog } from '@/components/cancel-job-dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { date, downloadCustomsWorkbook, label } from '@/components/job-row'
 import { jobContext } from '@/lib/job-context'
+import { notify } from '@/lib/notify'
 import { jobLabel, jobNumberLabel } from '@/domain/job/numbering'
 import { hasTabData, tabActionLabel } from '@/domain/job/tab-data'
 import type { JobDetailTab, JobReadinessTarget } from '@/lib/job-readiness'
@@ -61,6 +65,7 @@ const SHOW_MUATAN_EXTRAS = false
 
 // Jenis lampiran yang ditampilkan per tab. BC_* dan OTHER belum punya tempat di halaman ini.
 const MUATAN_DOCUMENT_KINDS = ['CIPL', 'PACKING_LIST', 'COMMERCIAL_INVOICE', 'SOURCE'] as const
+const CUSTOMS_DOCUMENT_KINDS = ['BC_2_0', 'BC_2_3', 'BC_2_5', 'BC_3_0', 'BC_2_7'] as const
 const TRANSPORT_DOCUMENT_KINDS = [
   'BILL_OF_LADING',
   'AIR_WAYBILL',
@@ -72,15 +77,15 @@ const TRANSPORT_DOCUMENT_KINDS = [
 const disposedPackageCount = (job: Job) =>
   summarizeKoliCollections(stageCiplLines(job.ciplLines, 'DISPOSAL').map((line) => line.koli)).totalCount
 
+// Adaptor untuk komponen anak yang memakai nada 'info'/'error'; semua toast lewat `notify` bersama.
 const toast = (message: string, tone: 'info' | 'error' = 'info') =>
-  window.dispatchEvent(
-    new CustomEvent('vss:toast', {
-      detail: { message, tone: tone === 'error' ? 'error' : 'success' },
-    }),
-  )
+  notify(message, tone === 'error' ? 'error' : 'success')
+
+const TAB_VALUES: ReadonlyArray<JobDetailTab> = ['muatan', 'pabean', 'transport', 'billing']
 
 const emptyTabIcons = {
   muatan: PackageOpen,
+  pabean: FileSpreadsheet,
   transport: Ship,
   billing: ReceiptText,
 } satisfies Record<JobDetailTab, LucideIcon>
@@ -102,25 +107,34 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   const [job, setJob] = useState<Job | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  useEffect(() => {
-    let active = true
+  const [notFound, setNotFound] = useState(false)
+  // Setiap pemuatan (awal atau "Coba lagi") diberi nomor; hasil pemuatan yang sudah usang diabaikan.
+  const loadSeq = useRef(0)
+  const loadJob = useCallback(() => {
+    const seq = ++loadSeq.current
     setLoading(true)
+    setLoadError('')
+    setNotFound(false)
     getJob(params.id)
       .then((loadedJob) => {
-        if (!active) return
+        if (seq !== loadSeq.current) return
         setJob(loadedJob)
-        setLoadError(loadedJob ? '' : 'Job tidak ditemukan.')
-        setLoading(false)
+        setNotFound(!loadedJob)
       })
       .catch((caught) => {
-        if (!active) return
+        if (seq !== loadSeq.current) return
         setLoadError(caught instanceof Error ? caught.message : 'Job tidak dapat dimuat.')
-        setLoading(false)
       })
-    return () => {
-      active = false
-    }
+      .finally(() => {
+        if (seq === loadSeq.current) setLoading(false)
+      })
   }, [params.id])
+  useEffect(() => {
+    loadJob()
+    return () => {
+      loadSeq.current += 1
+    }
+  }, [loadJob])
   const [exhibitors, setExhibitors] = useState<Exhibitor[]>([])
   // Rangkaian job BC (job masuk + turunannya) untuk kartu rangkaian; dimuat ulang saat job berubah
   // atau setelah job turunan baru dibuat manual dari kartu.
@@ -133,26 +147,34 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   const [billingOpen, setBillingOpen] = useState(false)
   const [headerOpen, setHeaderOpen] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
-  // Tab area kerja aktif disimpan di URL (?tab=muatan|transport|billing) agar bisa dibagikan dan
-  // bertahan refresh; dibaca sekali saat mount (pola ?newJob=1 di halaman event).
-  const [tab, setTab] = useState<JobDetailTab>('muatan')
+  // Tab area kerja aktif disimpan di URL (?tab=muatan|pabean|transport|billing) agar bisa dibagikan
+  // dan bertahan refresh; dibaca sekali saat mount (pola ?newJob=1 di halaman event). Tanpa
+  // ?tab=, job bertahap (BC/Carnet) membuka tab Pabean, selebihnya CIPL.
+  const [requestedTab, setRequestedTab] = useState<JobDetailTab | null>(null)
   useEffect(() => {
     const fromUrl = new URLSearchParams(window.location.search).get('tab')
-    if (fromUrl === 'muatan' || fromUrl === 'transport' || fromUrl === 'billing') setTab(fromUrl)
+    const requested = TAB_VALUES.find((value) => value === fromUrl)
+    if (requested) setRequestedTab(requested)
   }, [])
+  const hasPabeanTab =
+    job != null && job.stage != null && stageCustomsDocument(job.internationalJenis, job.stage) != null
+  const defaultTab: JobDetailTab = hasPabeanTab ? 'pabean' : 'muatan'
+  const tab: JobDetailTab =
+    requestedTab && (requestedTab !== 'pabean' || hasPabeanTab) ? requestedTab : defaultTab
   function selectTab(next: JobDetailTab) {
-    setTab(next)
+    setRequestedTab(next)
     window.history.replaceState(
       null,
       '',
-      next === 'muatan' ? `/jobs/${params.id}` : `/jobs/${params.id}?tab=${next}`,
+      next === defaultTab ? `/jobs/${params.id}` : `/jobs/${params.id}?tab=${next}`,
     )
   }
-  // Header job bukan tab: langkah kesiapan "No Job" membuka dialog ubah header.
+  // Header job bukan tab: langkah kesiapan "No Job" membuka dialog ubah header. Job tanpa tab
+  // Pabean (Local/Road) mengalihkan langkah "Dokumen pabean" ke Transport.
   function navigateReadiness(target: JobReadinessTarget) {
     if (target === 'header') {
       if (job?.status !== 'CANCELLED') setHeaderOpen(true)
-    } else selectTab(target)
+    } else selectTab(target === 'pabean' && !hasPabeanTab ? 'transport' : target)
   }
 
   async function exportWorkbook(kind: BcDocumentKind) {
@@ -166,8 +188,8 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   }
 
   const context = job ? jobContext(job) : null
-  // Tombol di ujung tab membuka form sesuai tab aktif.
   function openTabEditor() {
+    if (tab === 'pabean') return
     if (tab === 'billing') setBillingOpen(true)
     else if (tab === 'transport') setDocumentEdit('TRANSPORT')
     else setCiplEntryOpen(true)
@@ -232,21 +254,35 @@ export default function JobDetail({ params }: { params: { id: string } }) {
       active = false
     }
   }, [jobId, job?.version, jobStage, seriesRefresh])
-  if (loading || !job) {
-    if (loadError)
-      return (
-        <div
-          className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700"
-          role="alert"
-        >
-          <p>{loadError}</p>
-          <Link href="/jobs" className="btn-secondary mt-3 inline-block">
+  if (loading) return <JobDetailSkeleton />
+  if (loadError)
+    return (
+      <div className="card mx-auto max-w-xl p-8 text-center" role="alert">
+        <AlertTriangle className="mx-auto text-rose-500" size={28} aria-hidden="true" />
+        <h1 className="mt-3 text-xl font-bold">Job gagal dimuat</h1>
+        <p className="mt-2 text-sm text-slate-600">{loadError}</p>
+        <div className="mt-6 flex justify-center gap-3">
+          <button type="button" onClick={loadJob} className="btn-primary">
+            Coba lagi
+          </button>
+          <Link href="/jobs" className="btn-secondary">
             Kembali ke Jobs
           </Link>
         </div>
-      )
-    return <JobDetailSkeleton />
-  }
+      </div>
+    )
+  if (!job || notFound)
+    return (
+      <div className="card mx-auto max-w-xl p-8 text-center">
+        <h1 className="text-xl font-bold">Job tidak ditemukan</h1>
+        <p className="mt-2 text-sm text-slate-600">
+          Job ini tidak ada atau Anda tidak punya akses ke job tersebut.
+        </p>
+        <Link href="/jobs" className="btn-primary mt-6">
+          Kembali ke Jobs
+        </Link>
+      </div>
+    )
   const isEvent = context?.kind === 'EVENT'
   const cancelled = job.status === 'CANCELLED'
   const details = getOperationalDetails(job)
@@ -257,6 +293,22 @@ export default function JobDetail({ params }: { params: { id: string } }) {
     (kind) => kind === stageDocument,
   )
   const invoiceItems = details.invoiceItems ?? []
+  const tabItems: ReadonlyArray<readonly [JobDetailTab, string]> = [
+    ['muatan', 'CIPL'],
+    ...(hasPabeanTab ? ([['pabean', 'Pabean']] as const) : []),
+    ['transport', 'Transport'],
+    ['billing', 'Billing'],
+  ]
+  // Tombol di ujung tab membuka form sesuai tab aktif. Tab Pabean memakai form inline di kartunya.
+  const showTabAction =
+    !cancelled && tab !== 'pabean' && (!job.sourceJobId || tab === 'billing')
+  const hasTransportDocument = Boolean(job.transportDocument || job.transportDocumentNumber)
+  const tabActionText =
+    tab === 'transport'
+      ? `${hasTransportDocument ? 'Edit' : 'Buat'} B/L-AWB`
+      : tab === 'pabean'
+        ? ''
+        : tabActionLabel(tab, job)
   const jobMenuItems: ActionMenuItem[] = [
     ...(workbookKind
       ? [
@@ -341,6 +393,11 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           <ActionMenu label="Menu aksi job" items={jobMenuItems} width={224} bordered />
         </div>
       </header>
+      <JobDeadlineBanner
+        job={job}
+        source={job.sourceJobId ? sourceJob : null}
+        onOpenPabean={() => selectTab('pabean')}
+      />
       {cancelled && (
         <section
           className="card flex items-start gap-3 border-rose-200 bg-rose-50/60 p-5"
@@ -356,14 +413,13 @@ export default function JobDetail({ params }: { params: { id: string } }) {
                 Alasan: {job.cancellation.reason}
               </p>
             )}
-            <p className="mt-1 text-xs text-slate-500">Job ini tidak dapat diubah lagi.</p>
+            <p className="mt-1 text-xs text-slate-600">Job ini tidak dapat diubah lagi.</p>
           </div>
         </section>
       )}
-      <div className="grid items-stretch gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid items-start gap-4 md:grid-cols-2">
         <JobReadinessBar job={job} activeTab={tab} onNavigate={navigateReadiness} />
-        <JobSpecialInstructionsCard job={job} onSaved={setJob} />
-        <JobNotesCard job={job} onSaved={setJob} />
+        <JobNotesPanel job={job} onSaved={setJob} />
       </div>
       {job.stage && (
         <JobStageCard
@@ -374,31 +430,25 @@ export default function JobDetail({ params }: { params: { id: string } }) {
         />
       )}
       <Tabs value={tab} onValueChange={(value) => selectTab(value as JobDetailTab)}>
-        <div className="sticky top-0 z-30 -mx-1 flex items-center justify-between gap-3 border-b bg-background px-1 py-2">
-          <TabsList className="h-auto gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
-            {(
-              [
-                ['muatan', 'CIPL'],
-                ['transport', 'Transport'],
-                ['billing', 'Billing'],
-              ] as const
-            ).map(([value, text]) => (
+        <div className="sticky top-0 z-30 -mx-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b bg-background px-1 py-2">
+          <TabsList className="h-auto max-w-full gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+            {tabItems.map(([value, text]) => (
               <TabsTrigger
                 key={value}
                 value={value}
-                className="h-auto min-h-9 rounded-lg px-4 py-1.5 text-slate-600 hover:bg-slate-100 hover:text-slate-900 data-[active]:bg-orange-600 data-[active]:text-white data-[active]:shadow-sm"
+                className="h-auto min-h-9 rounded-lg px-3 py-1.5 text-slate-600 hover:bg-slate-100 hover:text-slate-900 data-[active]:bg-orange-600 data-[active]:text-white data-[active]:shadow-sm data-[active]:hover:bg-orange-600 data-[active]:hover:text-white sm:px-4"
               >
                 {text}
               </TabsTrigger>
             ))}
           </TabsList>
-          {!cancelled && (!job.sourceJobId || tab === 'billing') && (
+          {showTabAction && (
             <button
               type="button"
               onClick={openTabEditor}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
             >
-              <Pencil size={14} aria-hidden="true" /> {tabActionLabel(tab, job)}
+              <Pencil size={14} aria-hidden="true" /> {tabActionText}
             </button>
           )}
         </div>
@@ -481,9 +531,38 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           )}
           {!job.sourceJobId && <JobDocumentsCard job={job} kinds={MUATAN_DOCUMENT_KINDS} />}
         </TabsContent>
+        {hasPabeanTab && stageDocument && job.stage && (
+          <TabsContent value="pabean" className="space-y-6">
+            <JobCustomsCard job={job} source={sourceJob} onSaved={setJob} />
+            <JobDocumentsCard job={job} kinds={CUSTOMS_DOCUMENT_KINDS} title="Lampiran pabean" />
+            <JobCustomsPendingCard
+              kind={stageDocument}
+              stage={job.stage}
+              jenis={job.internationalJenis}
+            />
+          </TabsContent>
+        )}
         <TabsContent value="transport" className="space-y-6">
-          {job.stage && <JobCustomsCard job={job} onSaved={setJob} />}
-          {!job.sourceJobId && (
+          {job.sourceJobId ? (
+            <section className="card p-5">
+              <h2 className="font-semibold">Transport</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Dokumen angkut (B/L atau AWB) mengikuti job masuk.
+                {sourceJob && (
+                  <>
+                    {' '}
+                    <Link
+                      href={`/jobs/${sourceJob.id}?tab=transport`}
+                      className="font-medium text-foreground underline underline-offset-2"
+                    >
+                      Buka job masuk {jobNumberLabel(sourceJob)}
+                    </Link>
+                    .
+                  </>
+                )}
+              </p>
+            </section>
+          ) : (
             <>
               <JobTransportDocumentCard job={job} />
               <JobDocumentsCard job={job} kinds={TRANSPORT_DOCUMENT_KINDS} />

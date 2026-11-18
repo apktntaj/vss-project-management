@@ -6,10 +6,8 @@ import { Download, FileSpreadsheet, FileText, Loader2 } from 'lucide-react'
 import { getAttachmentContent, listJobAttachments, type Job, type JobAttachment } from '@/lib/data-client'
 import { jobDocumentKindLabels, type JobDocumentKind } from '@/domain/job/types'
 import { date } from '@/components/job-row'
+import { notify } from '@/lib/notify'
 
-function notify(message: string, tone: 'success' | 'error') {
-  window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
-}
 
 function formatSize(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
@@ -20,7 +18,15 @@ function formatSize(bytes: number) {
  * Dokumen yang sudah diunggah untuk job, disaring per jenis agar tiap tab hanya menampilkan
  * miliknya. Dimuat ulang saat versi job berubah (menyimpan dokumen menaikkan versi).
  */
-export function JobDocumentsCard({ job, kinds }: { job: Job; kinds: ReadonlyArray<JobDocumentKind> }) {
+export function JobDocumentsCard({
+  job,
+  kinds,
+  title = 'Dokumen',
+}: {
+  job: Job
+  kinds: ReadonlyArray<JobDocumentKind>
+  title?: string
+}) {
   const [attachments, setAttachments] = useState<JobAttachment[] | null>(null)
   const [loadError, setLoadError] = useState('')
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
@@ -64,22 +70,22 @@ export function JobDocumentsCard({ job, kinds }: { job: Job; kinds: ReadonlyArra
 
   return (
     <section className="card p-5">
-      <h2 className="font-semibold">Dokumen</h2>
+      <h2 className="font-semibold">{title}</h2>
       {attachments === null ? (
-        <p className="mt-2 text-sm text-slate-400">Memuat dokumen…</p>
+        <p className="mt-2 text-sm text-slate-600">Memuat dokumen…</p>
       ) : loadError ? (
-        <p className="mt-2 text-sm text-rose-600" role="alert">
+        <p className="mt-2 text-sm text-rose-700" role="alert">
           {loadError}
         </p>
       ) : visible.length === 0 ? (
-        <p className="mt-2 text-sm text-slate-400">Belum ada dokumen yang diunggah.</p>
+        <p className="mt-2 text-sm text-slate-600">Belum ada dokumen yang diunggah.</p>
       ) : (
         <ul className="mt-3 divide-y divide-slate-100">
           {visible.map((item) => {
             const Icon = item.mimeType === 'application/pdf' ? FileText : FileSpreadsheet
             return (
               <li key={item.id} className="flex items-center gap-3 py-2.5">
-                <Icon size={18} className="shrink-0 text-slate-400" aria-hidden="true" />
+                <Icon size={18} className="shrink-0 text-slate-500" aria-hidden="true" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-slate-800" title={item.fileName}>
                     {item.fileName}

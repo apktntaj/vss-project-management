@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Save } from 'lucide-react'
 import {
   getOperationalDetails,
@@ -19,13 +19,17 @@ import {
   type TransportMode,
 } from '@/domain/job/types'
 import { parseJobNumber } from '@/domain/job/numbering'
+import { notify } from '@/lib/notify'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 // Editor header job di halaman detail. Simpan selalu patch SEMPIT lewat `saveJobOperationalDetails`
 // lalu mengangkat job terbaru ke pemanggil (`onSaved` → `setJob`).
-
-function notify(message: string, tone: 'success' | 'error') {
-  window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
-}
 
 function FormActions({ saving, onCancel }: { saving: boolean; onCancel: () => void }) {
   return (
@@ -59,7 +63,6 @@ function HeaderForm({
   // Hanya job Local yang terkunci (aturan server/DB). Job tanpa agent yang pihaknya sudah terisi
   // exhibitor (otomatis dari CIPL) tetap boleh diberi agent; agent menggantikan exhibitor itu.
   const agentLocked = job.kind === 'LOCAL'
-  const exhibitorPartyName = job.party?.kind === 'EXHIBITOR' ? job.party.name : null
   const [jobNumberText, setJobNumberText] = useState(job.jobNumber ?? '')
   const [transportMode, setTransportMode] = useState<TransportMode | ''>(job.transportMode ?? '')
   const [agentId, setAgentId] = useState(currentAgentId)
@@ -67,6 +70,13 @@ function HeaderForm({
   const [status, setStatus] = useState<JobStatus>(job.status)
   const [agents, setAgents] = useState<Agent[]>([])
   const [saving, setSaving] = useState(false)
+  // Kesalahan No Job tampil tepat di bawah field-nya (bukan toast): toast hanya untuk hasil simpan.
+  const [jobNumberError, setJobNumberError] = useState('')
+  const jobNumberRef = useRef<HTMLInputElement>(null)
+  const failJobNumber = (message: string) => {
+    setJobNumberError(message)
+    jobNumberRef.current?.focus()
+  }
   const modeChanged = (transportMode || null) !== job.transportMode
 
   useEffect(() => {
@@ -80,9 +90,10 @@ function HeaderForm({
     event.preventDefault()
     const parsed = parseJobNumber(jobNumberText)
     if (!parsed) {
-      notify('No Job tidak dikenali. Gunakan bentuk S.01/NOMOR-INVOICE.', 'error')
+      failJobNumber('No Job tidak dikenali. Gunakan bentuk S.01/NOMOR-INVOICE.')
       return
     }
+    setJobNumberError('')
     setSaving(true)
     let current = job
     try {
@@ -91,18 +102,17 @@ function HeaderForm({
       if (modeChanged) {
         current = await saveJobOperationalDetails(current, { transportMode: transportMode || null })
         onSaved(current)
+        notify('Moda job disimpan.', 'success')
       }
       const patch: JobDetailsInput = {}
       if (status !== current.status) patch.status = status
 
       if (jobNumberText.trim() !== (job.jobNumber ?? '')) {
-        const savedHint = modeChanged ? ' Moda sudah tersimpan.' : ''
         if (parsed.prefix && parsed.prefix !== current.manifestPrefix) {
-          notify(
+          failJobNumber(
             current.manifestPrefix
-              ? `Awalan ${parsed.prefix} tidak sesuai; awalan job ini ${current.manifestPrefix}.${savedHint}`
-              : `Isi moda dulu untuk mendapatkan awalan No Job.${savedHint}`,
-            'error',
+              ? `Awalan ${parsed.prefix} tidak sesuai; awalan job ini ${current.manifestPrefix}.`
+              : 'Isi moda dulu untuk mendapatkan awalan No Job.',
           )
           return
         }
@@ -138,14 +148,26 @@ function HeaderForm({
         <label className="label">
           No Job
           <input
-            className="input mt-1"
+            ref={jobNumberRef}
+            id="job-number-input"
+            className={`input mt-1 ${jobNumberError ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-100' : ''}`}
             value={jobNumberText}
             placeholder={`${job.manifestPrefix ?? 'S'}.01/NOMOR-INVOICE`}
             disabled={job.sourceJobId != null}
-            onChange={(event) => setJobNumberText(event.target.value)}
+            aria-invalid={jobNumberError ? true : undefined}
+            aria-describedby={jobNumberError ? 'job-number-error' : undefined}
+            onChange={(event) => {
+              setJobNumberText(event.target.value)
+              if (jobNumberError) setJobNumberError('')
+            }}
           />
+          {jobNumberError ? (
+            <span id="job-number-error" className="mt-1 block text-xs font-normal text-rose-700">
+              {jobNumberError}
+            </span>
+          ) : null}
           {job.sourceJobId != null && (
-            <span className="mt-1 block text-xs font-normal text-slate-500">
+            <span className="mt-1 block text-xs font-normal text-slate-600">
               Mengikuti job masuk (BC 2.3).
             </span>
           )}
@@ -182,11 +204,9 @@ function HeaderForm({
             ))}
           </select>
           {agentLocked ? (
-            <span className="mt-1 block text-xs font-normal text-slate-500">
+            <span className="mt-1 block text-xs font-normal text-slate-600">
               Job Local selalu dipegang exhibitor.
             </span>
-          ) : exhibitorPartyName ? (
-            <span className="mt-1 block text-xs font-normal text-slate-500"></span>
           ) : null}
         </label>
         {!job.sourceJobId && (
@@ -233,34 +253,15 @@ export function JobHeaderDialog({
   onClose: () => void
   onSaved: (job: Job) => void
 }) {
-  useEffect(() => {
-    if (!open) return
-    const onKeyDown = (keyEvent: KeyboardEvent) => {
-      if (keyEvent.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [open, onClose])
-  if (!open) return null
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-      role="presentation"
-      onMouseDown={(mouseEvent) => {
-        if (mouseEvent.target === mouseEvent.currentTarget) onClose()
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="job-header-title"
-        className="max-h-full w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
-      >
-        <h2 id="job-header-title" className="text-lg font-bold">
-          Ubah header job
-        </h2>
+    <Dialog open={open} onOpenChange={(next) => (!next ? onClose() : undefined)}>
+      <DialogContent className="max-h-[90vh] w-[calc(100%-1rem)] overflow-y-auto sm:max-w-2xl sm:p-6">
+        <DialogHeader>
+          <DialogTitle className="text-lg font-bold">Ubah header job</DialogTitle>
+          <DialogDescription>No Job, moda, agent, ETA, dan status job.</DialogDescription>
+        </DialogHeader>
         <HeaderForm job={job} onSaved={onSaved} onCancel={onClose} />
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

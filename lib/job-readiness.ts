@@ -8,7 +8,7 @@ import { invoiceStatusLabels, type InvoiceStatus, type Job } from '@/domain/job/
 import { jobNumberLabel } from '@/domain/job/numbering'
 
 /** Tab area kerja halaman detail job; state aktif disimpan di URL (`?tab=`). */
-export type JobDetailTab = 'muatan' | 'transport' | 'billing'
+export type JobDetailTab = 'muatan' | 'pabean' | 'transport' | 'billing'
 
 /** Tujuan langkah kesiapan: tab area kerja, atau 'header' = dialog ubah header job (bukan tab). */
 export type JobReadinessTarget = JobDetailTab | 'header'
@@ -51,6 +51,7 @@ function customsStep(job: Job): JobReadinessStep {
       label: 'Dokumen pabean',
       detail: 'Tidak diperlukan',
       state: 'done',
+      // Job Local tidak punya tab Pabean; halaman mengalihkan ke Transport bila tab itu tak ada.
       tab: 'transport',
     }
   const documents = Object.values(
@@ -67,7 +68,7 @@ function customsStep(job: Job): JobReadinessStep {
     label: 'Dokumen pabean',
     detail: required === 0 ? 'Tidak diperlukan' : `${completed}/${required} selesai`,
     state,
-    tab: 'transport',
+    tab: 'pabean',
   }
 }
 

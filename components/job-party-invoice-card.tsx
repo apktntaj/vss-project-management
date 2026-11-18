@@ -13,11 +13,17 @@ import {
   type Job,
 } from '@/lib/data-client'
 import { useCanEditBilling } from '@/lib/use-billing-access'
+import { notify } from '@/lib/notify'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { invoiceStatusLabels, invoiceStatuses } from '@/domain/job/types'
 
-function toast(message: string, tone: 'success' | 'error') {
-  window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
-}
+const toast = notify
 
 /** Job Local selalu dipegang exhibitor (cermin aturan server/DB). */
 function exhibitorOnly(job: Job) {
@@ -32,7 +38,7 @@ const money = (amount: number | null, currency: string | null) =>
 function Info({ label, value }: { label: string; value: string | null | undefined }) {
   return (
     <div>
-      <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</dt>
+      <dt className="text-xs font-medium uppercase tracking-wide text-slate-600">{label}</dt>
       <dd className="mt-1 text-sm font-medium text-slate-800">{value || '—'}</dd>
     </div>
   )
@@ -310,8 +316,9 @@ export function JobPartyInvoiceCard({
 }
 
 /**
- * Dialog ubah Billing (tombol di ujung tab). Dua form berdiri sendiri: pihak yang ditagih dan tagihan.
- * Dialog tetap terbuka setelah satu form tersimpan supaya isian form lain tidak hilang.
+ * Dialog ubah Billing (tombol di ujung tab), memakai `ui/dialog` (fokus terjebak, Esc, pengembalian
+ * fokus). Dua form berdiri sendiri: pihak yang ditagih dan tagihan. Dialog tetap terbuka setelah satu
+ * form tersimpan supaya isian form lain tidak hilang.
  */
 export function JobBillingDialog({
   job,
@@ -327,47 +334,28 @@ export function JobBillingDialog({
   onSaved: (job: Job) => void
 }) {
   const canEditBilling = useCanEditBilling()
-  useEffect(() => {
-    if (!open) return
-    const onKeyDown = (keyEvent: KeyboardEvent) => {
-      if (keyEvent.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [open, onClose])
-  if (!open) return null
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-      role="presentation"
-      onMouseDown={(mouseEvent) => {
-        if (mouseEvent.target === mouseEvent.currentTarget) onClose()
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="job-billing-title"
-        className="max-h-full w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
-      >
-        <h2 id="job-billing-title" className="text-lg font-bold">
-          Ubah billing
-        </h2>
-        <section className="mt-4">
+    <Dialog open={open} onOpenChange={(next) => (!next ? onClose() : undefined)}>
+      <DialogContent className="max-h-[90vh] w-[calc(100%-1rem)] overflow-y-auto sm:max-w-2xl sm:p-6">
+        <DialogHeader>
+          <DialogTitle className="text-lg font-bold">Ubah billing</DialogTitle>
+          <DialogDescription>Pihak yang ditagih dan tagihan job.</DialogDescription>
+        </DialogHeader>
+        <section>
           <h3 className="flex items-center gap-2 font-semibold">
             <UserRound size={18} className="text-slate-600" aria-hidden="true" /> Pihak
           </h3>
           <PartyEditor job={job} exhibitors={exhibitors} onSaved={onSaved} onCancel={onClose} />
         </section>
         {canEditBilling && (
-          <section className="mt-6 border-t pt-4">
+          <section className="border-t pt-4">
             <h3 className="flex items-center gap-2 font-semibold">
               <Receipt size={18} className="text-slate-600" aria-hidden="true" /> Tagihan
             </h3>
             <InvoiceEditor job={job} onSaved={onSaved} onCancel={onClose} />
           </section>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

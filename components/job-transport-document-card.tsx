@@ -17,7 +17,7 @@ function ReadField({ label, children }: { label: string; children: ReactNode }) 
       <dt className="text-sm text-slate-500">{label}</dt>
       <dd className="mt-1 text-sm break-words whitespace-pre-line text-slate-900">
         {children === null || children === undefined || children === '' ? (
-          <span className="text-slate-400">—</span>
+          <span className="text-slate-500">—</span>
         ) : (
           children
         )}
@@ -62,7 +62,7 @@ export function JobTransportDocumentCard({ job }: { job: Job }) {
         <div className="mt-4 flex flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center">
           <PackageSearch className="size-8 text-muted-foreground" aria-hidden="true" />
           <p className="mt-3 text-sm font-medium">Belum ada B/L atau AWB</p>
-          <p className="mt-1 max-w-sm text-xs text-slate-500">Unggah dokumen atau isi manual lewat tombol Buat Transport.</p>
+          <p className="mt-1 max-w-sm text-xs text-slate-500">Unggah dokumen atau isi manual lewat tombol Buat B/L-AWB.</p>
         </div>
       ) : (
         <div className="mt-4 flex flex-col gap-6">
