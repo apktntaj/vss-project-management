@@ -78,10 +78,15 @@ identitas internal sistem. Satu nomor menaungi seluruh entri exhibitor pada doku
 DisposisiBarang adalah salah satu dari RE_EXPORT, DISPOSED, GIVE_AWAY, atau TIDAK_DISEBUT.
 ```
 
-**Interpretasi** — legenda kolom REMARKS dokumen: "A: RE-EXPORT AFTER EXHIBITION,
-B: DISPOSED OR CONSUMED, C: GIVE AWAY/SOLD". Penanda per baris barang; bahan rekap re-export
+**Interpretasi** — penanda per baris barang di kolom REMARKS dokumen, bahan rekap re-export
 (pada manifest klien menjadi kolom RE-EXPORT; pada job saat ini hanya teks bebas `reExport`).
-Baris tanpa tanda = `TIDAK_DISEBUT`, tidak mewarisi dari entri/dokumen.
+Arti tanda **ditentukan legenda yang dicetak di dokumen itu sendiri**, bukan huruf tetap: template
+VSS "A: RE-EXPORT AFTER EXHIBITION, B: DISPOSED OR CONSUMED, C: GIVE AWAY/SOLD", sedangkan CIPL
+Shanghai Hi-EXPO "A. 不回运 Not Return, B. 回运 Return" (A = disposal, B = re-ekspor). Scan membaca
+legenda dan memetakan tanda lewat artinya (`domain/exhibition/remark-legend.ts`); tanda yang tak
+dijelaskan legenda (atau dokumen tanpa legenda) menjadi `TIDAK_DISEBUT` dengan peringatan, tidak
+pernah ditebak dari hurufnya. Baris tanpa tanda = `TIDAK_DISEBUT`, tidak mewarisi dari
+entri/dokumen.
 
 **Contoh** — `RE_EXPORT` (item 1–31 dan 33 bertanda A pada S.12); `DISPOSED` (CATALOG item 32
 bertanda B; CATALOGUE "in package No. 22" juga B); `TIDAK_DISEBUT`. `GIVE_AWAY` tidak diamati

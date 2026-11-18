@@ -89,6 +89,15 @@ function hsDigits(value: string | null | undefined): string | null {
   return normalizeHsCode(value)?.digits ?? null
 }
 
+type HsStatus = 'ok' | 'invalid' | 'missing'
+type HsFilter = 'all' | 'invalid' | 'missing'
+
+/** Status HS satu baris barang: kosong = tanpa HS; terisi tetapi bukan 8/10 digit = tidak valid. */
+function hsStatus(item: BarisBarang): HsStatus {
+  if (!item.kodeHs?.trim()) return 'missing'
+  return hsDigits(item.kodeHs) ? 'ok' : 'invalid'
+}
+
 function lookupChip(result: LartasResult): { text: string; tone: string } {
   if (result.lookupStatus !== 'found') {
     return { text: 'Tidak ditemukan', tone: 'bg-rose-50 text-rose-700 ring-rose-200' }
@@ -118,6 +127,7 @@ export function JobBarangCard({
   const [results, setResults] = useState<LartasResult[] | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [hsFilter, setHsFilter] = useState<HsFilter>('all')
 
   const usagesByCode = useMemo(
     () => new Map(collection.valid.map((code) => [code.hsCode, code.usages])),
@@ -162,6 +172,37 @@ export function JobBarangCard({
 
   const { valid, invalid, truncated, missingCount } = collection
   const itemCount = groups.reduce((sum, group) => sum + group.items.length, 0)
+  const invalidItemCount = groups.reduce(
+    (sum, group) => sum + group.items.filter((item) => hsStatus(item) === 'invalid').length,
+    0,
+  )
+  const missingItemCount = groups.reduce(
+    (sum, group) => sum + group.items.filter((item) => hsStatus(item) === 'missing').length,
+    0,
+  )
+  // Filter aktif menampilkan hanya baris bermasalah, dan membuka grup yang memuatnya.
+  const filtering = hsFilter !== 'all'
+  const visibleGroups = groups
+    .map((group) => ({
+      group,
+      items: filtering ? group.items.filter((item) => hsStatus(item) === hsFilter) : group.items,
+    }))
+    .filter(({ items }) => !filtering || items.length > 0)
+  const toggleFilter = (next: Exclude<HsFilter, 'all'>) =>
+    setHsFilter((current) => (current === next ? 'all' : next))
+  const filterButton = (value: Exclude<HsFilter, 'all'>, count: number, text: string, tone: string) =>
+    count > 0 ? (
+      <button
+        type="button"
+        onClick={() => toggleFilter(value)}
+        aria-pressed={hsFilter === value}
+        className={`inline-flex min-h-8 items-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset transition ${tone} ${
+          hsFilter === value ? 'ring-2' : ''
+        }`}
+      >
+        {text}
+      </button>
+    ) : null
 
   return (
     <section className="card p-5">
@@ -170,7 +211,7 @@ export function JobBarangCard({
           <PackageSearch className="mt-0.5 size-5 shrink-0 text-foreground" aria-hidden="true" />
           <div>
             <h2 className="font-semibold">Detail Barang</h2>
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-slate-600">
               Barang dikelompokkan per case dari CIPL. Tarif dan ketentuan LARTAS tiap HS code bisa
               diperiksa langsung ke INSW.
             </p>
@@ -188,113 +229,39 @@ export function JobBarangCard({
       </div>
 
       <p className="mt-3 text-sm text-slate-700">
-        {groups.length} case · {itemCount} barang · {valid.length} HS code unik siap dicek
-        {invalid.length > 0 && <span>, {invalid.length} tidak valid</span>}
-        {missingCount > 0 && <span>, {missingCount} baris barang tanpa HS</span>}.
+        {groups.length} case · {itemCount} barang · {valid.length} HS code unik (8/10 digit) siap
+        dicek.
       </p>
 
-      {groups.length === 0 ? (
-        <p className="mt-2 text-sm text-slate-500">
-          Belum ada rincian barang pada CIPL job ini.
-        </p>
-      ) : (
-        <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
-          <table className="w-full border-collapse text-left text-sm">
-            <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-3 py-2">Case</th>
-                <th className="px-3 py-2">Barang</th>
-                <th className="px-3 py-2">HS</th>
-                <th className="px-3 py-2 text-right">Jumlah</th>
-                <th className="px-3 py-2 text-right">Harga</th>
-                <th className="px-3 py-2 text-right">Nilai</th>
-              </tr>
-            </thead>
-            {groups.map((group) => {
-              const isOpen = !collapsedKeys.has(group.key)
-              return (
-                <tbody key={group.key} className="divide-y divide-slate-100 border-t border-slate-200">
-                  <tr className={isOpen ? 'font-medium text-slate-800' : 'text-slate-600'}>
-                    <td className="whitespace-nowrap px-3 py-2 align-top">
-                      {group.items.length > 0 ? (
-                        <button
-                          type="button"
-                          onClick={() => toggle(group.key)}
-                          aria-expanded={isOpen}
-                          aria-label={`${isOpen ? 'Tutup' : 'Buka'} barang ${group.caseLabel ?? 'tanpa case'}`}
-                          className="inline-flex items-center gap-1.5 rounded p-0.5 hover:bg-slate-100 hover:text-slate-800"
-                        >
-                          {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                          {group.caseLabel ? `Case ${group.caseLabel}` : 'Tanpa case'}
-                        </button>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 pl-1 text-slate-500">
-                          {group.caseLabel ? `Case ${group.caseLabel}` : 'Tanpa case'}
-                        </span>
-                      )}
-                    </td>
-                    <td colSpan={5} className="px-3 py-2 align-top text-slate-500">
-                      <span className="text-slate-700">{group.pesertaName}</span>
-                      <span className="ml-2 text-slate-500">
-                        {group.caseLabel
-                          ? `${dimensionLabel(group.dimension)} cm · ${optionalNumber(group.volumeCbm)} CBM · ${optionalNumber(group.weightKg)} kg · `
-                          : ''}
-                        {group.items.length} barang
-                      </span>
-                    </td>
-                  </tr>
-                  {isOpen &&
-                    group.items.map((item, index) => {
-                      const digits = hsDigits(item.kodeHs)
-                      const result = digits ? resultByCode.get(digits) : undefined
-                      const chip = result ? lookupChip(result) : null
-                      return (
-                        <tr key={`${group.key}-${index}`} className="text-slate-600">
-                          <td />
-                          <td className="px-3 py-1.5 pl-6 align-top">
-                            {item.uraian}
-                            {item.merekModel && (
-                              <span className="text-slate-500"> · {item.merekModel}</span>
-                            )}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-1.5 align-top">
-                            {item.kodeHs ? (
-                              <span className="tabular-nums">
-                                {digits ? formatHsCode(digits) : item.kodeHs}
-                              </span>
-                            ) : (
-                              <span className="text-slate-500">—</span>
-                            )}
-                            {chip && (
-                              <span
-                                className={`ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${chip.tone}`}
-                              >
-                                {chip.text}
-                              </span>
-                            )}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-1.5 text-right align-top tabular-nums">
-                            {numberID(item.jumlah)} {item.satuan}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-1.5 text-right align-top tabular-nums">
-                            {optionalNumber(item.nilaiSatuan)}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-1.5 text-right align-top tabular-nums">
-                            {optionalNumber(item.nilaiTotal)}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                </tbody>
-              )
-            })}
-          </table>
+      {(invalidItemCount > 0 || missingItemCount > 0) && (
+        <div className="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Filter baris bermasalah">
+          {filterButton(
+            'invalid',
+            invalidItemCount,
+            `${invalidItemCount} barang HS tidak valid`,
+            'bg-rose-50 text-rose-800 ring-rose-200 hover:bg-rose-100',
+          )}
+          {filterButton(
+            'missing',
+            missingItemCount,
+            `${missingItemCount} barang tanpa HS`,
+            'bg-amber-50 text-amber-900 ring-amber-300 hover:bg-amber-100',
+          )}
+          {filtering && (
+            <button
+              type="button"
+              onClick={() => setHsFilter('all')}
+              className="min-h-8 rounded-full px-2 text-xs font-medium text-slate-700 underline underline-offset-2 hover:text-slate-900"
+            >
+              Tampilkan semua barang
+            </button>
+          )}
         </div>
       )}
 
       {valid.length === 0 && (
-        <p className="mt-3 text-sm text-slate-500">
-          Belum ada HS code 8 digit pada barang job ini. Lengkapi CIPL atau cek manual di{' '}
+        <p className="mt-3 text-sm text-slate-600">
+          Belum ada HS code 8/10 digit pada barang job ini. Lengkapi CIPL atau cek manual di{' '}
           <Link href="/tools?tab=lartas" className="font-medium text-foreground hover:underline">
             halaman Cek LARTAS
           </Link>
@@ -307,7 +274,7 @@ export function JobBarangCard({
           <p>
             Barang tanpa HS atau dengan HS bukan 8/10 digit
             {invalid.length > 0 && <> ({invalid.join(', ')})</>} tidak ikut diperiksa, sehingga
-            LARTAS-nya belum diketahui.
+            LARTAS-nya belum diketahui. Gunakan filter di atas untuk melihat barisnya.
           </p>
         </div>
       )}
@@ -317,6 +284,146 @@ export function JobBarangCard({
           {truncated.join(', ')}).
         </p>
       )}
+
+      {groups.length === 0 ? (
+        <p className="mt-2 text-sm text-slate-600">
+          Belum ada rincian barang pada CIPL job ini.
+        </p>
+      ) : (
+        <>
+          <div className="mt-4 flex flex-wrap items-center justify-end gap-2 text-xs">
+            <button
+              type="button"
+              onClick={() => setCollapsedKeys(new Set())}
+              className="min-h-8 rounded-md px-2 font-medium text-slate-700 hover:bg-slate-100"
+            >
+              Buka semua
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setCollapsedKeys(new Set(groups.filter((g) => g.items.length > 0).map((g) => g.key)))
+              }
+              className="min-h-8 rounded-md px-2 font-medium text-slate-700 hover:bg-slate-100"
+            >
+              Tutup semua
+            </button>
+          </div>
+          <div className="mt-2 overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full border-collapse text-left text-sm">
+              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                <tr>
+                  <th className="px-3 py-2">Case</th>
+                  <th className="px-3 py-2">Barang</th>
+                  <th className="px-3 py-2">HS</th>
+                  <th className="px-3 py-2 text-right">Jumlah</th>
+                  <th className="px-3 py-2 text-right">Harga</th>
+                  <th className="px-3 py-2 text-right">Nilai</th>
+                </tr>
+              </thead>
+              {visibleGroups.map(({ group, items }) => {
+                const isOpen = filtering || !collapsedKeys.has(group.key)
+                return (
+                  <tbody key={group.key} className="divide-y divide-slate-100 border-t border-slate-200">
+                    <tr className={isOpen ? 'font-medium text-slate-800' : 'text-slate-600'}>
+                      <td className="whitespace-nowrap px-3 py-2 align-top">
+                        {group.items.length > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => toggle(group.key)}
+                            aria-expanded={isOpen}
+                            disabled={filtering}
+                            aria-label={`${isOpen ? 'Tutup' : 'Buka'} barang ${group.caseLabel ?? 'tanpa case'}`}
+                            className="inline-flex items-center gap-1.5 rounded p-0.5 hover:bg-slate-100 hover:text-slate-800 disabled:cursor-default disabled:hover:bg-transparent"
+                          >
+                            {isOpen ? (
+                              <ChevronDown size={14} aria-hidden="true" />
+                            ) : (
+                              <ChevronRight size={14} aria-hidden="true" />
+                            )}
+                            {group.caseLabel ? `Case ${group.caseLabel}` : 'Tanpa case'}
+                          </button>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 pl-1 text-slate-600">
+                            {group.caseLabel ? `Case ${group.caseLabel}` : 'Tanpa case'}
+                          </span>
+                        )}
+                      </td>
+                      <td colSpan={5} className="px-3 py-2 align-top text-slate-600">
+                        {/* Satu exhibitor saja: namanya tidak perlu diulang pada tiap case. */}
+                        {view.peserta.length > 1 && (
+                          <span className="mr-2 text-slate-700">{group.pesertaName}</span>
+                        )}
+                        <span className="text-slate-600">
+                          {group.caseLabel
+                            ? `${dimensionLabel(group.dimension)} cm · ${optionalNumber(group.volumeCbm)} CBM · ${optionalNumber(group.weightKg)} kg · `
+                            : ''}
+                          {group.items.length} barang
+                        </span>
+                      </td>
+                    </tr>
+                    {isOpen &&
+                      items.map((item, index) => {
+                        const status = hsStatus(item)
+                        const digits = hsDigits(item.kodeHs)
+                        const result = digits ? resultByCode.get(digits) : undefined
+                        const chip = result ? lookupChip(result) : null
+                        return (
+                          <tr key={`${group.key}-${index}`} className="text-slate-600">
+                            <td />
+                            <td className="px-3 py-1.5 pl-6 align-top">
+                              {item.uraian}
+                              {item.merekModel && (
+                                <span className="text-slate-600"> · {item.merekModel}</span>
+                              )}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-1.5 align-top">
+                              {status === 'ok' && (
+                                <span className="tabular-nums">
+                                  {digits ? formatHsCode(digits) : item.kodeHs}
+                                </span>
+                              )}
+                              {status === 'invalid' && (
+                                <>
+                                  <span className="tabular-nums">{item.kodeHs}</span>
+                                  <span className="ml-2 inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700 ring-1 ring-inset ring-rose-200">
+                                    HS tidak valid
+                                  </span>
+                                </>
+                              )}
+                              {status === 'missing' && (
+                                <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-200">
+                                  Tanpa HS
+                                </span>
+                              )}
+                              {chip && (
+                                <span
+                                  className={`ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${chip.tone}`}
+                                >
+                                  {chip.text}
+                                </span>
+                              )}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-1.5 text-right align-top tabular-nums">
+                              {numberID(item.jumlah)} {item.satuan}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-1.5 text-right align-top tabular-nums">
+                              {optionalNumber(item.nilaiSatuan)}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-1.5 text-right align-top tabular-nums">
+                              {optionalNumber(item.nilaiTotal)}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                  </tbody>
+                )
+              })}
+            </table>
+          </div>
+        </>
+      )}
+
       {notice && (
         <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
           {notice}

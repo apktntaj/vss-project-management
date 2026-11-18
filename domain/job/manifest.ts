@@ -68,7 +68,10 @@ export const koliDimensionSchema = z.object({
   widthCm: z.number().finite().min(0),
   heightCm: z.number().finite().min(0),
 })
+
 export type KoliDimension = z.infer<typeof koliDimensionSchema>
+export const disposisiKolis = ['DISPOSAL', 'RE_EXPORT'] as const
+export type DisposisiKoli = (typeof disposisiKolis)[number]
 
 export const koliSchema = z.object({
   /** Id stabil koli; diisi produsen (scan/wizard), dipakai BarisBarang.refKoliIds. Absen pada data lama. */
@@ -82,6 +85,12 @@ export const koliSchema = z.object({
   netWeightKg: nonNegative.optional(),
   /** Satuan/jenis kemasan koli ini (CARTON, WOODEN CASE, PALLET, KOLI); null/absen bila tak tercantum. */
   satuanKemasan: optionalText.optional(),
+  /**
+   * Keputusan disposisi koli (menentukan job turunan pemilik kotak ini); null/absen = belum
+   * diputuskan, diturunkan dari barang di dalamnya (lihat keputusanDisposisiKoli di stages).
+   * Nilai sama dengan tahap job turunan, bukan DisposisiBarang level item.
+   */
+  disposisi: z.enum(disposisiKolis).nullable().optional(),
 })
 export type Koli = z.infer<typeof koliSchema>
 

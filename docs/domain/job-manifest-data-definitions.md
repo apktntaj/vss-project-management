@@ -114,8 +114,8 @@ itu turunan koli.
 ```text
 DimensiKoli terdiri dari panjangCm, lebarCm, tinggiCm (Number ≥ 0).
 Koli terdiri dari id (Text atau kosong), label (Text atau kosong), dimensi (DimensiKoli
-atau kosong), volumeCbm (Number ≥ 0 atau kosong), beratKg (Number ≥ 0 atau kosong), dan
-satuanKemasan (Text atau kosong).
+atau kosong), volumeCbm (Number ≥ 0 atau kosong), beratKg (Number ≥ 0 atau kosong),
+satuanKemasan (Text atau kosong), dan disposisi (DisposisiKoli atau kosong).
 ```
 
 **Interpretasi** — satu koli/kepak-an barang (kolom `CASE`, `Dimension L/W/H`, `CBM`,
@@ -125,6 +125,13 @@ merinci sama sekali. `0` dan kosong dibedakan: `0` berarti tercatat nol, kosong 
 belum dirinci. `satuanKemasan` adalah jenis kemasan **koli itu sendiri** (`CARTON`,
 `WOODEN CASE`, `PALLET`, `KOLI`) — jenis kemasan bisa berbeda antar case dalam satu
 exhibitor, sehingga ia per koli, bukan per kumpulan; kosong bila dokumen tak mencantumkan.
+
+`disposisi` adalah **keputusan manusia** atas koli ini — apakah kotaknya dibuang
+(`DISPOSAL`) atau kembali (`RE_EXPORT`) — bukan hasil baca dokumen. Ia mengatasi kasus
+koli campuran (isi barang disposal + re-ekspor sekaligus) yang tidak bisa diturunkan dari
+barangnya, dan berwenang atas turunan mana pun saat membagi job turunan; kosong berarti
+belum diputuskan dan disposisi diturunkan dari barang yang menaut koli tersebut
+(lihat `keputusanDisposisiKoli` pada `domain/job/stages.ts`).
 `id` adalah identitas internal stabil yang diisi produsen data (hasil scan/wizard), bukan
 sesuatu yang tertulis di dokumen — ia menjadi sasaran `refKoliIds` pada `BarisBarang`
 (lihat doc CIPL); data lama yang belum punya id tetap sah.

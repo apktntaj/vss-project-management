@@ -43,7 +43,7 @@ function dispositionOf(peserta: ManifestPeserta): (koli: Koli) => Disposition {
 function DispositionBadge({ value }: { value: Disposition }) {
   if (!value) return <span className="text-slate-500">—</span>
   return value === 'DISPOSAL' ? (
-    <span className="inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700 ring-1 ring-inset ring-rose-200">
+    <span className="inline-flex rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-800 ring-1 ring-inset ring-slate-300">
       Disposed
     </span>
   ) : (
@@ -53,7 +53,7 @@ function DispositionBadge({ value }: { value: Disposition }) {
   )
 }
 
-/** Label di atas, nilai di bawah. Nilai kosong tampil sebagai badge merah agar terbaca sebagai alert. */
+/** Label di atas, nilai di bawah. Nilai kosong tampil sebagai badge amber (data belum lengkap, bukan galat). */
 function LocationField({ label, value }: { label: string; value: string | null | undefined }) {
   const text = value?.trim()
   return (
@@ -62,7 +62,7 @@ function LocationField({ label, value }: { label: string; value: string | null |
       {text ? (
         <p className="font-medium text-slate-800">{text}</p>
       ) : (
-        <span className="mt-0.5 inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700 ring-1 ring-inset ring-rose-200">
+        <span className="mt-0.5 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-200">
           Belum terisi
         </span>
       )}

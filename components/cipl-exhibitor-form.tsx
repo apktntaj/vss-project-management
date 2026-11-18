@@ -1,6 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 
 import {
@@ -13,6 +14,12 @@ import {
   type CiplItemDraft,
   type CiplRowDraft,
 } from '@/lib/cipl-form-draft'
+import {
+  ciplItemFieldId,
+  ciplNameFieldId,
+  type CiplItemField,
+} from '@/lib/cipl-form-validation'
+import { isRowFilled, itemFilled } from '@/lib/cipl-form-draft'
 import type { DisposisiBarang } from '@/domain/exhibition/cipl-document'
 import { cbmFromDimension } from '@/domain/job/manifest'
 
@@ -41,6 +48,8 @@ function Field({
   className = '',
   placeholder,
   children,
+  id,
+  error,
 }: {
   label: string
   value: string
@@ -50,19 +59,34 @@ function Field({
   className?: string
   placeholder?: string
   children?: ReactNode
+  /** id input; wajib bila `error` dipakai (target aria-describedby dan fokus). */
+  id?: string
+  /** Pesan kesalahan inline; tampil tepat di bawah input. */
+  error?: string
 }) {
+  const errorId = id && error ? `${id}-error` : undefined
   return (
     <label className={`label text-xs ${className}`}>
       {label}
       <input
+        id={id}
         type={type}
         {...(type === 'number' ? { min: '0', step: 'any' } : {})}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="input mt-1 py-1.5 text-sm disabled:bg-slate-50 disabled:text-slate-600"
+        aria-invalid={error ? true : undefined}
+        aria-describedby={errorId}
+        className={`input mt-1 py-1.5 text-sm disabled:bg-slate-50 disabled:text-slate-600 ${
+          error ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-100' : ''
+        }`}
         disabled={disabled}
       />
+      {error ? (
+        <span id={errorId} className="mt-1 block text-xs font-normal text-rose-700">
+          {error}
+        </span>
+      ) : null}
       {children}
     </label>
   )
@@ -73,12 +97,17 @@ function ItemRow({
   disabled,
   onChange,
   onRemove,
+  fieldId,
+  errors,
 }: {
   item: CiplItemDraft
   disabled: boolean
   onChange: (patch: Partial<CiplItemDraft>) => void
   onRemove: () => void
+  fieldId: (field: CiplItemField) => string
+  errors: Record<string, string>
 }) {
+  const fieldProps = (field: CiplItemField) => ({ id: fieldId(field), error: errors[fieldId(field)] })
   const options = item.disposisi === 'GIVE_AWAY' ? [...remarkOptions, giveAwayOption] : remarkOptions
   const autoTotal = autoTotalPrice(item)
   return (
@@ -90,11 +119,12 @@ function ItemRow({
         disabled={disabled}
         className="w-48 grow"
         placeholder="Nama barang"
+        {...fieldProps('uraian')}
       />
       <Field label="HS code" value={item.kodeHs} onChange={(kodeHs) => onChange({ kodeHs })} disabled={disabled} className="w-28" />
-      <Field label="Qty" type="number" value={item.jumlah} onChange={(jumlah) => onChange({ jumlah })} disabled={disabled} className="w-20" />
+      <Field label="Qty" type="number" value={item.jumlah} onChange={(jumlah) => onChange({ jumlah })} disabled={disabled} className="w-20" {...fieldProps('jumlah')} />
       <Field label="Satuan" value={item.satuan} onChange={(satuan) => onChange({ satuan })} disabled={disabled} className="w-20" placeholder="PCE" />
-      <Field label="Price" type="number" value={item.nilaiSatuan} onChange={(nilaiSatuan) => onChange({ nilaiSatuan })} disabled={disabled} className="w-24" />
+      <Field label="Price" type="number" value={item.nilaiSatuan} onChange={(nilaiSatuan) => onChange({ nilaiSatuan })} disabled={disabled} className="w-24" {...fieldProps('nilaiSatuan')} />
       <Field
         label="Total price"
         type="number"
@@ -103,6 +133,7 @@ function ItemRow({
         disabled={disabled}
         className="w-28"
         placeholder={autoTotal === null ? '' : String(autoTotal)}
+        {...fieldProps('nilaiTotal')}
       />
       <div className="label flex w-auto flex-col text-xs">
         Remark
@@ -159,7 +190,7 @@ export function TotalField({
       className={className}
       placeholder="0"
     >
-      <span className="mt-1 block text-[11px] font-normal text-slate-400">otomatis</span>
+      <span className="mt-1 block text-xs font-normal text-slate-500">otomatis</span>
     </Field>
   )
 }
@@ -167,13 +198,17 @@ export function TotalField({
 function CaseEditor({
   draft,
   caseIndex,
+  rowKey,
   disabled,
+  errors,
   onChange,
   onRemove,
 }: {
   draft: CiplCaseDraft
   caseIndex: number
+  rowKey: string
   disabled: boolean
+  errors: Record<string, string>
   onChange: (patch: Partial<CiplCaseDraft>) => void
   onRemove: () => void
 }) {
@@ -210,7 +245,7 @@ function CaseEditor({
       </div>
 
       <div className="mt-3 space-y-2 border-t border-black/5 pt-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Barang di case ini</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Barang di case ini</p>
         {draft.items.map((item, itemIndex) => (
           <ItemRow
             key={itemIndex}
@@ -218,6 +253,8 @@ function CaseEditor({
             disabled={disabled}
             onChange={(patch) => setItem(itemIndex, patch)}
             onRemove={() => onChange({ items: draft.items.filter((_, i) => i !== itemIndex) })}
+            fieldId={(field) => ciplItemFieldId(rowKey, caseIndex, itemIndex, field)}
+            errors={errors}
           />
         ))}
         <div className="flex justify-end">
@@ -243,15 +280,31 @@ function CaseEditor({
 export function CiplExhibitorForm({
   row,
   disabled,
+  errors,
   onChange,
   onRemove,
 }: {
   row: CiplRowDraft
   disabled: boolean
+  /** Kesalahan validasi per id field (lihat `lib/cipl-form-validation`). */
+  errors: Record<string, string>
   onChange: (update: (row: CiplRowDraft) => CiplRowDraft) => void
   onRemove: () => void
 }) {
   const sums = rowSums(row)
+  const nameId = ciplNameFieldId(row.key)
+  const nameError = errors[nameId]
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
+  const cancelRemoveRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (confirmingRemove) cancelRemoveRef.current?.focus()
+  }, [confirmingRemove])
+  const itemCount = row.cases.reduce(
+    (sum, draft) => sum + draft.items.filter((item) => itemFilled(item)).length,
+    0,
+  )
+  // Baris yang belum berisi apa pun dibuang langsung; selebihnya minta konfirmasi dulu.
+  const requestRemove = () => (isRowFilled(row) ? setConfirmingRemove(true) : onRemove())
   const setRow = (patch: Partial<CiplRowDraft>) => onChange((current) => ({ ...current, ...patch }))
   const setCase = (caseIndex: number, patch: Partial<CiplCaseDraft>) =>
     onChange((current) => ({
@@ -264,24 +317,60 @@ export function CiplExhibitorForm({
         <div className="flex items-end gap-2">
         <label className="label flex-1">
           Exhibitor
-          {row.jobNo ? <span className="ml-1 text-xs font-normal text-slate-400">{row.jobNo}</span> : null}
+          {row.jobNo ? <span className="ml-1 text-xs font-normal text-slate-500">{row.jobNo}</span> : null}
           <input
+            id={nameId}
             value={row.name}
             onChange={(event) => setRow({ name: event.target.value.toUpperCase() })}
-            className="input mt-1"
+            aria-invalid={nameError ? true : undefined}
+            aria-describedby={nameError ? `${nameId}-error` : undefined}
+            className={`input mt-1 ${nameError ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-100' : ''}`}
             disabled={disabled}
           />
         </label>
         <button
           type="button"
           aria-label={`Hapus exhibitor ${row.name || ''}`.trim()}
-          onClick={onRemove}
+          onClick={requestRemove}
           className={deleteButtonClass}
           disabled={disabled}
         >
           <Trash2 size={16} aria-hidden="true" />
         </button>
         </div>
+        {nameError ? (
+          <p id={`${nameId}-error`} className="-mt-1 text-xs text-rose-700">
+            {nameError}
+          </p>
+        ) : null}
+        {confirmingRemove ? (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900"
+          >
+            <p className="min-w-0">
+              Hapus exhibitor <span className="font-semibold">{row.name.trim() || 'ini'}</span>{' '}
+              beserta {row.cases.length} case dan {itemCount} barang di dalamnya?
+            </p>
+            <div className="flex gap-2">
+              <button
+                ref={cancelRemoveRef}
+                type="button"
+                className="btn-secondary !px-3 !py-1.5"
+                onClick={() => setConfirmingRemove(false)}
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                className="btn !bg-rose-600 !px-3 !py-1.5 text-white hover:!bg-rose-700"
+                onClick={onRemove}
+              >
+                Ya, hapus
+              </button>
+            </div>
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-start gap-3">
           <TotalField label="Total pkg" derived={sums.packages} className="w-24" />
           <TotalField label="Total CBM" derived={sums.cbm} className="w-28" />
@@ -298,7 +387,9 @@ export function CiplExhibitorForm({
             key={caseIndex}
             draft={draft}
             caseIndex={caseIndex}
+            rowKey={row.key}
             disabled={disabled}
+            errors={errors}
             onChange={(patch) => setCase(caseIndex, patch)}
             onRemove={() =>
               onChange((current) => ({

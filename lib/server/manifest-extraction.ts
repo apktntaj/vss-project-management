@@ -11,8 +11,13 @@ import {
   barisBarangSchema,
   type BarisBarang,
   type CiplDocumentHeader,
-  type DisposisiBarang,
 } from '@/domain/exhibition/cipl-document'
+import {
+  disposisiFromMark,
+  remarkLegendFromEntries,
+  type RemarkLegend,
+  type RemarkLegendEntry,
+} from '@/domain/exhibition/remark-legend'
 import { reconcileKoliTotal } from '@/domain/exhibition/cipl-autofill'
 import { assertSupportedDocumentFile, DocumentExtractionError } from './document-extraction'
 import { transportDocumentSchema, type InwardTransportDocument } from '@/domain/job/manifest'
@@ -218,7 +223,7 @@ Your responsibility is to extract structured data from exhibition cargo document
 
 ## 2. Document understanding
 
-First identify: event information; shipper; consignee; invoice information; exhibitor information; hall and stand numbers; package information; goods descriptions; quantities; HS codes; country of origin; weights and dimensions; customs treatment or disposition (remarks A/B/C).
+First identify: event information; shipper; consignee; invoice information; exhibitor information; hall and stand numbers; package information; goods descriptions; quantities; HS codes; country of origin; weights and dimensions; customs treatment or disposition (the REMARKS marks and the legend that explains them).
 
 ## 3. Exhibitor identification
 
@@ -236,9 +241,11 @@ First identify: event information; shipper; consignee; invoice information; exhi
 
 ## 5. Goods extraction
 
-For each goods entry extract: original description (uraian), model/brand text (merekModel), HS code (kodeHs), quantity (jumlah), unit of measurement (satuan), unit value (nilaiSatuan), total value (nilaiTotal), and the customs disposition read from the remarks mark per item row: A (RE-EXPORT AFTER EXHIBITION) → "A", B (DISPOSED OR CONSUMED) → "B", C (GIVE AWAY/SOLD) → "C", null when unmarked (disposisi). refKoli is the package number or range the item sits in, exactly as written ("7-11", "22", "in package No. 22"); null when unclear.
+For each goods entry extract: original description (uraian), model/brand text (merekModel), HS code (kodeHs), quantity (jumlah), unit of measurement (satuan), unit value (nilaiSatuan), total value (nilaiTotal), and the REMARKS mark printed on that item row (mark), exactly as printed ("A", "B", "C", ...); omit mark when the row is unmarked. NEVER translate a mark into a meaning yourself and NEVER assume a letter means re-export or disposal: the meaning of each mark comes only from the legend of THIS document (see "Remarks legend" below). refKoli is the package number or range the item sits in, exactly as written ("7-11", "22", "in package No. 22"); null when unclear.
 - Do not merge different goods descriptions just because they share the same HS code.
 - Scan ALL pages of the document.
+
+Remarks legend: the document prints a legend that says what each mark means, in the header (e.g. column headings "A. 不回运 Not Return" / "B. 回运 Return") or in a footnote (e.g. "A: RE-EXPORT AFTER EXHIBITION, B: DISPOSED OR CONSUMED, C: GIVE AWAY/SOLD"). The same letter has DIFFERENT meanings in different documents (one template: A = re-export; another: A = Not Return/disposal, B = Return). Copy every legend entry into document.remarksLegend as {"mark": the mark exactly as used on item rows (just "A", not "A."), "meaning": the meaning text verbatim, keeping every language printed}. Do this even for documents without a CIPL header. If the document prints no legend, omit remarksLegend — never invent or reuse a legend from another document — and add an issue saying item marks could not be interpreted.
 
 ## 6. Validation
 
@@ -247,7 +254,7 @@ For each goods entry extract: original description (uraian), model/brand text (m
 ## 7. Output
 
 Return compact minified JSON only (no spaces or newlines between tokens). OMIT every field whose value is null, empty, zero-unknown, or not present in the document — do not emit the key at all. Only these are required: each exhibitor's "name"; each item's "uraian" and "jumlah". Everything else is optional and MUST be omitted when absent. Field reference (shown with the null variants only to name the keys — in your output omit those keys instead of sending null):
-{"document":{"nomor":string,"tanggal":"YYYY-MM-DD","pengirim":string,"penerima":string,"namaPameran":string,"incoterm":string,"mataUang":string,"infoKontainer":string,"nilaiTotalDeklarasi":number},"exhibitors":[{"name":string,"jobNo":string,"hall":string,"booth":string,"bareCaseCount":number,"koliTotalCount":number,"kolis":[{"exhibitor":string,"label":string,"satuanKemasan":string,"lengthCm":number,"widthCm":number,"heightCm":number,"volumeCbm":number,"weightKg":number}],"items":[{"exhibitor":string,"uraian":string,"merekModel":string,"kodeHs":string,"jumlah":number,"satuan":string,"nilaiSatuan":number,"nilaiTotal":number,"disposisi":"A"|"B"|"C","refKoli":string}]}],"itemsBelumTerpetakan":[same item shape],"issues":[string]}
+{"document":{"nomor":string,"tanggal":"YYYY-MM-DD","pengirim":string,"penerima":string,"namaPameran":string,"incoterm":string,"mataUang":string,"infoKontainer":string,"nilaiTotalDeklarasi":number,"remarksLegend":[{"mark":string,"meaning":string}]},"exhibitors":[{"name":string,"jobNo":string,"hall":string,"booth":string,"bareCaseCount":number,"koliTotalCount":number,"kolis":[{"exhibitor":string,"label":string,"satuanKemasan":string,"lengthCm":number,"widthCm":number,"heightCm":number,"volumeCbm":number,"weightKg":number}],"items":[{"exhibitor":string,"uraian":string,"merekModel":string,"kodeHs":string,"jumlah":number,"satuan":string,"nilaiSatuan":number,"nilaiTotal":number,"mark":string,"refKoli":string}]}],"itemsBelumTerpetakan":[same item shape],"issues":[string]}
 
 Rules for the output shape:
 - The EXHIBITOR column is a merged cell spanning all package/item rows of that exhibitor. Those rows already sit nested inside their exhibitor's "kolis"/"items", so DO NOT repeat the exhibitor name on every row. Set a koli/item "exhibitor" field ONLY when that single row actually belongs to a DIFFERENT exhibitor than the entry it is nested under (rare split cases); omit it otherwise.
@@ -257,21 +264,29 @@ Rules for the output shape:
 - "satuanKemasan" (inside each kolis entry) is THAT package's unit/type read from the package-type column or label (e.g. "CARTON", "WOODEN CASE", "PALLET", "KOLI"); omit the key when the package type is not stated.
 - Drop unreadable rows instead of guessing, and say so in "issues".`
 
-const disposisiFromMark = (mark: unknown): DisposisiBarang =>
-  mark === 'A'
-    ? 'RE_EXPORT'
-    : mark === 'B'
-      ? 'DISPOSED'
-      : mark === 'C'
-        ? 'GIVE_AWAY'
-        : 'TIDAK_DISEBUT'
+/** Legenda REMARKS dokumen + tanda yang dipakai baris tetapi tak dijelaskan legenda. */
+type RemarkContext = { legend: RemarkLegend; unexplained: Set<string> }
 
-function normalizeCiplItem(value: unknown): BarisBarang | null {
+function parseRemarkLegend(value: unknown): RemarkLegend {
+  const raw = value && typeof value === 'object' ? (value as Record<string, unknown>).remarksLegend : null
+  const entries = (Array.isArray(raw) ? raw : []).flatMap((entry): RemarkLegendEntry[] => {
+    if (!entry || typeof entry !== 'object') return []
+    const mark = text((entry as Record<string, unknown>).mark)
+    const meaning = text((entry as Record<string, unknown>).meaning)
+    return mark && meaning ? [{ mark, meaning }] : []
+  })
+  return remarkLegendFromEntries(entries)
+}
+
+function normalizeCiplItem(value: unknown, remarks: RemarkContext): BarisBarang | null {
   if (!value || typeof value !== 'object') return null
   const input = value as Record<string, unknown>
   const uraian = text(input.uraian)
   const jumlah = amount(input.jumlah)
   if (!uraian || jumlah === null || jumlah <= 0) return null
+  const mark = text(input.mark)
+  const { disposisi, known } = disposisiFromMark(mark, remarks.legend)
+  if (!known && mark) remarks.unexplained.add(mark)
   const parsed = barisBarangSchema.safeParse({
     uraian,
     merekModel: text(input.merekModel),
@@ -280,7 +295,7 @@ function normalizeCiplItem(value: unknown): BarisBarang | null {
     satuan: text(input.satuan) ?? 'UNIT',
     nilaiSatuan: amount(input.nilaiSatuan),
     nilaiTotal: amount(input.nilaiTotal),
-    disposisi: disposisiFromMark(input.disposisi),
+    disposisi,
     refKoli: text(input.refKoli),
   })
   return parsed.success ? parsed.data : null
@@ -288,10 +303,11 @@ function normalizeCiplItem(value: unknown): BarisBarang | null {
 
 function normalizeCiplItems(
   value: unknown,
+  remarks: RemarkContext,
 ): Array<{ exhibitor: string | null; item: BarisBarang }> {
   return (Array.isArray(value) ? value : []).flatMap((value) => {
     const exhibitor = text((value as Record<string, unknown> | null)?.exhibitor)
-    const item = normalizeCiplItem(value)
+    const item = normalizeCiplItem(value, remarks)
     return item ? [{ exhibitor, item }] : []
   })
 }
@@ -350,7 +366,7 @@ function normalizeCiplKoliRow(value: unknown): RawKoliRow | null {
   }
 }
 
-function normalizeCiplExhibitor(value: unknown): RawExhibitorEntry | null {
+function normalizeCiplExhibitor(value: unknown, remarks: RemarkContext): RawExhibitorEntry | null {
   if (!value || typeof value !== 'object') return null
   const input = value as Record<string, unknown>
   const name = text(input.name)
@@ -364,7 +380,7 @@ function normalizeCiplExhibitor(value: unknown): RawExhibitorEntry | null {
     bareCaseCount: wholeNumber(input.bareCaseCount),
     koliTotalCount: wholeNumber(input.koliTotalCount),
     koliRows: kolis.map(normalizeCiplKoliRow).filter((row): row is RawKoliRow => row !== null),
-    itemRows: normalizeCiplItems(input.items),
+    itemRows: normalizeCiplItems(input.items, remarks),
   }
 }
 
@@ -488,9 +504,13 @@ export async function parseCiplExhibitors(file: File): Promise<CiplScanResult> {
         return message ? [`AI: ${message}`] : []
       },
     )
+    const remarks: RemarkContext = {
+      legend: parseRemarkLegend(parsed.document),
+      unexplained: new Set(),
+    }
     const rawEntries = (Array.isArray(parsed.exhibitors) ? parsed.exhibitors : []).flatMap(
       (row) => {
-        const normalized = normalizeCiplExhibitor(row)
+        const normalized = normalizeCiplExhibitor(row, remarks)
         if (normalized) return [normalized]
         warnings.push('Satu baris exhibitor dilewati karena tidak terbaca.')
         return []
@@ -498,9 +518,14 @@ export async function parseCiplExhibitors(file: File): Promise<CiplScanResult> {
     )
     const exhibitors = partitionCiplRows(rawEntries)
     const header = normalizeCiplHeader(parsed.document)
-    const itemsBelumTerpetakan = normalizeCiplItems(parsed.itemsBelumTerpetakan).map(
+    const itemsBelumTerpetakan = normalizeCiplItems(parsed.itemsBelumTerpetakan, remarks).map(
       (row) => row.item,
     )
+    if (remarks.unexplained.size > 0) {
+      warnings.push(
+        `Tanda remark ${[...remarks.unexplained].join(', ')} tidak dijelaskan legenda dokumen — disposisi barang bertanda itu diset "tidak disebut". Periksa dan tetapkan disposisinya manual.`,
+      )
+    }
     if (!header && itemsBelumTerpetakan.length) {
       warnings.push(
         'Ada baris barang tanpa kepala dokumen — barang tidak terpilah tidak dapat disimpan.',

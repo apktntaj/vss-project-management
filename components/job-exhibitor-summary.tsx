@@ -19,7 +19,7 @@ export function ExhibitorIdentity({ peserta }: { peserta: ManifestPeserta }) {
     <>
       <p className="font-medium text-slate-800">{peserta.name}</p>
       {!peserta.linked && (
-        <span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-inset ring-amber-200">
+        <span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-200">
           belum ditautkan ke exhibitor
         </span>
       )}

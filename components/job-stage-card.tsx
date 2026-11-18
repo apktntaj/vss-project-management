@@ -15,9 +15,8 @@ import { stageReconciliation } from '@/domain/job/stages'
 import { jobNumberLabel } from '@/domain/job/numbering'
 import type { DerivedJobStage } from '@/domain/job/types'
 import { StatusBadge } from '@/components/status-badge'
+import { notify } from '@/lib/notify'
 
-const notify = (message: string, tone: 'success' | 'error' = 'success') =>
-  window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
 
 const STAGE_NOUN: Record<DerivedJobStage, string> = {
   DISPOSAL: 'disposal',

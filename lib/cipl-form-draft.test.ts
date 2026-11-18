@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import type { BarisBarang } from '@/domain/exhibition/cipl-document'
 import type { ExhibitorLogistics } from '@/domain/job/manifest'
 import type { JobCiplLine } from '@/domain/job/types'
-import { autoTotalPrice, documentTotals, emptyRow, isRowFilled, rowFromJobLine, rowFromScan, rowSums, rowToScanEntry } from './cipl-form-draft'
+import { autoTotalPrice, documentTotals, emptyCase, emptyItem, emptyRow, isRowFilled, rowFromJobLine, rowFromScan, rowSums, rowToScanEntry } from './cipl-form-draft'
 
 const barang = (uraian: string, refKoli: string | null, extra: Partial<BarisBarang> = {}): BarisBarang => ({
   uraian,
@@ -131,15 +131,63 @@ assert.ok(afterScan.totalNetWeightKg == null)
 assert.ok(afterScan.totalVolumeCbm == null)
 
 // Total level dokumen: penjumlahan semua baris + barang belum terpetakan dari scan
-// (priced memakai total yang diketik operator: 40, bukan 37.5 otomatis).
-assert.deepEqual(documentTotals([scanned, priced], [{ nilaiTotal: 10 }]), {
+// (priced memakai total yang diketik operator: 40, bukan 37.5 otomatis). `scanned` membawa satu
+// barang DISPOSED; barang belum terpetakan RE_EXPORT tidak dihitung sebagai disposal.
+assert.deepEqual(documentTotals([scanned, priced], [{ nilaiTotal: 10, jumlah: 1, disposisi: 'RE_EXPORT' }]), {
   amount: 50,
   packages: 2,
   cbm: 0.125,
   gross: 150,
   net: 120,
+  disposalItems: 1,
+  disposalPackages: 0,
 })
-assert.deepEqual(documentTotals([]), { amount: 0, packages: 0, cbm: 0, gross: 0, net: 0 })
+assert.deepEqual(documentTotals([]), {
+  amount: 0,
+  packages: 0,
+  cbm: 0,
+  gross: 0,
+  net: 0,
+  disposalItems: 0,
+  disposalPackages: 0,
+})
+
+// Total disposal = barang yang jatuh ke BC 2.5 (disposed + give away) yang lolos skema simpan;
+// re-ekspor, qty kosong, dan deskripsi kosong tidak dihitung; barang belum terpetakan ikut.
+const disposal = emptyRow('r13')
+disposal.name = 'PT DISPOSAL'
+disposal.cases[0].items = [
+  { ...emptyItem(), uraian: 'Poster', jumlah: '14', disposisi: 'DISPOSED' },
+  { ...emptyItem(), uraian: 'Brosur', jumlah: '2.5', disposisi: 'GIVE_AWAY' },
+  { ...emptyItem(), uraian: 'Mesin', jumlah: '9', disposisi: 'RE_EXPORT' },
+  { ...emptyItem(), uraian: 'Tanpa qty', jumlah: '', disposisi: 'DISPOSED' },
+  { ...emptyItem(), uraian: '', jumlah: '5', disposisi: 'DISPOSED' },
+]
+const disposalTotals = documentTotals([disposal], [{ nilaiTotal: null, jumlah: 6, disposisi: 'DISPOSED' }])
+assert.equal(disposalTotals.disposalItems, 3)
+
+// Package disposal mengikuti aturan job BC 2.5: package yang hanya berisi barang disposal pindah;
+// package campur dan package re-ekspor tidak.
+const caseOf = (label: string, ...items: Array<[string, 'DISPOSED' | 'RE_EXPORT']>) => ({
+  ...emptyCase(),
+  label,
+  items: items.map(([uraian, disposisi]) => ({ ...emptyItem(), uraian, jumlah: '1', disposisi })),
+})
+const mixed = emptyRow('r14')
+mixed.name = 'PT CAMPUR'
+mixed.cases = [
+  caseOf('1', ['Poster', 'DISPOSED']),
+  caseOf('2', ['Brosur', 'DISPOSED'], ['Mesin', 'RE_EXPORT']),
+  caseOf('3', ['Mesin B', 'RE_EXPORT']),
+]
+const allDisposal = emptyRow('r15')
+allDisposal.name = 'PT BUANG'
+allDisposal.cases = [caseOf('1', ['Poster', 'DISPOSED']), caseOf('2-3', ['Katalog', 'DISPOSED'])]
+assert.equal(documentTotals([mixed]).disposalPackages, 1)
+assert.equal(documentTotals([mixed]).packages, 3)
+assert.equal(documentTotals([allDisposal]).disposalPackages, 3)
+assert.equal(documentTotals([mixed, allDisposal]).disposalPackages, 4)
+assert.equal(documentTotals([mixed, allDisposal]).disposalItems, 4)
 
 // Edit CIPL tersimpan: baris dibuka kembali apa adanya (case dari koli, barang lewat refKoliIds),
 // lalu simpan ulang mempertahankan isinya.
@@ -154,7 +202,7 @@ const storedLine: JobCiplLine = {
     totalWeightKg: 150,
     totalNetWeightKg: 120,
     details: [
-      { id: 'k1', label: 'PKG 1', dimension: { lengthCm: 100, widthCm: 50, heightCm: 25 }, volumeCbm: 0.125, weightKg: 80, netWeightKg: 70, satuanKemasan: 'CARTON' },
+      { id: 'k1', label: 'PKG 1', dimension: { lengthCm: 100, widthCm: 50, heightCm: 25 }, volumeCbm: 0.125, weightKg: 80, netWeightKg: 70, satuanKemasan: 'CARTON', disposisi: 'DISPOSAL' },
       { id: 'k2', label: 'PKG 2', dimension: null, volumeCbm: null, weightKg: 70, netWeightKg: 50 },
     ],
   },
@@ -180,6 +228,9 @@ assert.equal(resaved.entry.items[0].kodeHs, '84716040')
 assert.equal(resaved.entry.items[0].merekModel, 'HP')
 assert.equal(resaved.entry.items[0].refKoli, 'PKG 1')
 assert.deepEqual(resaved.entry.items[0].refKoliIds, [resaved.entry.logistics.koli.details[0].id])
+// Keputusan disposisi koli tersimpan ikut putar edit (passthrough; tidak diedit di form).
+assert.equal(editing.cases[0].disposisi, 'DISPOSAL')
+assert.equal(resaved.entry.logistics.koli.details[0].disposisi, 'DISPOSAL')
 assert.deepEqual(resaved.entry.items[1].refKoliIds, [])
 assert.deepEqual(resaved.entry.logistics.notes, [{ kind: 'ANOMALI_BARANG', text: 'Kardus penyok' }])
 assert.equal(resaved.entry.logistics.koli.totalCount, 2)

@@ -11,8 +11,10 @@ import {
   exhibitorLogisticsSchema,
   type ExhibitorLogistics,
   type Koli,
+  type DisposisiKoli,
   type OperationalNote,
 } from '@/domain/job/manifest'
+import { stageCiplLines, stageOfDisposisi } from '@/domain/job/stages'
 import type { JobCiplLine } from '@/domain/job/types'
 
 /** Satu barang di dalam case. `merekModel` dibawa dari scan tetapi tidak diedit di form. */
@@ -38,6 +40,8 @@ export type CiplCaseDraft = {
   grossWeight: string
   netWeight: string
   satuanKemasan: string
+  /** Keputusan disposisi koli tersimpan (passthrough edit; tidak diisi di form ini). */
+  disposisi: DisposisiKoli | null
   items: CiplItemDraft[]
 }
 
@@ -87,6 +91,7 @@ export const emptyCase = (): CiplCaseDraft => ({
   grossWeight: '',
   netWeight: '',
   satuanKemasan: '',
+  disposisi: null,
   items: [emptyItem()],
 })
 
@@ -111,6 +116,7 @@ function caseFromKoli(koli: Koli): CiplCaseDraft {
     grossWeight: numberText(koli.weightKg),
     netWeight: numberText(koli.netWeightKg),
     satuanKemasan: koli.satuanKemasan ?? '',
+    disposisi: koli.disposisi ?? null,
     items: [],
   }
 }
@@ -226,7 +232,7 @@ export function rowFromJobLine(key: string, line: JobCiplLine): CiplRowDraft {
   }
 }
 
-const itemFilled = (item: CiplItemDraft): boolean =>
+export const itemFilled = (item: CiplItemDraft): boolean =>
   Boolean(
     item.uraian.trim() ||
       item.merekModel.trim() ||
@@ -282,17 +288,19 @@ function caseToKoli(draft: CiplCaseDraft): Koli | null {
   const weightKg = numberOrNull(draft.grossWeight)
   const netWeightKg = numberOrNull(draft.netWeight)
   const satuanKemasan = draft.satuanKemasan.trim() || null
+  const disposisi = draft.disposisi
   if (
     label === null &&
     dimension === null &&
     volumeCbm === null &&
     weightKg === null &&
     netWeightKg === null &&
-    satuanKemasan === null
+    satuanKemasan === null &&
+    disposisi === null
   ) {
     return null
   }
-  return { label, dimension, volumeCbm, weightKg, netWeightKg, satuanKemasan }
+  return { label, dimension, volumeCbm, weightKg, netWeightKg, satuanKemasan, disposisi }
 }
 
 /**
@@ -333,13 +341,58 @@ export function autoTotalPrice(item: Pick<CiplItemDraft, 'jumlah' | 'nilaiSatuan
 }
 
 /**
+ * Package yang pindah ke job BC 2.5 dari satu baris exhibitor: aturan yang sama dengan job turunan
+ * (`stageCiplLines`) — package yang hanya berisi barang disposal; package campur (ada barang
+ * re-ekspor) tetap di re-ekspor; baris yang seluruh barangnya disposal pindah utuh.
+ */
+function disposalPackages(row: CiplRowDraft): number {
+  const scanned = rowToScanEntry(row)
+  if (!scanned) return 0
+  const { name, logistics, items } = scanned.entry
+  const line: JobCiplLine = {
+    id: row.key,
+    exhibitorId: null,
+    exhibitor: null,
+    nameOnDocument: name,
+    koli: logistics.koli,
+    items,
+    notes: [],
+  }
+  return stageCiplLines([line], 'DISPOSAL').reduce((sum, staged) => sum + staged.koli.totalCount, 0)
+}
+
+/**
  * Jumlah turunan level dokumen dari semua baris exhibitor: total amount = jumlah Total price
- * barang (termasuk barang belum terpetakan dari scan), sisanya penjumlahan `rowSums`.
+ * barang (termasuk barang belum terpetakan dari scan), sisanya penjumlahan `rowSums`. Barang
+ * disposal = barang yang jatuh ke job BC 2.5 (`stageOfDisposisi`: disposed + give away) yang
+ * lolos skema simpan (deskripsi terisi, qty > 0): `disposalItems` = jumlah baris,
+ * `disposalPackages` = package yang ikut pindah ke BC 2.5 (barang belum terpetakan tak punya package).
  */
 export function documentTotals(
   rows: CiplRowDraft[],
-  extraItems: ReadonlyArray<Pick<BarisBarang, 'nilaiTotal'>> = [],
-): { amount: number; packages: number; cbm: number; gross: number; net: number } {
+  extraItems: ReadonlyArray<Pick<BarisBarang, 'nilaiTotal' | 'jumlah' | 'disposisi'>> = [],
+): {
+  amount: number
+  packages: number
+  cbm: number
+  gross: number
+  net: number
+  disposalItems: number
+  disposalPackages: number
+} {
+  let disposalItems = 0
+  const countDisposal = (disposisi: DisposisiBarang, jumlah: number | null, described: boolean) => {
+    if (stageOfDisposisi[disposisi] !== 'DISPOSAL' || !described || jumlah === null || jumlah <= 0) return
+    disposalItems += 1
+  }
+  for (const row of rows) {
+    for (const draft of row.cases) {
+      for (const item of draft.items) {
+        countDisposal(item.disposisi, numberOrNull(item.jumlah), item.uraian.trim() !== '')
+      }
+    }
+  }
+  for (const item of extraItems) countDisposal(item.disposisi, item.jumlah, true)
   const amount =
     rows.reduce(
       (sum, row) =>
@@ -373,6 +426,8 @@ export function documentTotals(
     cbm: round3(sums.cbm),
     gross: round3(sums.gross),
     net: round3(sums.net),
+    disposalItems,
+    disposalPackages: rows.reduce((sum, row) => sum + disposalPackages(row), 0),
   }
 }
 

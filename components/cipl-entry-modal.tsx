@@ -1,7 +1,7 @@
 'use client'
 
-import { useRef, useState } from 'react'
-import { Bot, Loader2, Plus, Upload } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import { AlertCircle, Bot, Loader2, Plus, Upload } from 'lucide-react'
 
 import {
   applyCiplAutofill,
@@ -32,6 +32,8 @@ import {
   rowToScanEntry,
   type CiplRowDraft,
 } from '@/lib/cipl-form-draft'
+import { notify } from '@/lib/notify'
+import { noCiplErrors, validateCiplRows } from '@/lib/cipl-form-validation'
 import { CiplExhibitorForm, TotalField } from '@/components/cipl-exhibitor-form'
 import { isAcceptedJobDocument, jobDocumentAccept } from '@/components/job-document-file'
 import { Button } from '@/components/ui/button'
@@ -60,10 +62,7 @@ function mergeNotes(existing: OperationalNote[], incoming: OperationalNote[]): O
   return merged
 }
 
-function toast(message: string, tone: 'success' | 'error') {
-  window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
-}
-
+const toast = notify
 
 function scanFileAcceptable(file: File): boolean {
   if (isAcceptedJobDocument(file)) return true
@@ -103,6 +102,13 @@ export function CiplEntryModal({
   const [docTanggal, setDocTanggal] = useState(job.ciplDocument?.tanggal ?? '')
   const [docIncoterm, setDocIncoterm] = useState(job.ciplDocument?.incoterm ?? '')
   const [saving, setSaving] = useState(false)
+  // Validasi inline aktif setelah percobaan simpan pertama, lalu mengikuti tiap ketikan.
+  const [submitted, setSubmitted] = useState(false)
+  const [formError, setFormError] = useState('')
+  const validation = useMemo(
+    () => (submitted ? validateCiplRows(ciplRows) : noCiplErrors),
+    [submitted, ciplRows],
+  )
   const rowKeyRef = useRef(0)
   const nextRowKey = () => `cipl-row-${++rowKeyRef.current}`
 
@@ -118,6 +124,15 @@ export function CiplEntryModal({
         !used?.has(index) &&
         isSameExhibitorName(line.exhibitor?.name ?? line.nameOnDocument, trimmed),
     )
+  }
+
+  /** Fokus ke field bermasalah (setelah render menambahkan aria-invalid) dan gulirkan ke tengah. */
+  function focusField(id: string) {
+    window.requestAnimationFrame(() => {
+      const element = document.getElementById(id)
+      element?.scrollIntoView({ block: 'center' })
+      element?.focus({ preventScroll: true })
+    })
   }
 
   function resetScanState() {
@@ -179,12 +194,30 @@ export function CiplEntryModal({
       return result ? [result] : []
     })
     const scanEntries = built.map((result) => result.entry)
-    const invalidItems = built.reduce((sum, result) => sum + result.invalidItems, 0)
-    const skippedNames = ciplRows.filter((row) => isRowFilled(row)).length - scanEntries.length
-    if (!scanEntries.length && !ciplFile && !job.ciplLines.length) {
+    if (!scanEntries.length && !ciplFile && !job.ciplLines.length && !validateCiplRows(ciplRows).order.length) {
       onClose()
       return
     }
+
+    // Validasi sebelum simpan: baris/barang yang tidak lolos ditandai di tempat dan simpan diblokir,
+    // bukan dilewati diam-diam. Toast hanya untuk hasil simpan.
+    const check = validateCiplRows(ciplRows)
+    if (check.order.length) {
+      setSubmitted(true)
+      setFormError('')
+      focusField(check.order[0])
+      return
+    }
+    // Pengaman: baris terisi yang tetap gagal dibangun (mis. data logistik tidak valid).
+    const unbuilt = ciplRows.filter((row) => isRowFilled(row) && !rowToScanEntry(row))
+    if (unbuilt.length) {
+      setSubmitted(true)
+      setFormError(
+        `${unbuilt.length} baris tidak dapat diproses. Periksa dimensi, CBM, dan berat pada baris exhibitor.`,
+      )
+      return
+    }
+    setFormError('')
 
     // Penggantian: entri/baris hasil scan yang menunjuk baris job yang sudah ada — nama master
     // ATAU nama di dokumen cocok setelah normalisasi. `applyReplace` menentukan keduanya: ganti
@@ -319,13 +352,6 @@ export function CiplEntryModal({
       setSaving(false)
       return
     }
-    if (skippedNames > 0)
-      toast(`${skippedNames} baris CIPL dilewati karena belum ada nama exhibitor.`, 'error')
-    if (invalidItems > 0)
-      toast(
-        `${invalidItems} baris barang dilewati karena deskripsi atau quantity belum terisi.`,
-        'error',
-      )
     setSaving(false)
     onSaved(updated)
   }
@@ -371,7 +397,7 @@ export function CiplEntryModal({
           ) : null}
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6 sm:p-8">
             <div className="space-y-3">
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-sky-300 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-700 transition hover:border-sky-400 hover:bg-sky-100">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-sky-300 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-700 transition hover:border-sky-400 hover:bg-sky-100 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-600 has-[:focus-visible]:ring-offset-2">
                 <Bot size={18} className="shrink-0" aria-hidden="true" />
                 <span className="truncate">
                   {ciplFile ? `Terbaca AI: ${ciplFile.name}` : 'Upload your CIPL and let AI do the rest'}
@@ -438,6 +464,8 @@ export function CiplEntryModal({
                         <TotalField label="Vol (CBM)" derived={totals.cbm} className="w-28" />
                         <TotalField label="Gross (kg)" derived={totals.gross} className="w-32" />
                         <TotalField label="Net (kg)" derived={totals.net} className="w-32" />
+                        <TotalField label="Disposal (item)" derived={totals.disposalItems} className="w-32" />
+                        <TotalField label="Disposal (pkg)" derived={totals.disposalPackages} className="w-32" />
                       </>
                     )
                   })()}
@@ -490,11 +518,38 @@ export function CiplEntryModal({
               ) : null}
             </div>
 
+            {validation.order.length > 0 || formError ? (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900"
+              >
+                <AlertCircle size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
+                <div className="min-w-0">
+                  {validation.order.length > 0 ? (
+                    <p className="font-medium">
+                      {validation.order.length} isian perlu diperbaiki sebelum CIPL bisa disimpan.
+                    </p>
+                  ) : null}
+                  {formError ? <p>{formError}</p> : null}
+                  {validation.order.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => focusField(validation.order[0])}
+                      className="mt-1 rounded text-sm font-semibold underline underline-offset-2"
+                    >
+                      Ke isian pertama yang salah
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
             <ul className="space-y-4">
               {ciplRows.map((row, rowIndex) => (
                 <CiplExhibitorForm
                   key={row.key}
                   row={row}
+                  errors={validation.errors}
                   disabled={saving}
                   onChange={(update) =>
                     setCiplRows((current) =>

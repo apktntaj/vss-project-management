@@ -129,7 +129,7 @@ export function JobManifestSection({
           <span className="font-medium text-slate-700">{operationalNoteKindLabels[note.kind]}:</span> {note.text}
         </p>
       ))}
-      {!milestones.length && !remarkNotes.length && <span className="text-slate-400">—</span>}
+      {!milestones.length && !remarkNotes.length && <span className="text-slate-500">—</span>}
     </td>
   )
 
@@ -175,12 +175,12 @@ export function JobManifestSection({
           <td className={tdNum}>{cell(koli?.volumeCbm)}</td>
           <td className={tdNum}>{cell(koli?.weightKg)}</td>
           {firstPesertaRow && (
-            <td className={`${td} text-center text-slate-400`} rowSpan={pesertaRowSpan}>
+            <td className={`${td} text-center text-slate-500`} rowSpan={pesertaRowSpan}>
               —
             </td>
           )}
           {firstPesertaRow && (
-            <td className={`${td} text-center text-slate-400`} rowSpan={pesertaRowSpan}>
+            <td className={`${td} text-center text-slate-500`} rowSpan={pesertaRowSpan}>
               —
             </td>
           )}
@@ -225,7 +225,7 @@ export function JobManifestSection({
           [
             ['Exhibitor', numberID(view.peserta.length), Users, 'bg-sky-50 text-sky-600'],
             ['Total package', numberID(view.totals.totalCount), Package, 'bg-indigo-50 text-indigo-600'],
-            ['Disposed package', numberID(disposedPackages), Trash2, 'bg-rose-50 text-rose-600'],
+            ['Disposed package', numberID(disposedPackages), Trash2, 'bg-slate-100 text-slate-600'],
             ['Total CBM', numberID(view.totals.volumeCbm), Box, 'bg-emerald-50 text-emerald-600'],
             ['Total berat (Kg)', numberID(view.totals.weightKg), Weight, 'bg-violet-50 text-violet-600'],
             [
@@ -296,7 +296,7 @@ export function JobManifestSection({
       <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full border-collapse text-left text-xs">
           <caption className="sr-only">Rincian manifest exhibitor pada blok {view.jobNumber}</caption>
-          <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-600">
             <tr>
               <td className="border border-slate-200 bg-white px-2 py-2 text-sm font-semibold normal-case text-slate-700" colSpan={COLUMN_COUNT}>
                 {consignmentLine(view)}
