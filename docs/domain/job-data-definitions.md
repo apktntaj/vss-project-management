@@ -138,7 +138,51 @@ Ketentuan lain:
 **Contoh** — `TPPB_BC_23`; `ATA_CARNET`.
 
 Data khusus rezim (carnet, jaminan) disimpan di `operational.carnet` / `operational.guarantee`
-(null pada rezim lain) — struktur per alternatif, bukan enumeration polos.
+(null pada rezim lain) — struktur per alternatif, bukan enumeration polos. Identitas carnet hanya
+disimpan di job masuk; job re-ekspor ATA menampilkannya read-only dari job masuknya (pencocokan
+voucher endorsemen butuh nomor carnet & masa berlakunya).
+
+**Alur operasional per rezim** — siklus hidupnya sama untuk semua rezim; rezim hanya mengubah isi
+tiga titik keputusan (dokumen tiap tahap, tahap turunan yang diperkenankan, data khusus). Enam
+langkah, dengan simbol kodenya:
+
+1. **Buat job** (wizard → `createJob`): international non-road menjadi job masuk `INBOUND`
+   (`stageForNewJob`); ROAD dan LOCAL tanpa tahap. Awalan No Job ditetapkan kolom generated DB
+   dari rezim/jalur: `S`/`A` (TPPB laut/udara), `ATA`, `T` (Temporary Import), `P` (Permanent
+   Import), `R` (Road), `L` (Local).
+2. **Isi CIPL di job masuk** (`saveJobCipl`, hanya untuk job tanpa turunan): tiap barang membawa
+   disposisi RE_EXPORT / DISPOSED / GIVE_AWAY / TIDAK_DISEBUT.
+3. **Job turunan dibuat otomatis** saat CIPL disimpan (`ensureStageJobs`): dari `stageOfDisposisi`
+   (barang disposal → DISPOSAL; re-ekspor/tidak disebut → RE_EXPORT), difilter tahap yang
+   diperkenankan rezim (`derivedStagesOf`). Turunan tidak punya nomor/dokumen sendiri — No Job
+   sama, diberi awalan `EX` di UI — dan barangnya diturunkan saat ditampilkan (`stageCiplLines`):
+   koli yang seluruh isinya disposal pindah ke job disposal, koli campur tetap di re-ekspor.
+4. **Dokumen pabean dicatat per tahap** di kartu `stageCustomsDocument`: status, No AJU, No &
+   tanggal pendaftaran (ATA: no/tanggal endorsemen voucher). Jaminan TI dan identitas carnet ATA
+   diisi di kartu job masuk.
+5. **Kepulangan & manifest keluar**: kepulangan wajib hanya pada job re-ekspor dan Road Shipment;
+   outward manifest mencetak nomor registrasi dokumen rezim (BC 3.0 / Carnet) sebagai remark.
+   Workbook BUP hanya untuk dokumen BC 2.3/2.5/3.0.
+6. **Tuntas** (`domain/event/tuntas.ts`): semua dokumen applicable selesai (status COMPLETED atau
+   registrasi terisi) dan kepulangan tercatat bila wajib.
+
+Rangkaian job per rezim (job masuk → job turunan):
+
+```text
+TPPB_BC_23        S.01   ├── BC 2.5 (barang dijual/dipakai di RI)
+                         └── BC 3.0 (barang kembali ke luar negeri)
+TEMPORARY_IMPORT  T.01   ├── BC 2.0 definitif *) (barang tidak kembali)
+                         └── BC 3.0 *) (barang kembali)
+ATA_CARNET        ATA.01 └── Carnet re-ekspor (semua barang wajib kembali)
+PERMANENT_IMPORT  P.01   (BC 2.0 tunggal, tanpa turunan — barang tetap di RI)
+ROAD_SHIPMENT     R.01   (satu job utuh: gudang klien → pameran → gudang klien)
+LOCAL             L.01   (kind LOCAL, tanpa dokumen pabean)
+```
+
+Aturan rezim dijaga berlapis: UI hanya menawarkan kombinasi yang sah, use-case menolak sisanya
+(`createStageJob`: ATA tanpa job disposal, Permanent Import tanpa turunan; `saveJobCipl`: ATA
+menolak item disposal), dan constraint database menjadi lapis terakhir (`jobs_ata_no_disposal`,
+`jobs_permanent_single_stage`).
 
 ### `JenisDokumenBC`
 

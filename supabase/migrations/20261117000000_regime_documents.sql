@@ -11,9 +11,11 @@
 --   "dipaksa" mencatat BC 2.3 (datanya tetap di key BC_2_3, hanya tidak lagi applicable).
 --
 -- Constraint baru menutup kombinasi mustahil: ATA tidak punya job DISPOSAL, Permanent Import
--- tidak punya job turunan. NOT VALID karena backfill job turunan 2026-11-16 membuat turunan untuk
--- semua job masuk bertahap tanpa melihat rezim; lingkungan dengan job ATA/PI turunan demikian
--- harus membereskannya dulu (batalkan job turunannya) sebelum VALIDATE.
+-- tidak punya job turunan. Job turunan backfill 2026-11-16 milik sumber ATA/PI melanggar
+-- aturan ini dan tidak bisa "dibatalkan" (UPDATE tetap dicek walau constraint NOT VALID, dan
+-- constraint memeriksa jenis+tahap, bukan status) — jadi dihapus di bawah: buatan mesin
+-- sehari sebelumnya, tanpa dokumen sendiri (jobs_derived_no_source_documents). NOT VALID tetap
+-- dipakai agar environment lain yang tidak menjalankan backfill 11-16 tidak terhalang.
 
 begin;
 
@@ -58,6 +60,21 @@ update public.jobs
                international_jenis = 'ATA_CARNET' and stage in ('INBOUND', 'RE_EXPORT')),
          true)
    where operational ? 'customs';
+
+-- Kembalikan kepulangan yang backfill 11-16 pindahkan ke job re-ekspor (untuk sumber ATA/PI
+-- job re-ekspor itu akan dihapus), lalu hapus job turunan melanggar aturan rezim.
+update public.jobs s
+   set kepulangan = d.kepulangan,
+       re_export = d.re_export
+  from public.jobs d
+ where d.source_job_id = s.id
+   and d.stage = 'RE_EXPORT'
+   and s.international_jenis in ('ATA_CARNET', 'PERMANENT_IMPORT')
+   and (d.kepulangan is not null or d.re_export is not null);
+
+delete from public.jobs
+ where source_job_id in (select id from public.jobs
+                          where international_jenis in ('ATA_CARNET', 'PERMANENT_IMPORT'));
 
 alter table public.jobs
   add constraint jobs_ata_no_disposal check (
