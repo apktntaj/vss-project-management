@@ -27,6 +27,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { logoutAction } from '@/app/(dashboard)/actions'
+import { ToastViewport } from '@/components/toast-viewport'
 const links = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/jobs', label: 'Jobs', icon: BriefcaseBusiness },
@@ -46,7 +47,6 @@ export function AppShell({
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' } | null>(null)
 
   useEffect(() => {
     try {
@@ -59,21 +59,6 @@ export function AppShell({
   useEffect(() => {
     setMobileOpen(false)
   }, [pathname])
-  useEffect(() => {
-    const receiveToast = (event: Event) => {
-      const detail = (event as CustomEvent<{ message?: unknown; tone?: unknown }>).detail
-      if (
-        !detail ||
-        typeof detail.message !== 'string' ||
-        (detail.tone !== 'success' && detail.tone !== 'error')
-      ) {
-        return
-      }
-      setToast({ message: detail.message, tone: detail.tone })
-    }
-    window.addEventListener('vss:toast', receiveToast)
-    return () => window.removeEventListener('vss:toast', receiveToast)
-  }, [])
 
   function toggleSidebar() {
     setCollapsed((value) => {
@@ -86,11 +71,6 @@ export function AppShell({
     })
   }
 
-  useEffect(() => {
-    if (!toast) return
-    const timeout = window.setTimeout(() => setToast(null), 4000)
-    return () => window.clearTimeout(timeout)
-  }, [toast])
 
   return (
     <div className="min-h-screen md:flex">
@@ -264,14 +244,7 @@ export function AppShell({
           © Malika Tumbuh Bersama
         </footer>
       </main>
-      {toast && (
-        <div
-          role="status"
-          className={`fixed bottom-5 right-5 z-50 max-w-sm rounded-xl border px-4 py-3 text-sm shadow-lg ${toast.tone === 'error' ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}
-        >
-          {toast.message}
-        </div>
-      )}
+      <ToastViewport />
     </div>
   )
 }
