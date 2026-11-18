@@ -2,9 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Search } from 'lucide-react'
+import { BriefcaseBusiness, Plus, RotateCcw, Search, TriangleAlert, X } from 'lucide-react'
 
-import { listEvents, listJobs, type BcDocumentKind, type Job, type LocalEvent } from '@/lib/data-client'
+import {
+  listEvents,
+  listJobs,
+  type BcDocumentKind,
+  type Job,
+  type LocalEvent,
+} from '@/lib/data-client'
 import {
   invoiceStatusLabels,
   invoiceStatuses,
@@ -28,8 +34,10 @@ import { JobCreateWizard } from '@/components/job-create-wizard'
 import { PageSkeleton } from '@/components/loading-skeletons'
 import { downloadCustomsWorkbook, label } from '@/components/job-row'
 import { JobTable } from '@/components/job-table'
+import { toast } from '@/components/toast'
 
-const selectClass = 'input m-0 w-full py-2 text-sm shadow-none focus-visible:outline-none lg:w-36 lg:flex-none'
+const selectClass =
+  'input m-0 h-10 w-full py-0 text-sm shadow-none focus-visible:outline-none lg:w-44 lg:flex-none'
 
 function toListEvent(event: LocalEvent): JobListEvent {
   return {
@@ -56,7 +64,6 @@ export default function JobsPage() {
   const [sort, setSort] = useState<JobTableSort | null>(null)
   const [showNewJob, setShowNewJob] = useState(false)
   const [wizardOpen, setWizardOpen] = useState(false)
-  const [toast, setToast] = useState<{ message: string; tone: 'info' | 'error' } | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const initialLoadStarted = useRef(false)
@@ -71,7 +78,7 @@ export default function JobsPage() {
       })
       .catch((caught) => {
         const message = caught instanceof Error ? caught.message : 'Data jobs tidak dapat dimuat.'
-        if (silent) setToast({ message, tone: 'error' })
+        if (silent) toast(message, 'error')
         else setLoadError(message)
         setLoading(false)
       })
@@ -81,19 +88,12 @@ export default function JobsPage() {
     initialLoadStarted.current = true
     load()
   }, [load])
-  useEffect(() => {
-    if (!toast) return
-    const timeout = window.setTimeout(() => setToast(null), 7000)
-    return () => window.clearTimeout(timeout)
-  }, [toast])
-
-  const showToast = (message: string, tone: 'info' | 'error' = 'info') => setToast({ message, tone })
   async function generateCustomsWorkbook(job: Job, documentType: BcDocumentKind) {
     try {
       await downloadCustomsWorkbook(job, documentType)
-      showToast(`${label(documentType)} berhasil diunduh.`)
+      toast(`${label(documentType)} berhasil diunduh.`, 'success')
     } catch (caught) {
-      showToast(caught instanceof Error ? caught.message : 'File BC tidak dapat dibuat.', 'error')
+      toast(caught instanceof Error ? caught.message : 'File BC tidak dapat dibuat.', 'error')
     }
   }
 
@@ -113,40 +113,54 @@ export default function JobsPage() {
   if (loading) return <PageSkeleton cards={1} rows={8} />
   if (loadError)
     return (
-      <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700" role="alert">
-        <p>{loadError}</p>
-        <button
-          type="button"
-          onClick={() => {
-            setLoading(true)
-            load()
-          }}
-          className="btn-secondary mt-3"
-        >
-          Coba lagi
-        </button>
+      <div
+        className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"
+        role="alert"
+      >
+        <TriangleAlert size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
+        <div>
+          <p className="font-medium">Job tidak dapat dimuat</p>
+          <p className="mt-0.5">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setLoading(true)
+              load()
+            }}
+            className="btn-secondary mt-3"
+          >
+            <RotateCcw size={14} className="mr-1.5" aria-hidden="true" />
+            Coba lagi
+          </button>
+        </div>
       </div>
     )
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <section aria-label="Filter job">
         <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
-          <label className="relative w-full lg:w-auto lg:min-w-48 lg:max-w-80 lg:flex-1">
+          <label className="relative w-full lg:w-auto lg:min-w-56 lg:max-w-96 lg:flex-1">
             <span className="sr-only">Cari job</span>
-            <Search className="absolute left-3 top-2.5 text-slate-600" size={18} aria-hidden="true" />
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+              size={18}
+              aria-hidden="true"
+            />
             <input
               type="search"
               value={filters.search}
               onChange={(event) => setFilter('search', event.target.value)}
-              className="input m-0 pl-10 shadow-none focus-visible:outline-none"
+              className="input m-0 h-10 pl-10 shadow-none focus-visible:outline-none"
               placeholder="Cari No Job, B/L, invoice, agent, pihak"
             />
           </label>
           <select
             className={selectClass}
             value={filters.status}
-            onChange={(event) => setFilter('status', event.target.value as JobTableFilters['status'])}
+            onChange={(event) =>
+              setFilter('status', event.target.value as JobTableFilters['status'])
+            }
             aria-label="Filter status job"
           >
             <option value="">Semua status</option>
@@ -159,7 +173,9 @@ export default function JobsPage() {
           <select
             className={selectClass}
             value={filters.transportMode}
-            onChange={(event) => setFilter('transportMode', event.target.value as JobTableFilters['transportMode'])}
+            onChange={(event) =>
+              setFilter('transportMode', event.target.value as JobTableFilters['transportMode'])
+            }
             aria-label="Filter moda"
           >
             <option value="">Semua moda</option>
@@ -172,7 +188,9 @@ export default function JobsPage() {
           <select
             className={selectClass}
             value={filters.invoiceStatus}
-            onChange={(event) => setFilter('invoiceStatus', event.target.value as JobTableFilters['invoiceStatus'])}
+            onChange={(event) =>
+              setFilter('invoiceStatus', event.target.value as JobTableFilters['invoiceStatus'])
+            }
             aria-label="Filter tagihan"
           >
             <option value="">Semua tagihan</option>
@@ -195,32 +213,59 @@ export default function JobsPage() {
               </option>
             ))}
           </select>
-          <Button type="button" onClick={() => setShowNewJob(true)} className="lg:ml-auto">
+          {hasFilters ? (
+            <button
+              type="button"
+              onClick={() => setFilters(initialFilters)}
+              className="inline-flex h-10 items-center gap-1 rounded-md px-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+            >
+              <X size={14} aria-hidden="true" />
+              Reset filter
+            </button>
+          ) : null}
+          <Button type="button" onClick={() => setShowNewJob(true)} className="h-10 lg:ml-auto">
             <Plus data-icon="inline-start" />
             Job baru
           </Button>
         </div>
-        {hasFilters ? (
-          <button
-            type="button"
-            onClick={() => setFilters(initialFilters)}
-            className="mt-3 text-sm font-semibold text-slate-700 hover:text-slate-900"
-          >
-            Reset filter
-          </button>
-        ) : null}
       </section>
 
       {rows.length ? (
-        <JobTable jobs={rows} sort={sort} onSortChange={setSort} onGenerate={generateCustomsWorkbook} />
+        <JobTable
+          jobs={rows}
+          sort={sort}
+          onSortChange={setSort}
+          onGenerate={generateCustomsWorkbook}
+        />
       ) : (
-        <section className="card p-12 text-center">
-          <p className="font-semibold text-slate-800">Tidak ada Job yang sesuai</p>
-          <p className="mt-2 text-sm text-slate-500">
-            {jobs.length
-              ? 'Ubah pencarian atau filter untuk melihat Job lain.'
-              : 'Belum ada job. Buat job baru dari tombol “Job baru”.'}
+        <section className="card flex flex-col items-center px-6 py-14 text-center">
+          <span className="flex size-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
+            <BriefcaseBusiness size={24} strokeWidth={1.75} aria-hidden="true" />
+          </span>
+          <p className="mt-4 font-semibold text-slate-900">
+            {jobs.length ? 'Tidak ada job yang sesuai' : 'Belum ada job'}
           </p>
+          <p className="mt-1 max-w-sm text-sm text-slate-600">
+            {jobs.length
+              ? 'Ubah pencarian atau filter untuk melihat job lain.'
+              : 'Buat job pertama untuk mulai mengelola kiriman.'}
+          </p>
+          <div className="mt-5">
+            {jobs.length ? (
+              <button
+                type="button"
+                onClick={() => setFilters(initialFilters)}
+                className="btn-secondary"
+              >
+                Reset filter
+              </button>
+            ) : (
+              <Button type="button" onClick={() => setShowNewJob(true)}>
+                <Plus data-icon="inline-start" />
+                Job baru
+              </Button>
+            )}
+          </div>
         </section>
       )}
 
@@ -239,14 +284,6 @@ export default function JobsPage() {
           onCreated={(job) => router.push(`/jobs/${job.id}`)}
           onCancel={() => setWizardOpen(false)}
         />
-      )}
-      {toast && (
-        <div
-          role="status"
-          className={`fixed bottom-5 right-5 z-50 max-w-sm rounded-xl border px-4 py-3 text-sm shadow-lg ${toast.tone === 'error' ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}
-        >
-          {toast.message}
-        </div>
       )}
     </div>
   )

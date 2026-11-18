@@ -14,6 +14,7 @@ import {
   type TransportMode,
 } from '@/domain/job/types'
 import { deriveCiplStatus, type CiplStatus } from '@/domain/job/cipl-status'
+import { normalizeOperationalDetails } from '@/domain/job/operational'
 import { jobNumberLabel } from '@/domain/job/numbering'
 import { jobContext, jobContextKinds } from '@/lib/job-context'
 
@@ -116,11 +117,21 @@ export function jobAgentOptions(jobs: ReadonlyArray<Job>): JobAgentOption[] {
     .sort((left, right) => collator.compare(left.name, right.name))
 }
 
+/** Jadwal kedatangan (ETA) job; null bila belum diisi. */
+export function jobEta(job: Job): string | null {
+  return (
+    normalizeOperationalDetails(job.operational, job.stage, job.internationalJenis).inbound
+      .scheduleAt || null
+  )
+}
+
 /** Kolom tabel /jobs yang bisa diurutkan lewat klik header. */
 export type JobSortKey =
   | 'jobNumber'
+  | 'stage'
   | 'context'
   | 'agent'
+  | 'eta'
   | 'transportMode'
   | 'cipl'
   | 'transportDocument'
@@ -134,8 +145,10 @@ const CIPL_RANK: Record<CiplStatus, number> = { MISSING: 0, PARTIAL: 1, RECEIVED
 /** Nilai urut per kolom: teks dibandingkan natural, angka = peringkat tahapan, null = kosong. */
 const SORT_VALUE: Record<JobSortKey, (job: Job) => string | number | null> = {
   jobNumber: (job) => job.jobNumber?.trim() || null,
+  stage: (job) => (job.stage ? jobStages.indexOf(job.stage) : null),
   context: (job) => jobContextKinds.indexOf(jobContext(job).kind),
   agent: (job) => (job.party?.kind === 'AGENT' ? job.party.name : null),
+  eta: (job) => jobEta(job),
   transportMode: (job) => (job.transportMode ? transportModeLabels[job.transportMode] : null),
   cipl: (job) => (job.sourceJobId ? null : CIPL_RANK[deriveCiplStatus(job).status]),
   transportDocument: (job) => job.transportDocumentNumber?.trim() || null,

@@ -24,7 +24,7 @@ export function ExhibitorIdentity({ peserta }: { peserta: ManifestPeserta }) {
         </span>
       )}
       {peserta.linked && peserta.line.nameOnDocument !== peserta.name && (
-        <p className="mt-0.5 text-[11px] text-slate-500">CIPL: {peserta.line.nameOnDocument}</p>
+        <p className="mt-0.5 text-xs text-slate-600">CIPL: {peserta.line.nameOnDocument}</p>
       )}
       {anomalyNotes.map((note, index) => (
         <p key={index} className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-700">
@@ -114,7 +114,7 @@ export function ExhibitorSummaryTable({ peserta }: { peserta: ReadonlyArray<Mani
                             <tr className="text-slate-600">
                               <td className="py-1.5 pl-1 pr-3">
                                 Case {koli.label ?? index + 1}
-                                <span className="ml-3 text-slate-400">
+                                <span className="ml-3 text-slate-500">
                                   {[
                                     koli.dimension?.lengthCm,
                                     koli.dimension?.widthCm,

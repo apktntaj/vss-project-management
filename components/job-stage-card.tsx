@@ -6,6 +6,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { ChevronRight } from 'lucide-react'
 
 import { createStageJob, type Job, type JobSummary } from '@/lib/data-client'
 import { isDerivedJobStage } from '@/domain/job/types'
@@ -40,9 +41,7 @@ export function JobStageCard({
   const stagesById = new Map(series.map((summary) => [summary.stage, summary]))
   const warnings = stageReconciliation(
     sourceJob?.ciplLines ?? [],
-    series
-      .map((summary) => summary.stage)
-      .filter(isDerivedJobStage),
+    series.map((summary) => summary.stage).filter(isDerivedJobStage),
     job.internationalJenis,
   )
 
@@ -62,70 +61,68 @@ export function JobStageCard({
   // Tombol buat manual hanya di halaman job masuk yang belum batal.
   const canCreate = job.stage === 'INBOUND' && job.status !== 'CANCELLED'
 
+  // Satu entri per tahap: job masuk, lalu tahap turunan jenis ini (mis. BC 2.5 dan BC 3.0).
+  const entries = [
+    {
+      stage: 'INBOUND' as const,
+      linked: job.stage === 'INBOUND' ? null : sourceJob,
+    },
+    ...derivedStagesOf(job.internationalJenis).map((stage) => ({
+      stage,
+      linked: job.stage === stage ? null : (stagesById.get(stage) ?? null),
+    })),
+  ]
+
   return (
-    <section className="card p-5">
-      <h2 className="font-semibold">Rangkaian job</h2>
-      <dl className="mt-3 space-y-2 text-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          <dt className="w-20 shrink-0 font-medium text-slate-500">{jobStageLabel(job.internationalJenis, 'INBOUND')}</dt>
-          <dd className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-            {job.stage === 'INBOUND' ? (
-              <span className="text-slate-700">Job ini</span>
-            ) : sourceJob ? (
-              <>
-                <Link
-                  href={`/jobs/${sourceJob.id}`}
-                  className="truncate font-medium text-slate-800 hover:text-slate-900"
-                >
-                  {jobNumberLabel(sourceJob)}
-                </Link>
-                <StatusBadge status={sourceJob.status} />
-              </>
-            ) : (
-              <span className="text-slate-400">Belum ada</span>
-            )}
-          </dd>
-        </div>
-        {derivedStagesOf(job.internationalJenis).map((stage) => {
-          const other = stagesById.get(stage)
-          return (
-            <div key={stage} className="flex flex-wrap items-center gap-2">
-              <dt className="w-20 shrink-0 font-medium text-slate-500">
+    <section className="card px-4 py-3" aria-labelledby="job-series-heading">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <h2 id="job-series-heading" className="text-sm font-semibold">
+          Rangkaian job
+        </h2>
+        <ol className="flex flex-1 flex-wrap items-center gap-x-2 gap-y-2 text-sm">
+          {entries.map(({ stage, linked }, index) => (
+            <li key={stage} className="flex items-center gap-2">
+              {index > 0 && (
+                <ChevronRight size={14} className="text-slate-400" aria-hidden="true" />
+              )}
+              <span className="font-medium text-slate-600">
                 {jobStageLabel(job.internationalJenis, stage)}
-              </dt>
-              <dd className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                {job.stage === stage ? (
-                  <span className="text-slate-700">Job ini</span>
-                ) : other ? (
-                  <>
-                    <Link
-                      href={`/jobs/${other.id}`}
-                      className="truncate font-medium text-slate-800 hover:text-slate-900"
+              </span>
+              {job.stage === stage ? (
+                <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-800">
+                  Job ini
+                </span>
+              ) : linked ? (
+                <>
+                  <Link
+                    href={`/jobs/${linked.id}`}
+                    className="font-medium text-slate-900 underline-offset-2 hover:underline"
+                  >
+                    {jobNumberLabel(linked)}
+                  </Link>
+                  <StatusBadge status={linked.status} />
+                </>
+              ) : (
+                <>
+                  <span className="text-slate-500">Belum ada</span>
+                  {canCreate && stage !== 'INBOUND' && (
+                    <button
+                      type="button"
+                      onClick={() => create(stage as DerivedJobStage)}
+                      disabled={creating !== null}
+                      className="btn-secondary !px-3 !py-1 text-xs"
                     >
-                      {jobNumberLabel(other)}
-                    </Link>
-                    <StatusBadge status={other.status} />
-                  </>
-                ) : (
-                  <>
-                    <span className="text-slate-400">Belum ada</span>
-                    {canCreate && (
-                      <button
-                        type="button"
-                        onClick={() => create(stage)}
-                        disabled={creating !== null}
-                        className="btn-secondary"
-                      >
-                        {creating === stage ? 'Membuat…' : `Buat job ${jobStageLabel(job.internationalJenis, stage)}`}
-                      </button>
-                    )}
-                  </>
-                )}
-              </dd>
-            </div>
-          )
-        })}
-      </dl>
+                      {creating === stage
+                        ? 'Membuat…'
+                        : `Buat job ${jobStageLabel(job.internationalJenis, stage)}`}
+                    </button>
+                  )}
+                </>
+              )}
+            </li>
+          ))}
+        </ol>
+      </div>
       {warnings.map((warning) => (
         <p
           key={`${warning.kind}-${warning.stage}`}

@@ -235,7 +235,7 @@ export function JobBarangCard({
                     </td>
                     <td colSpan={5} className="px-3 py-2 align-top text-slate-500">
                       <span className="text-slate-700">{group.pesertaName}</span>
-                      <span className="ml-2 text-slate-400">
+                      <span className="ml-2 text-slate-500">
                         {group.caseLabel
                           ? `${dimensionLabel(group.dimension)} cm · ${optionalNumber(group.volumeCbm)} CBM · ${optionalNumber(group.weightKg)} kg · `
                           : ''}
@@ -254,7 +254,7 @@ export function JobBarangCard({
                           <td className="px-3 py-1.5 pl-6 align-top">
                             {item.uraian}
                             {item.merekModel && (
-                              <span className="text-slate-400"> · {item.merekModel}</span>
+                              <span className="text-slate-500"> · {item.merekModel}</span>
                             )}
                           </td>
                           <td className="whitespace-nowrap px-3 py-1.5 align-top">
@@ -263,7 +263,7 @@ export function JobBarangCard({
                                 {digits ? formatHsCode(digits) : item.kodeHs}
                               </span>
                             ) : (
-                              <span className="text-slate-400">—</span>
+                              <span className="text-slate-500">—</span>
                             )}
                             {chip && (
                               <span

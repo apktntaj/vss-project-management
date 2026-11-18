@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
-import { DollarSign, Ship, TriangleAlert } from 'lucide-react'
+import { Box, CircleDollarSign, Package, Ship, Trash2, TriangleAlert, Users, Weight } from 'lucide-react'
 
 import {
   containerLabel,
@@ -15,7 +15,8 @@ import {
   type MilestoneKind,
 } from '@/domain/job/manifest'
 import type { ManifestBlockView, ManifestPeserta } from '@/lib/manifest-view'
-import { ExhibitorIdentity, ExhibitorSummaryTable, numberID } from '@/components/job-exhibitor-summary'
+import { ExhibitorIdentity, numberID } from '@/components/job-exhibitor-summary'
+import { PackagesTable } from '@/components/job-packages-table'
 
 // Kepulangan (return list) sementara disembunyikan dari kartu manifest; data dan alur simpannya tetap ada.
 const SHOW_KEPULANGAN = false
@@ -88,12 +89,15 @@ export function JobManifestSection({
   view,
   invoiceNumber,
   totalAmount,
+  disposedPackages,
 }: {
   view: ManifestBlockView
   /** No. invoice komersial dokumen (header job / CIPL); null bila belum ada. */
   invoiceNumber: string | null
   /** Total nilai seluruh barang di dokumen; null bila belum ada datanya. */
   totalAmount: number | null
+  /** Jumlah package yang seluruh isinya disposal (dibuang/terpakai/diberikan); 0 bila tidak ada. */
+  disposedPackages: number
 }) {
   const [mode, setMode] = useState<'ringkas' | 'manifest'>('ringkas')
   const inward = view.inward
@@ -208,36 +212,44 @@ export function JobManifestSection({
   })
 
   return (
-    <section className="card border-orange-200 p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium tracking-wide text-slate-500">
-            No. Invoice{' '}
-            <span className="text-lg font-bold text-slate-900 normal-case tracking-normal">
-              {invoiceNumber ?? '—'}
+    <>
+    <section aria-label="Ringkasan CIPL">
+      <p className="text-xs font-medium tracking-wide text-slate-500">
+        No. Invoice{' '}
+        <span className="ml-1 text-lg font-bold text-slate-900 normal-case tracking-normal">
+          {invoiceNumber ?? '—'}
+        </span>
+      </p>
+      <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        {(
+          [
+            ['Exhibitor', numberID(view.peserta.length), Users, 'bg-sky-50 text-sky-600'],
+            ['Total package', numberID(view.totals.totalCount), Package, 'bg-indigo-50 text-indigo-600'],
+            ['Disposed package', numberID(disposedPackages), Trash2, 'bg-rose-50 text-rose-600'],
+            ['Total CBM', numberID(view.totals.volumeCbm), Box, 'bg-emerald-50 text-emerald-600'],
+            ['Total berat (Kg)', numberID(view.totals.weightKg), Weight, 'bg-violet-50 text-violet-600'],
+            [
+              'Total amount',
+              totalAmount === null ? '—' : numberID(totalAmount),
+              CircleDollarSign,
+              'bg-teal-50 text-teal-600',
+            ],
+          ] as const
+        ).map(([title, value, Icon, tone]) => (
+          <div
+            key={title}
+            className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm"
+          >
+            <span className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${tone}`}>
+              <Icon size={18} strokeWidth={1.75} aria-hidden="true" />
             </span>
-          </p>
-          <dl className="mt-3 grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-5">
-            {(
-              [
-                ['Exhibitor', numberID(view.peserta.length), false],
-                ['Total package', numberID(view.totals.totalCount), false],
-                ['Total CBM', numberID(view.totals.volumeCbm), false],
-                ['Total berat (Kg)', numberID(view.totals.weightKg), false],
-                ['Total amount', totalAmount === null ? '—' : numberID(totalAmount), true],
-              ] as const
-            ).map(([title, value, isAmount]) => (
-              <div key={title} className="text-center">
-                <dt className="flex items-center justify-center gap-1 text-xs font-medium tracking-wide text-slate-500">
-                  {isAmount ? <DollarSign size={13} aria-hidden="true" /> : null}
-                  {title}
-                </dt>
-                <dd className="mt-1 text-2xl font-bold tabular-nums text-slate-900">{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-      </div>
+            <div className="min-w-0">
+              <dt className="text-xs font-medium leading-tight text-slate-500">{title}</dt>
+              <dd className="mt-0.5 text-lg font-bold tabular-nums text-slate-900">{value}</dd>
+            </div>
+          </div>
+        ))}
+      </dl>
 
       {penahanan.map((note, index) => (
         <p
@@ -250,38 +262,36 @@ export function JobManifestSection({
           </span>
         </p>
       ))}
+    </section>
 
-      <div className="mt-5 flex items-center justify-between gap-3">
-        <p className="text-base font-semibold text-slate-800">Manifest</p>
-        <div className="group relative">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={mode === 'manifest'}
-            aria-label="Tampilan tabel manifest"
-            onClick={() => setMode(mode === 'manifest' ? 'ringkas' : 'manifest')}
-            className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-              mode === 'manifest' ? 'bg-orange-600' : 'bg-orange-200'
+    <section className="card p-5" aria-label="Packages">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold text-slate-800">Packages</h2>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={mode === 'manifest'}
+          aria-label="Tampilan tabel"
+          onClick={() => setMode(mode === 'manifest' ? 'ringkas' : 'manifest')}
+          className="group inline-flex items-center gap-2.5 rounded-full text-sm text-slate-600 hover:text-slate-900"
+        >
+          <span aria-hidden="true">{mode === 'manifest' ? 'Reset view' : 'Click to change view'}</span>
+          <span
+            aria-hidden="true"
+            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors ${
+              mode === 'manifest' ? 'border-orange-600 bg-orange-600' : 'border-orange-300 bg-white'
             }`}
           >
             <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                mode === 'manifest' ? 'translate-x-4' : 'translate-x-0.5'
+              className={`absolute size-4 rounded-full shadow-sm transition-all ${
+                mode === 'manifest' ? 'left-[1.625rem] bg-white' : 'left-1 bg-orange-500'
               }`}
             />
-          </button>
-          <span
-            role="tooltip"
-            className="pointer-events-none absolute right-0 bottom-[calc(100%+6px)] rounded-md bg-slate-800 px-2 py-1 text-xs font-medium whitespace-nowrap text-white opacity-0 transition-opacity duration-150 delay-200 group-focus-within:opacity-100 group-hover:opacity-100"
-          >
-            {mode === 'manifest' ? 'kembali' : 'beralih ke tabel'}
           </span>
-        </div>
+        </button>
       </div>
       {mode === 'ringkas' ? (
-        <div className="mt-3">
-          <ExhibitorSummaryTable peserta={view.peserta} />
-        </div>
+        <PackagesTable peserta={view.peserta} />
       ) : (
       <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full border-collapse text-left text-xs">
@@ -372,5 +382,6 @@ export function JobManifestSection({
         </div>
       )}
     </section>
+    </>
   )
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, type KeyboardEvent } from 'react'
-import { AlertTriangle, Pencil, Plus } from 'lucide-react'
+import { Pencil, Plus } from 'lucide-react'
 
 import { saveJobOperationalDetails, type Job } from '@/lib/data-client'
 
@@ -19,7 +19,7 @@ type FieldCopy = {
   add: string
   saved: string
   failed: string
-  /** Isi tampil sebagai peringatan (permukaan amber + ikon). */
+  /** Isi tampil sebagai peringatan (permukaan amber). */
   warning: boolean
 }
 
@@ -99,18 +99,13 @@ function JobTextFieldCard({
   return (
     <section className={`card flex flex-col p-5 ${highlighted ? 'border-amber-300 bg-amber-50' : ''}`}>
       <div className="flex items-center justify-between gap-3">
-        <p className="flex items-center gap-1.5 text-sm font-semibold">
-          {copy.warning ? (
-            <AlertTriangle size={15} className={value ? 'text-amber-600' : 'text-slate-400'} aria-hidden="true" />
-          ) : null}
-          {copy.title}
-        </p>
+        <p className="text-sm font-semibold">{copy.title}</p>
         {value && !editing && !readOnly ? (
           <button
             type="button"
             onClick={startEditing}
             aria-label={`Ubah ${copy.title.toLowerCase()}`}
-            className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
           >
             <Pencil size={14} aria-hidden="true" />
           </button>
@@ -142,7 +137,7 @@ function JobTextFieldCard({
         </div>
       ) : readOnly ? (
         <p className="mt-2 text-sm whitespace-pre-wrap text-slate-600">
-          {value ?? <span className="text-slate-400">{copy.empty}</span>}
+          {value ?? <span className="text-slate-500">{copy.empty}</span>}
         </p>
       ) : value ? (
         <button
@@ -157,7 +152,7 @@ function JobTextFieldCard({
         <button
           type="button"
           onClick={startEditing}
-          className="mt-2 inline-flex w-fit items-center gap-1 text-sm text-slate-400 hover:text-slate-700"
+          className="mt-2 inline-flex w-fit items-center gap-1 text-sm text-slate-500 hover:text-slate-700"
         >
           <Plus size={14} aria-hidden="true" /> {copy.add}
         </button>

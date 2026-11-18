@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   Ban,
   FileSpreadsheet,
-  MoreVertical,
   Pencil,
   PackageOpen,
   ReceiptText,
@@ -25,9 +24,11 @@ import {
 } from '@/lib/data-client'
 import { bcDocumentLabels, type BcDocumentKind } from '@/domain/job/types'
 import { jobStageLabel, stageCustomsDocument } from '@/domain/job/regime'
-import { withStageGoods } from '@/domain/job/stages'
+import { stageCiplLines, withStageGoods } from '@/domain/job/stages'
+import { summarizeKoliCollections } from '@/domain/job/manifest'
 import { buildManifestView } from '@/lib/manifest-view'
 import { totalDokumen } from '@/domain/exhibition/cipl-document'
+import { ActionMenu, type ActionMenuItem } from '@/components/action-menu'
 import { JobHeaderDialog } from '@/components/job-detail-cards'
 import { JobManifestSection } from '@/components/job-manifest-section'
 import { JobBarangCard } from '@/components/job-barang-card'
@@ -60,7 +61,16 @@ const SHOW_MUATAN_EXTRAS = false
 
 // Jenis lampiran yang ditampilkan per tab. BC_* dan OTHER belum punya tempat di halaman ini.
 const MUATAN_DOCUMENT_KINDS = ['CIPL', 'PACKING_LIST', 'COMMERCIAL_INVOICE', 'SOURCE'] as const
-const TRANSPORT_DOCUMENT_KINDS = ['BILL_OF_LADING', 'AIR_WAYBILL', 'INBOUND_TRANSPORT', 'OUTBOUND_TRANSPORT'] as const
+const TRANSPORT_DOCUMENT_KINDS = [
+  'BILL_OF_LADING',
+  'AIR_WAYBILL',
+  'INBOUND_TRANSPORT',
+  'OUTBOUND_TRANSPORT',
+] as const
+
+/** Package yang seluruh isinya disposal; aturan pembagian baris CIPL per tahap ada di domain/job/stages. */
+const disposedPackageCount = (job: Job) =>
+  summarizeKoliCollections(stageCiplLines(job.ciplLines, 'DISPOSAL').map((line) => line.koli)).totalCount
 
 const toast = (message: string, tone: 'info' | 'error' = 'info') =>
   window.dispatchEvent(
@@ -82,7 +92,7 @@ function EmptyTabState({ tab }: { tab: JobDetailTab }) {
       <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-50 text-slate-600 ring-8 ring-orange-50/60">
         <Icon size={26} strokeWidth={1.75} aria-hidden="true" />
       </span>
-      <p className="mt-4 text-sm font-medium text-slate-500">Belum ada data</p>
+      <p className="mt-4 text-sm font-medium text-slate-600">Belum ada data</p>
     </section>
   )
 }
@@ -123,7 +133,6 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   const [billingOpen, setBillingOpen] = useState(false)
   const [headerOpen, setHeaderOpen] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
-  const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null)
   // Tab area kerja aktif disimpan di URL (?tab=muatan|transport|billing) agar bisa dibagikan dan
   // bertahan refresh; dibaca sekali saat mount (pola ?newJob=1 di halaman event).
   const [tab, setTab] = useState<JobDetailTab>('muatan')
@@ -241,25 +250,55 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   const isEvent = context?.kind === 'EVENT'
   const cancelled = job.status === 'CANCELLED'
   const details = getOperationalDetails(job)
-  const stageDocument = job.stage != null ? stageCustomsDocument(job.internationalJenis, job.stage) : null
+  const stageDocument =
+    job.stage != null ? stageCustomsDocument(job.internationalJenis, job.stage) : null
   // Workbook BUP hanya untuk dokumen BC yang punya template (BC 2.3/2.5/3.0) — bukan Carnet/BC 2.0.
   const workbookKind = (['BC_2_3', 'BC_2_5', 'BC_3_0'] as const).find(
     (kind) => kind === stageDocument,
   )
   const invoiceItems = details.invoiceItems ?? []
+  const jobMenuItems: ActionMenuItem[] = [
+    ...(workbookKind
+      ? [
+          {
+            key: 'workbook',
+            label: `Export workbook ${bcDocumentLabels[workbookKind]}`,
+            icon: FileSpreadsheet,
+            onSelect: () => void exportWorkbook(workbookKind),
+          },
+        ]
+      : []),
+    cancelled
+      ? {
+          key: 'cancelled',
+          label: 'Job sudah dibatalkan',
+          icon: Ban,
+          disabled: true,
+          separatorBefore: Boolean(workbookKind),
+          onSelect: () => undefined,
+        }
+      : {
+          key: 'cancel',
+          label: 'Batalkan job',
+          icon: Ban,
+          tone: 'danger',
+          separatorBefore: Boolean(workbookKind),
+          onSelect: () => setCancelOpen(true),
+        },
+  ]
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
           <Link
             href="/jobs"
-            className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-900"
+            className="inline-flex items-center gap-1 rounded-md text-sm font-medium text-slate-600 hover:text-slate-900"
           >
-            <ArrowLeft size={16} /> Kembali ke Jobs
+            <ArrowLeft size={16} aria-hidden="true" /> Kembali ke Jobs
           </Link>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
             <h1
-              className={`text-4xl font-bold tracking-tight ${job.jobNumber ? '' : 'text-slate-400'}`}
+              className={`text-3xl font-bold tracking-tight ${job.jobNumber ? '' : 'text-slate-500'}`}
             >
               {job.jobNumber || job.manifestPrefix ? jobNumberLabel(job) : 'No Job belum ada'}
             </h1>
@@ -272,98 +311,41 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           </div>
           <dl className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
             <div className="flex items-center gap-1.5">
+              <dt className="text-slate-600">Jenis</dt>
               <dd>
                 <JobContextBadge job={job} />
               </dd>
             </div>
             <div className="flex items-center gap-1.5">
-              <dd className="font-medium text-slate-800">
+              <dt className="text-slate-600">Agent</dt>
+              <dd className="font-medium text-slate-900">
                 {job.party?.kind === 'AGENT' ? job.party.name : '—'}
               </dd>
             </div>
             <div className="flex items-center gap-1.5">
-              <dt className="text-slate-400">ETA</dt>
-              <dd className="font-medium text-slate-800">{date(details.inbound.scheduleAt)}</dd>
+              <dt className="text-slate-600">ETA</dt>
+              <dd className="font-medium text-slate-900">{date(details.inbound.scheduleAt)}</dd>
             </div>
           </dl>
         </div>
-        <div className="relative flex items-center gap-2">
+        <div className="flex items-center gap-2">
           {!cancelled && (
             <button
               type="button"
               onClick={() => setHeaderOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-orange-50 hover:text-slate-900"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
             >
               <Pencil size={14} aria-hidden="true" /> Ubah header
             </button>
           )}
-          <button
-            type="button"
-            onClick={(clickEvent) => {
-              const rect = clickEvent.currentTarget.getBoundingClientRect()
-              setMenuAnchor((current) =>
-                current ? null : { top: rect.bottom + 4, left: rect.right - 208 },
-              )
-            }}
-            aria-label="Menu aksi job"
-            aria-expanded={menuAnchor !== null}
-            aria-haspopup="menu"
-            title="Menu aksi"
-            className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 hover:bg-orange-50 hover:text-slate-900"
-          >
-            <MoreVertical size={18} />
-          </button>
-          {menuAnchor && (
-            <>
-              <div
-                className="fixed inset-0 z-40"
-                role="presentation"
-                onClick={() => setMenuAnchor(null)}
-              />
-              <div
-                role="menu"
-                aria-label="Aksi job"
-                className="fixed z-50 w-52 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg"
-                style={{ top: menuAnchor.top, left: menuAnchor.left }}
-              >
-                {workbookKind && (
-                  <>
-                    <button
-                      role="menuitem"
-                      type="button"
-                      onClick={() => {
-                        setMenuAnchor(null)
-                        void exportWorkbook(workbookKind)
-                      }}
-                      className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                    >
-                      <FileSpreadsheet size={15} /> Export workbook {bcDocumentLabels[workbookKind]}
-                    </button>
-                    <div className="my-1 border-t border-black/10" />
-                  </>
-                )}
-                {cancelled ? (
-                  <p className="px-3 py-2 text-sm text-slate-400">Job sudah dibatalkan</p>
-                ) : (
-                  <button
-                    role="menuitem"
-                    type="button"
-                    onClick={() => {
-                      setMenuAnchor(null)
-                      setCancelOpen(true)
-                    }}
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
-                  >
-                    <Ban size={15} /> Batalkan job
-                  </button>
-                )}
-              </div>
-            </>
-          )}
+          <ActionMenu label="Menu aksi job" items={jobMenuItems} width={224} bordered />
         </div>
-      </div>
+      </header>
       {cancelled && (
-        <section className="card flex items-start gap-3 border-rose-200 bg-rose-50/60 p-5" role="status">
+        <section
+          className="card flex items-start gap-3 border-rose-200 bg-rose-50/60 p-5"
+          role="status"
+        >
           <Ban size={20} className="mt-0.5 shrink-0 text-rose-600" aria-hidden="true" />
           <div className="min-w-0">
             <p className="font-semibold text-rose-800">
@@ -378,12 +360,10 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           </div>
         </section>
       )}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
+      <div className="grid items-stretch gap-4 md:grid-cols-2 lg:grid-cols-3">
         <JobReadinessBar job={job} activeTab={tab} onNavigate={navigateReadiness} />
-        <div className="flex flex-col gap-4">
-          <JobSpecialInstructionsCard job={job} onSaved={setJob} />
-          <JobNotesCard job={job} onSaved={setJob} />
-        </div>
+        <JobSpecialInstructionsCard job={job} onSaved={setJob} />
+        <JobNotesCard job={job} onSaved={setJob} />
       </div>
       {job.stage && (
         <JobStageCard
@@ -394,7 +374,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
         />
       )}
       <Tabs value={tab} onValueChange={(value) => selectTab(value as JobDetailTab)}>
-        <div className="sticky top-0 z-30 -mx-1 flex items-center justify-between gap-3 border-b bg-white/95 px-1 py-2 backdrop-blur">
+        <div className="sticky top-0 z-30 -mx-1 flex items-center justify-between gap-3 border-b bg-background px-1 py-2">
           <TabsList className="h-auto gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
             {(
               [
@@ -406,7 +386,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
               <TabsTrigger
                 key={value}
                 value={value}
-                className="h-auto rounded-lg px-4 py-1.5 text-slate-500 hover:bg-orange-50 hover:text-slate-900 data-active:bg-orange-600 data-active:text-white data-active:shadow-sm"
+                className="h-auto min-h-9 rounded-lg px-4 py-1.5 text-slate-600 hover:bg-slate-100 hover:text-slate-900 data-[active]:bg-orange-600 data-[active]:text-white data-[active]:shadow-sm"
               >
                 {text}
               </TabsTrigger>
@@ -416,7 +396,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
             <button
               type="button"
               onClick={openTabEditor}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-orange-50 hover:text-slate-900"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
             >
               <Pencil size={14} aria-hidden="true" /> {tabActionLabel(tab, job)}
             </button>
@@ -435,6 +415,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
                       view={buildManifestView(viewJob)}
                       invoiceNumber={sourceJob?.commercialInvoiceNumber ?? null}
                       totalAmount={null}
+                      disposedPackages={disposedPackageCount(viewJob)}
                     />
                   )}
                   <JobBarangCard job={viewJob} onToast={toast} />
@@ -448,6 +429,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
                   view={buildManifestView(job)}
                   invoiceNumber={job.commercialInvoiceNumber || job.ciplDocument?.nomor || null}
                   totalAmount={job.ciplDocument ? totalDokumen(job.ciplDocument).nilaiTotal : null}
+                  disposedPackages={disposedPackageCount(job)}
                 />
               )}
               {job.ciplLines.length > 0 && <JobBarangCard job={job} onToast={toast} />}

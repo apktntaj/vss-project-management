@@ -1,19 +1,18 @@
 'use client'
 
-import { useState } from 'react'
 import Link from 'next/link'
 import {
   Ban,
   CircleAlert,
   FileSpreadsheet,
   FileText,
-  MoreVertical,
   Pencil,
   Plane,
   Ship,
   Truck,
 } from 'lucide-react'
 
+import { ActionMenu } from '@/components/action-menu'
 import { getOperationalDetails, type Job } from '@/lib/data-client'
 import { transportModeLabels } from '@/domain/job/types'
 import { summarizeKoliCollections } from '@/domain/job/manifest'
@@ -90,15 +89,14 @@ export function JobRow({
     onTppbGoodsForm: (job: Job) => void
   }
 }) {
-  const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null)
   const inbound = getOperationalDetails(job).inbound
   const partyName = job.party?.name || 'Pihak belum ditetapkan'
   const shipperName = job.transportDocument?.shipper?.name ?? null
   // Job yang dipegang exhibitor langsung: exhibitor itulah shipper pada B/L.
   const exhibitorDiffersFromShipper = Boolean(
     job.party?.kind === 'EXHIBITOR' &&
-      shipperName &&
-      normalizedName(job.party.name) !== normalizedName(shipperName),
+    shipperName &&
+    normalizedName(job.party.name) !== normalizedName(shipperName),
   )
   // Total PKG dan CBM job = turunan koli seluruh baris CIPL (sama dengan header blok manifest).
   const totals = summarizeKoliCollections(job.ciplLines.map((line) => line.koli))
@@ -108,7 +106,7 @@ export function JobRow({
   const TransportIcon = inbound.mode === 'AIR' ? Plane : inbound.mode === 'SEA' ? Ship : Truck
 
   return (
-    <tr className="border-b border-slate-100 odd:bg-slate-50/70 last:border-0 hover:bg-orange-50/40">
+    <tr className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
       <td className="px-3 py-2.5 align-middle">
         <div className="flex items-center gap-2 whitespace-nowrap">
           <Link
@@ -179,91 +177,41 @@ export function JobRow({
       </td>
       <td className="px-3 py-2.5 align-middle">
         {actions ? (
-          <div className="relative">
-            <button
-              type="button"
-              onClick={(clickEvent) => {
-                clickEvent.stopPropagation()
-                const rect = clickEvent.currentTarget.getBoundingClientRect()
-                setMenuAnchor((current) =>
-                  current ? null : { top: rect.bottom + 4, left: rect.right - 256 },
-                )
-              }}
-              aria-label={`Menu aksi untuk ${jobLabel(job)}`}
-              aria-expanded={menuAnchor !== null}
-              aria-haspopup="menu"
-              title="Menu"
-              className="rounded-lg p-2 text-slate-500 hover:bg-orange-50 hover:text-slate-900"
-            >
-              <MoreVertical size={18} />
-            </button>
-            {menuAnchor && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  role="presentation"
-                  onClick={() => setMenuAnchor(null)}
-                />
-                <div
-                  role="menu"
-                  aria-label={`Aksi untuk ${jobLabel(job)}`}
-                  className="fixed z-50 w-64 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg"
-                  style={{ top: menuAnchor.top, left: menuAnchor.left }}
-                >
-                  <button
-                    role="menuitem"
-                    type="button"
-                    onClick={() => {
-                      setMenuAnchor(null)
-                      actions.onEdit(job)
-                    }}
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                  >
-                    <Pencil size={15} /> Edit
-                  </button>
-                  {job.kind === 'INTERNATIONAL' && !job.sourceJobId && job.status !== 'CANCELLED' && (
-                    <>
-                      <button
-                        role="menuitem"
-                        type="button"
-                        onClick={() => {
-                          setMenuAnchor(null)
-                          actions.onKanwilLetter(job)
-                        }}
-                        className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                      >
-                        <FileText size={15} /> Surat permohonan Kanwil (PDF)
-                      </button>
-                      <button
-                        role="menuitem"
-                        type="button"
-                        onClick={() => {
-                          setMenuAnchor(null)
-                          actions.onTppbGoodsForm(job)
-                        }}
-                        className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                      >
-                        <FileSpreadsheet size={15} /> Form rincian barang (Excel)
-                      </button>
-                    </>
-                  )}
-                  {job.status !== 'CANCELLED' && (
-                    <button
-                      role="menuitem"
-                      type="button"
-                      onClick={() => {
-                        setMenuAnchor(null)
-                        actions.onCancel(job)
-                      }}
-                      className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
-                    >
-                      <Ban size={15} /> Batalkan
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
+          <ActionMenu
+            label={`Menu aksi untuk ${jobLabel(job)}`}
+            width={256}
+            items={[
+              { key: 'edit', label: 'Edit', icon: Pencil, onSelect: () => actions.onEdit(job) },
+              ...(job.kind === 'INTERNATIONAL' && !job.sourceJobId && job.status !== 'CANCELLED'
+                ? [
+                    {
+                      key: 'kanwil',
+                      label: 'Surat permohonan Kanwil (PDF)',
+                      icon: FileText,
+                      onSelect: () => actions.onKanwilLetter(job),
+                    },
+                    {
+                      key: 'tppb',
+                      label: 'Form rincian barang (Excel)',
+                      icon: FileSpreadsheet,
+                      onSelect: () => actions.onTppbGoodsForm(job),
+                    },
+                  ]
+                : []),
+              ...(job.status !== 'CANCELLED'
+                ? [
+                    {
+                      key: 'cancel',
+                      label: 'Batalkan',
+                      icon: Ban,
+                      tone: 'danger' as const,
+                      separatorBefore: true,
+                      onSelect: () => actions.onCancel(job),
+                    },
+                  ]
+                : []),
+            ]}
+          />
         ) : null}
       </td>
     </tr>
