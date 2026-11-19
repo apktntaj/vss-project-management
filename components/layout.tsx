@@ -34,7 +34,6 @@ const links = [
   { href: '/events', label: 'Events', icon: CalendarDays },
   { href: '/general-cargo', label: 'General Cargo', icon: Package },
   { href: '/projects', label: 'Projects', icon: FolderKanban },
-  { href: '/kanban', label: 'Tickets', icon: FolderKanban },
   { href: '/tools', label: 'Tools', icon: Wrench },
 ]
 export function AppShell({

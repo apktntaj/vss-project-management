@@ -1,23 +1,22 @@
 'use client'
 
 import { useState } from 'react'
-import { BookOpenText, Calculator, FileSearch, Scissors, ShieldCheck } from 'lucide-react'
+import { Calculator, FileSearch, Scissors, ShieldCheck } from 'lucide-react'
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ItInventoryView } from '@/components/it-inventory/it-inventory-view'
 import { ToolsCbmCalculator } from '@/components/tools-cbm-calculator'
 import { ToolsHsBtki } from '@/components/tools-hs-btki'
 import { ToolsLartasChecker } from '@/components/tools-lartas-checker'
 import { ToolsPdf } from '@/components/tools-pdf'
 
-// Alat bantu operasional PPJK: Cek LARTAS, Kalkulator CBM, HS BTKI, PDF, dan IT Inventory.
+// Alat bantu operasional PPJK: Cek LARTAS, Kalkulator CBM, HS BTKI, dan PDF.
 
 const tabs = [
   { value: 'lartas', label: 'Cek LARTAS', icon: ShieldCheck },
   { value: 'cbm', label: 'Kalkulator CBM', icon: Calculator },
   { value: 'hs-btki', label: 'BTKI-in', icon: FileSearch },
   { value: 'pdf', label: 'PDF', icon: Scissors },
-  { value: 'it-inventory', label: 'IT Inventory', icon: BookOpenText },
+  // IT Inventory disembunyikan untuk v1 (fase 2); kodenya tetap di components/it-inventory.
 ] as const
 
 type ToolsTab = (typeof tabs)[number]['value']
@@ -55,9 +54,6 @@ export function ToolsWorkspace({ initialTab }: { initialTab?: string }) {
       </TabsContent>
       <TabsContent value="pdf" className="mt-4">
         <ToolsPdf />
-      </TabsContent>
-      <TabsContent value="it-inventory" className="mt-4">
-        <ItInventoryView />
       </TabsContent>
     </Tabs>
   )

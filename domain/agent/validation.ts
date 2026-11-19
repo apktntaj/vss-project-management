@@ -13,3 +13,12 @@ export const agentInputSchema = z.object({
 })
 
 export type AgentInput = z.infer<typeof agentInputSchema>
+
+/** Record agent utuh seperti yang disimpan `saveAgent` (data-client) lewat `/api/operational-records`. */
+export const agentRecordSchema = agentInputSchema.extend({
+  id: z.string().trim().min(1, 'ID agent wajib diisi.'),
+  createdAt: z.string().datetime({ offset: true, message: 'createdAt harus berupa timestamp ISO.' }),
+  updatedAt: z.string().datetime({ offset: true, message: 'updatedAt harus berupa timestamp ISO.' }),
+})
+
+export type AgentRecord = z.infer<typeof agentRecordSchema>

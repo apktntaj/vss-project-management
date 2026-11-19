@@ -2,19 +2,11 @@ import 'server-only'
 
 import { getSupabaseAdmin } from '@/lib/supabase/admin'
 
-export const operationalTables = [
-  // Job TIDAK lewat sini: aggregate Job punya route sendiri (`/api/jobs/**`) dengan validasi,
-  // otorisasi, dan guard versi.
-  // Exhibitor juga tidak: tabel relasional dengan route sendiri (`/api/events/[id]/exhibitors`).
-  'operational_users', 'venues', 'event_organizers', 'events', 'agents',
-  'preferences',
-] as const
+// Hanya dua koleksi yang masih dipakai UI lewat `/api/operational-records`. Job, exhibitor, event,
+// venue, EO, dan preferences punya route sendiri dengan validasi dan otorisasi.
+export const operationalTables = ['operational_users', 'agents'] as const
 
 export type OperationalTable = (typeof operationalTables)[number]
-
-function assertTable(table: string): asserts table is OperationalTable {
-  if (!(operationalTables as readonly string[]).includes(table)) throw new Error('Koleksi data tidak valid.')
-}
 
 async function workspaceId() {
   const { data, error } = await getSupabaseAdmin()
@@ -95,14 +87,4 @@ export async function saveRecord<T extends { id: string }>(table: OperationalTab
   }, { onConflict: 'workspace_id,id' })
   if (error) throw new Error(`Data ${table} tidak dapat disimpan: ${error.message}`)
   return record
-}
-
-export async function removeRecord(table: OperationalTable, recordId: string) {
-  const id = await workspaceId()
-  const { error } = await getSupabaseAdmin()
-    .from(table)
-    .delete()
-    .eq('workspace_id', id)
-    .eq('id', recordId)
-  if (error) throw new Error(`Data ${table} tidak dapat dihapus: ${error.message}`)
 }
