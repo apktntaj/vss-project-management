@@ -46,7 +46,6 @@ import { JobCustomsPendingCard } from '@/components/job-customs-pending-card'
 import { JobDeadlineBanner } from '@/components/job-deadline-banner'
 import { JobLartasCard } from '@/components/job-lartas-card'
 import { JobBillingDialog, JobPartyInvoiceCard } from '@/components/job-party-invoice-card'
-import { JobContextBadge } from '@/components/job-context-badge'
 import { JobDetailSkeleton } from '@/components/loading-skeletons'
 import { JobReadinessBar } from '@/components/job-readiness-bar'
 import { JobNotesPanel } from '@/components/job-notes-card'
@@ -54,6 +53,7 @@ import { CancelJobDialog } from '@/components/cancel-job-dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { date, downloadCustomsWorkbook, label } from '@/components/job-row'
 import { jobContext } from '@/lib/job-context'
+import { jobJenisKey, jobJenisLabel } from '@/lib/job-jenis'
 import { notify } from '@/lib/notify'
 import { jobLabel, jobNumberLabel } from '@/domain/job/numbering'
 import { hasTabData, tabActionLabel } from '@/domain/job/tab-data'
@@ -299,10 +299,17 @@ export default function JobDetail({ params }: { params: { id: string } }) {
     ['transport', 'Transport'],
     ['billing', 'Billing'],
   ]
+  const hasTransportDocument = Boolean(job.transportDocument || job.transportDocumentNumber)
+  // Road Shipment: berangkat dari gudang VSS lewat darat, tanpa dokumen pabean dan tanpa B/L-AWB
+  // (VSS hanya menerima packing list). Disposisi barang dan LARTAS tidak relevan.
+  const isRoadShipment = job.internationalJenis === 'ROAD_SHIPMENT'
+  const hideTransportDocument = isRoadShipment && !hasTransportDocument
   // Tombol di ujung tab membuka form sesuai tab aktif. Tab Pabean memakai form inline di kartunya.
   const showTabAction =
-    !cancelled && tab !== 'pabean' && (!job.sourceJobId || tab === 'billing')
-  const hasTransportDocument = Boolean(job.transportDocument || job.transportDocumentNumber)
+    !cancelled &&
+    tab !== 'pabean' &&
+    (!job.sourceJobId || tab === 'billing') &&
+    !(tab === 'transport' && hideTransportDocument)
   const tabActionText =
     tab === 'transport'
       ? `${hasTransportDocument ? 'Edit' : 'Buat'} B/L-AWB`
@@ -364,9 +371,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           <dl className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
             <div className="flex items-center gap-1.5">
               <dt className="text-slate-600">Jenis</dt>
-              <dd>
-                <JobContextBadge job={job} />
-              </dd>
+              <dd className="font-medium text-slate-900">{jobJenisLabel(jobJenisKey(job))}</dd>
             </div>
             <div className="flex items-center gap-1.5">
               <dt className="text-slate-600">Agent</dt>
@@ -480,10 +485,13 @@ export default function JobDetail({ params }: { params: { id: string } }) {
                   invoiceNumber={job.commercialInvoiceNumber || job.ciplDocument?.nomor || null}
                   totalAmount={job.ciplDocument ? totalDokumen(job.ciplDocument).nilaiTotal : null}
                   disposedPackages={disposedPackageCount(job)}
+                  showDisposition={!isRoadShipment}
                 />
               )}
-              {job.ciplLines.length > 0 && <JobBarangCard job={job} onToast={toast} />}
-              {SHOW_MUATAN_EXTRAS && job.kind !== 'LOCAL' && (
+              {job.ciplLines.length > 0 && (
+                <JobBarangCard job={job} onToast={toast} showLartas={!isRoadShipment} />
+              )}
+              {SHOW_MUATAN_EXTRAS && job.kind !== 'LOCAL' && !isRoadShipment && (
                 <JobLartasCard job={job} onToast={toast} />
               )}
               {SHOW_MUATAN_EXTRAS && (
@@ -564,7 +572,16 @@ export default function JobDetail({ params }: { params: { id: string } }) {
             </section>
           ) : (
             <>
-              <JobTransportDocumentCard job={job} />
+              {hideTransportDocument ? (
+                <section className="card p-5">
+                  <h2 className="font-semibold">Transport</h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Road Shipment berangkat dari gudang VSS lewat darat, tanpa B/L atau AWB.
+                  </p>
+                </section>
+              ) : (
+                <JobTransportDocumentCard job={job} />
+              )}
               <JobDocumentsCard job={job} kinds={TRANSPORT_DOCUMENT_KINDS} />
             </>
           )}

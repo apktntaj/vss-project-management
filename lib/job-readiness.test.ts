@@ -124,4 +124,44 @@ assert.equal(derived.customs.detail, '0/1 selesai')
 // No Job job turunan berawalan "EX" tanpa akhiran tahap (lencana tahap ada di header halaman).
 assert.equal(derived.number.detail, 'EXS.-')
 
+// Pabean 'doing' bila ada dokumen applicable yang bergerak (selain NOT_STARTED), walau belum COMPLETED.
+const bcDoc = (status: string, applicable = true) => ({
+  applicable,
+  status,
+  ajuNumber: null,
+  registrationNumber: null,
+  registrationDate: null,
+  warehouseName: null,
+})
+const customsOf = (bc23: string, bc30: string, bc30Applicable = true) =>
+  byKey({
+    ...draft,
+    operational: { customs: { BC_2_3: bcDoc(bc23), BC_3_0: bcDoc(bc30, bc30Applicable) } },
+  } as unknown as Job).customs
+const released = customsOf('RELEASED', 'NOT_STARTED', false)
+assert.equal(released.state, 'doing')
+assert.equal(released.detail, '0/1 selesai')
+assert.equal(customsOf('PREPARING', 'NOT_STARTED', false).state, 'doing')
+assert.equal(customsOf('NOT_STARTED', 'NOT_STARTED', false).state, 'todo')
+// Dokumen non-applicable yang sudah bergerak tidak membuat langkah 'doing'.
+assert.equal(customsOf('NOT_STARTED', 'RELEASED', false).state, 'todo')
+assert.equal(customsOf('COMPLETED', 'COMPLETED', false).state, 'done')
+
+// Road Shipment: tanpa B/L-AWB dan tanpa dokumen pabean → keduanya done, 'Tidak diperlukan'.
+const road = byKey({
+  ...draft,
+  kind: 'INTERNATIONAL',
+  internationalJenis: 'ROAD_SHIPMENT',
+  stage: null,
+} as unknown as Job)
+assert.equal(road.transport.state, 'done')
+assert.equal(road.transport.detail, 'Tidak diperlukan')
+assert.equal(road.customs.state, 'done')
+assert.equal(road.customs.detail, 'Tidak diperlukan')
+// Jenis lain tetap menuntut B/L-AWB.
+assert.equal(
+  byKey({ ...draft, internationalJenis: 'TPPB_BC_23' } as unknown as Job).transport.state,
+  'todo',
+)
+
 console.log('job readiness passed')

@@ -99,6 +99,7 @@ function ItemRow({
   onRemove,
   fieldId,
   errors,
+  showDisposition,
 }: {
   item: CiplItemDraft
   disabled: boolean
@@ -106,6 +107,7 @@ function ItemRow({
   onRemove: () => void
   fieldId: (field: CiplItemField) => string
   errors: Record<string, string>
+  showDisposition: boolean
 }) {
   const fieldProps = (field: CiplItemField) => ({ id: fieldId(field), error: errors[fieldId(field)] })
   const options = item.disposisi === 'GIVE_AWAY' ? [...remarkOptions, giveAwayOption] : remarkOptions
@@ -135,6 +137,7 @@ function ItemRow({
         placeholder={autoTotal === null ? '' : String(autoTotal)}
         {...fieldProps('nilaiTotal')}
       />
+      {showDisposition && (
       <div className="label flex w-auto flex-col text-xs">
         Remark
         <div role="radiogroup" aria-label="Remark" className="mt-1 inline-flex overflow-hidden rounded-lg border border-slate-200">
@@ -158,6 +161,7 @@ function ItemRow({
           })}
         </div>
       </div>
+      )}
       <button
         type="button"
         aria-label="Hapus barang"
@@ -203,6 +207,7 @@ function CaseEditor({
   errors,
   onChange,
   onRemove,
+  showDisposition,
 }: {
   draft: CiplCaseDraft
   caseIndex: number
@@ -211,6 +216,7 @@ function CaseEditor({
   errors: Record<string, string>
   onChange: (patch: Partial<CiplCaseDraft>) => void
   onRemove: () => void
+  showDisposition: boolean
 }) {
   const setItem = (itemIndex: number, patch: Partial<CiplItemDraft>) =>
     onChange({
@@ -255,6 +261,7 @@ function CaseEditor({
             onRemove={() => onChange({ items: draft.items.filter((_, i) => i !== itemIndex) })}
             fieldId={(field) => ciplItemFieldId(rowKey, caseIndex, itemIndex, field)}
             errors={errors}
+            showDisposition={showDisposition}
           />
         ))}
         <div className="flex justify-end">
@@ -283,6 +290,7 @@ export function CiplExhibitorForm({
   errors,
   onChange,
   onRemove,
+  showDisposition = true,
 }: {
   row: CiplRowDraft
   disabled: boolean
@@ -290,6 +298,8 @@ export function CiplExhibitorForm({
   errors: Record<string, string>
   onChange: (update: (row: CiplRowDraft) => CiplRowDraft) => void
   onRemove: () => void
+  /** false = tanpa toggle Remark Disposal/Non-disposal per barang (Road Shipment); data tersimpan tidak berubah. */
+  showDisposition?: boolean
 }) {
   const sums = rowSums(row)
   const nameId = ciplNameFieldId(row.key)
@@ -390,6 +400,7 @@ export function CiplExhibitorForm({
             rowKey={row.key}
             disabled={disabled}
             errors={errors}
+            showDisposition={showDisposition}
             onChange={(patch) => setCase(caseIndex, patch)}
             onRemove={() =>
               onChange((current) => ({

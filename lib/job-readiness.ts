@@ -61,8 +61,13 @@ function customsStep(job: Job): JobReadinessStep {
   const completed = documents.filter(
     (document) => document.applicable && document.status === 'COMPLETED',
   ).length
+  // 'doing' = ada dokumen applicable yang sudah bergerak (status apa pun selain NOT_STARTED,
+  // mis. RELEASED/SPPB), meski belum ada yang COMPLETED.
+  const started = documents.some(
+    (document) => document.applicable && document.status !== 'NOT_STARTED',
+  )
   const state: JobReadinessStepState =
-    required === 0 || completed === required ? 'done' : completed > 0 ? 'doing' : 'todo'
+    required === 0 || completed === required ? 'done' : started ? 'doing' : 'todo'
   return {
     key: 'customs',
     label: 'Dokumen pabean',
@@ -77,6 +82,8 @@ export function buildJobReadiness(job: Job): JobReadiness {
   const cipl = deriveCiplStatus(job)
   // Job turunan tidak punya proses masuk sendiri: barang dan angkut ikut job masuk (BC 2.3).
   const derived = job.sourceJobId != null
+  // Road Shipment: barang berangkat dari gudang VSS lewat darat; tanpa B/L atau AWB.
+  const roadShipment = job.internationalJenis === 'ROAD_SHIPMENT'
   const steps: JobReadinessStep[] = [
     {
       key: 'number',
@@ -85,7 +92,7 @@ export function buildJobReadiness(job: Job): JobReadiness {
       state: job.jobNumber ? 'done' : 'todo',
       tab: 'header',
     },
-    derived
+    derived || roadShipment
       ? {
           key: 'transport',
           label: 'B/L · AWB',

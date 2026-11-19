@@ -110,9 +110,12 @@ function lookupChip(result: LartasResult): { text: string; tone: string } {
 export function JobBarangCard({
   job,
   onToast,
+  showLartas = true,
 }: {
   job: Job
   onToast: (message: string, tone?: 'info' | 'error') => void
+  /** false = tanpa bagian LARTAS (tombol periksa, peringatan HS, hasil INSW); mis. Road Shipment. */
+  showLartas?: boolean
 }) {
   const view = useMemo(() => buildManifestView(job), [job])
   const groups = useMemo(() => groupByCase(view.peserta), [view.peserta])
@@ -212,28 +215,31 @@ export function JobBarangCard({
           <div>
             <h2 className="font-semibold">Detail Barang</h2>
             <p className="mt-1 text-xs text-slate-600">
-              Barang dikelompokkan per case dari CIPL. Tarif dan ketentuan LARTAS tiap HS code bisa
-              diperiksa langsung ke INSW.
+              Barang dikelompokkan per case dari CIPL.
+              {showLartas &&
+                ' Tarif dan ketentuan LARTAS tiap HS code bisa diperiksa langsung ke INSW.'}
             </p>
           </div>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          disabled={loading || valid.length === 0}
-          onClick={run}
-        >
-          <Search data-icon="inline-start" />
-          {loading ? 'Memeriksa INSW…' : 'Periksa LARTAS'}
-        </Button>
+        {showLartas && (
+          <Button
+            type="button"
+            size="sm"
+            disabled={loading || valid.length === 0}
+            onClick={run}
+          >
+            <Search data-icon="inline-start" />
+            {loading ? 'Memeriksa INSW…' : 'Periksa LARTAS'}
+          </Button>
+        )}
       </div>
 
       <p className="mt-3 text-sm text-slate-700">
-        {groups.length} case · {itemCount} barang · {valid.length} HS code unik (8/10 digit) siap
-        dicek.
+        {groups.length} case · {itemCount} barang
+        {showLartas && ` · ${valid.length} HS code unik (8/10 digit) siap dicek`}.
       </p>
 
-      {(invalidItemCount > 0 || missingItemCount > 0) && (
+      {showLartas && (invalidItemCount > 0 || missingItemCount > 0) && (
         <div className="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Filter baris bermasalah">
           {filterButton(
             'invalid',
@@ -259,7 +265,7 @@ export function JobBarangCard({
         </div>
       )}
 
-      {valid.length === 0 && (
+      {showLartas && valid.length === 0 && (
         <p className="mt-3 text-sm text-slate-600">
           Belum ada HS code 8/10 digit pada barang job ini. Lengkapi CIPL atau cek manual di{' '}
           <Link href="/tools?tab=lartas" className="font-medium text-foreground hover:underline">
@@ -268,7 +274,7 @@ export function JobBarangCard({
           .
         </p>
       )}
-      {(invalid.length > 0 || missingCount > 0) && (
+      {showLartas && (invalid.length > 0 || missingCount > 0) && (
         <div className="mt-3 flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <p>
@@ -278,7 +284,7 @@ export function JobBarangCard({
           </p>
         </div>
       )}
-      {truncated.length > 0 && (
+      {showLartas && truncated.length > 0 && (
         <p className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
           {truncated.length} pos tarif 10 digit diperiksa memakai 8 digit pertamanya (
           {truncated.join(', ')}).
@@ -378,12 +384,17 @@ export function JobBarangCard({
                               )}
                             </td>
                             <td className="whitespace-nowrap px-3 py-1.5 align-top">
-                              {status === 'ok' && (
+                              {!showLartas && (
+                                <span className="tabular-nums">
+                                  {digits ? formatHsCode(digits) : (item.kodeHs ?? '—')}
+                                </span>
+                              )}
+                              {showLartas && status === 'ok' && (
                                 <span className="tabular-nums">
                                   {digits ? formatHsCode(digits) : item.kodeHs}
                                 </span>
                               )}
-                              {status === 'invalid' && (
+                              {showLartas && status === 'invalid' && (
                                 <>
                                   <span className="tabular-nums">{item.kodeHs}</span>
                                   <span className="ml-2 inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700 ring-1 ring-inset ring-rose-200">
@@ -391,7 +402,7 @@ export function JobBarangCard({
                                   </span>
                                 </>
                               )}
-                              {status === 'missing' && (
+                              {showLartas && status === 'missing' && (
                                 <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-200">
                                   Tanpa HS
                                 </span>
@@ -424,12 +435,12 @@ export function JobBarangCard({
         </>
       )}
 
-      {notice && (
+      {showLartas && notice && (
         <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
           {notice}
         </p>
       )}
-      {results && (
+      {showLartas && results && (
         <div aria-live="polite" className="mt-4 space-y-4">
           {results.map((result) => {
             const usages = usagesByCode.get(result.hsCode) ?? []

@@ -7,7 +7,7 @@
 // | TEMPORARY_IMPORT  | BC 2.0 (PIB)     | BC 2.0 definitif *) | BC 3.0 *) | jaminan + tenggat      |
 // | ATA_CARNET        | Carnet (tanpa BC)| — (dilarang)        | Carnet    | carnet (nomor, dst.)   |
 // | PERMANENT_IMPORT  | BC 2.0           | —                   | —         | —                      |
-// | ROAD_SHIPMENT     | tanpa tahap/dokumen pabean (gudang klien ↔ pameran)                |
+// | ROAD_SHIPMENT     | tanpa tahap/dokumen pabean (berangkat dari gudang VSS ke pameran)  |
 //
 // *) asumsi operasional menunggu konfirmasi: keluar re-ekspor BC 3.0, barang tidak kembali
 // ditutup PIB definitif. Kode ini satu-satunya tempat pemetaan itu — koreksinya cukup di sini.

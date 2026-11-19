@@ -87,6 +87,8 @@ export function CiplEntryModal({
   onSaved: (job: Job) => void
   onClose: () => void
 }) {
+  // Road Shipment tanpa disposisi barang (Disposal/Non-disposal): sembunyikan dari form, data tetap.
+  const showDisposition = job.internationalJenis !== 'ROAD_SHIPMENT'
   /** Baris tersimpan dibuka apa adanya; job tanpa baris CIPL mulai dari satu baris kosong. */
   const initialRows = (): CiplRowDraft[] =>
     job.ciplLines.length
@@ -464,8 +466,12 @@ export function CiplEntryModal({
                         <TotalField label="Vol (CBM)" derived={totals.cbm} className="w-28" />
                         <TotalField label="Gross (kg)" derived={totals.gross} className="w-32" />
                         <TotalField label="Net (kg)" derived={totals.net} className="w-32" />
-                        <TotalField label="Disposal (item)" derived={totals.disposalItems} className="w-32" />
-                        <TotalField label="Disposal (pkg)" derived={totals.disposalPackages} className="w-32" />
+                        {showDisposition && (
+                          <>
+                            <TotalField label="Disposal (item)" derived={totals.disposalItems} className="w-32" />
+                            <TotalField label="Disposal (pkg)" derived={totals.disposalPackages} className="w-32" />
+                          </>
+                        )}
                       </>
                     )
                   })()}
@@ -551,6 +557,7 @@ export function CiplEntryModal({
                   row={row}
                   errors={validation.errors}
                   disabled={saving}
+                  showDisposition={showDisposition}
                   onChange={(update) =>
                     setCiplRows((current) =>
                       current.map((item, i) => (i === rowIndex ? update(item) : item)),

@@ -74,9 +74,16 @@ const th = 'px-3 py-2'
 const thNum = `${th} text-right`
 const td = 'px-3 py-2 align-top'
 const tdNum = `${td} text-right tabular-nums`
-const COLUMNS = 5
 
-export function PackagesTable({ peserta }: { peserta: ReadonlyArray<ManifestPeserta> }) {
+export function PackagesTable({
+  peserta,
+  showDisposition = true,
+}: {
+  peserta: ReadonlyArray<ManifestPeserta>
+  /** false = tanpa kolom Disposisi (mis. Road Shipment); data tidak berubah. */
+  showDisposition?: boolean
+}) {
+  const COLUMNS = showDisposition ? 5 : 4
   const totalPackages = peserta.reduce((sum, item) => sum + item.logistics.koli.details.length, 0)
   const grouped = peserta.length > 1
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(
@@ -123,7 +130,7 @@ export function PackagesTable({ peserta }: { peserta: ReadonlyArray<ManifestPese
               <th className={th}>Dimensi (cm)</th>
               <th className={thNum}>CBM</th>
               <th className={thNum}>Berat (Kg)</th>
-              <th className={th}>Disposisi</th>
+              {showDisposition && <th className={th}>Disposisi</th>}
             </tr>
           </thead>
           {peserta.map((item) => {
@@ -191,9 +198,11 @@ export function PackagesTable({ peserta }: { peserta: ReadonlyArray<ManifestPese
                       </td>
                       <td className={tdNum}>{optionalNumber(koli.volumeCbm)}</td>
                       <td className={tdNum}>{optionalNumber(koli.weightKg)}</td>
-                      <td className={td}>
-                        <DispositionBadge value={disposition(koli)} />
-                      </td>
+                      {showDisposition && (
+                        <td className={td}>
+                          <DispositionBadge value={disposition(koli)} />
+                        </td>
+                      )}
                     </tr>
                   ))}
                 {open && details.length > 0 && undetailed > 0 && (

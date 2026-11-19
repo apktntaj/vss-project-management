@@ -90,6 +90,7 @@ export function JobManifestSection({
   invoiceNumber,
   totalAmount,
   disposedPackages,
+  showDisposition = true,
 }: {
   view: ManifestBlockView
   /** No. invoice komersial dokumen (header job / CIPL); null bila belum ada. */
@@ -98,6 +99,8 @@ export function JobManifestSection({
   totalAmount: number | null
   /** Jumlah package yang seluruh isinya disposal (dibuang/terpakai/diberikan); 0 bila tidak ada. */
   disposedPackages: number
+  /** false = sembunyikan semua tampilan disposisi (statistik dan kolom package); data tidak berubah. */
+  showDisposition?: boolean
 }) {
   const [mode, setMode] = useState<'ringkas' | 'manifest'>('ringkas')
   const inward = view.inward
@@ -220,12 +223,18 @@ export function JobManifestSection({
           {invoiceNumber ?? '—'}
         </span>
       </p>
-      <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      <dl
+        className={`mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 ${showDisposition ? 'xl:grid-cols-6' : 'xl:grid-cols-5'}`}
+      >
         {(
           [
             ['Exhibitor', numberID(view.peserta.length), Users, 'bg-sky-50 text-sky-600'],
             ['Total package', numberID(view.totals.totalCount), Package, 'bg-indigo-50 text-indigo-600'],
-            ['Disposed package', numberID(disposedPackages), Trash2, 'bg-slate-100 text-slate-600'],
+            ...(showDisposition
+              ? ([
+                  ['Disposed package', numberID(disposedPackages), Trash2, 'bg-slate-100 text-slate-600'],
+                ] as const)
+              : []),
             ['Total CBM', numberID(view.totals.volumeCbm), Box, 'bg-emerald-50 text-emerald-600'],
             ['Total berat (Kg)', numberID(view.totals.weightKg), Weight, 'bg-violet-50 text-violet-600'],
             [
@@ -291,7 +300,7 @@ export function JobManifestSection({
         </button>
       </div>
       {mode === 'ringkas' ? (
-        <PackagesTable peserta={view.peserta} />
+        <PackagesTable peserta={view.peserta} showDisposition={showDisposition} />
       ) : (
       <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full border-collapse text-left text-xs">
