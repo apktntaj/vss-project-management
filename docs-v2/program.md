@@ -53,60 +53,78 @@ Agent  ───────→  Job
 
 ## 3. Job
 
-Job punya dua sumbu yang berbeda: **untuk apa** (konteks) dan **jalur apa** (jenis).
+> **Status: USULAN, menunggu persetujuan Anda.** Disusun Pak Kur 2026-11-18 dari dua
+> putaran jawaban klien (Andi) di WhatsApp. Bagian ❓ menunggu pertanyaan susulan.
+
+Pola dari jawaban klien: semua yang khas pameran (TPPB, Local, Road Shipment) berkumpul di
+job event, sedangkan genco dan project hanya mengenal impor biasa. Karena itu Job dipecah
+**menurut konteksnya**, supaya kombinasi yang tidak sah tidak mungkin ditulis.
 
 ```racket
-;; Job adalah (make-job konteks jenis ...)
+;; Job adalah salah satu dari:
+;;  - (make-job-event Event LayananEvent Pihak ...)
+;;  - (make-job-kargo Kargo RezimImpor Pihak ...)
+;; interpretasi: job event melayani satu pameran; job kargo melayani genco atau satu project
 
-;; Konteks adalah salah satu dari:
-;;  - (make-konteks-event Event)   ; kargo pameran, merujuk satu Event
-;;  - 'GENCO                       ; general cargo
-;;  - 'PROJECT                     ; project cargo ❓ belum ada informasi dari klien
+;; Kargo adalah salah satu dari:
+;;  - 'GENCO
+;;  - (make-kargo-project Project)   ; Project = pengelompok banyak job, seperti Event
+;;                                    ; ❓ isi Project belum ada informasi
 
-;; Jenis adalah salah satu dari:
-;;  - 'TPPB
-;;  - 'TEMPORARY_IMPORT
-;;  - 'PERMANENT_IMPORT
-;;  - 'ATA_CARNET
-;;  - 'ROAD_SHIPMENT
-;;  - 'LOCAL
-;;  - 'EXPORT
-;;  - 'TEMPORARY_EXPORT
+;; LayananEvent adalah salah satu dari:
+;;  - 'LOCAL           ; exhibitor domestik, VSS mengangkut barangnya; tanpa dokumen pabean
+;;  - 'ROAD_SHIPMENT   ; clearance diurus PPJK lain; VSS menerima di gudang lalu antar ke booth
+;;                     ; ❓ apakah VSS juga membawa barangnya pulang
+;;  - 'TPPB            ; BC 2.3, ditutup BC 2.5 (tinggal) atau BC 3.0 (re-ekspor)
+;;  - RezimImpor
 
-;; invariant: jenis 'TPPB hanya boleh bila konteksnya event
+;; RezimImpor adalah salah satu dari:
+;;  - 'TEMPORARY_IMPORT  ; ditutup re-ekspor, atau jadi permanen dengan bayar bea/pajak; ada jaminan dan tenggat
+;;  - 'ATA_CARNET        ; ditutup re-ekspor saja. ❓ boleh di job kargo (konser, penelitian)?
+;;  - 'PERMANENT_IMPORT  ; definitif, tanpa penutup
+
+;; Pihak adalah salah satu dari:
+;;  - (make-pihak-agent Agent)       ; agent yang mengatur pengiriman, maka agent yang ditagih
+;;  - (make-pihak-pemilik Pemilik)   ; pemilik barang ditagih langsung
+;;  - 'BELUM_DITENTUKAN
+;; Pemilik: di job event = Exhibitor; di job kargo = Customer   ❓ Customer jadi data induk?
+
+;; invariant: Pemilik di job event adalah Exhibitor milik Event yang sama
+;; invariant: LOCAL dan ROAD_SHIPMENT tidak punya dokumen pabean, jaminan, carnet, atau tahap penutup
+;; invariant: tahap penutup hanya ada pada TPPB, TEMPORARY_IMPORT, ATA_CARNET; ATA tanpa disposal
+;; invariant: re-ekspor selalu turunan dari job induk, tidak pernah dibuat berdiri sendiri
+;; peringatan (bukan blokir): TPPB pada event yang venue-nya belum punya profil TPPB
 ```
 
-### Tabel kecocokan (BELUM DIKONFIRMASI)
+**EXPORT dan TEMPORARY_EXPORT belum masuk model** sampai klien menjawab apakah VSS pernah
+mengirim barang dari Indonesia ke luar negeri. Re-ekspor barang pameran tetap job turunan,
+bukan EXPORT.
 
-> Tinjauan Pak Kur 2026-11-18: daftar jenis ini mencampur tiga sumbu, yaitu arah
-> (impor/ekspor/domestik), rezim pabean, dan layanan tanpa pabean (LOCAL, ROAD_SHIPMENT).
-> Tabel di bawah hanya mencatat jawaban klien sampai bentuk datanya diputuskan.
+### Tabel kecocokan
 
-Sumber: jawaban klien (Andi) di grup WhatsApp, 2026-11-18. Pertanyaannya: "Jenis job itu
-bisa masuk di ketiga kategori ya? Kalau TPPB mungkin khas event ya?" Jawaban: "Betul mas".
+Y = yakin · R = ragu · X = tidak · ❓ = belum diketahui
 
-| Jenis | Event | Genco | Project |
-|---|---|---|---|
-| TPPB | ✓ | ✗ | ✗ |
-| TEMPORARY_IMPORT | ✓ | ✓ | ✓ |
-| PERMANENT_IMPORT | ✓ | ✓ | ✓ |
-| ATA_CARNET | ✓ | ✓ | ✓ |
-| ROAD_SHIPMENT | ✓ | ✓ | ✓ |
-| LOCAL | ✓ | ✓ | ✓ |
-| EXPORT | ✓ | ✓ | ✓ |
-| TEMPORARY_EXPORT | ✓ | ✓ | ✓ |
+| Jenis | Event | Genco | Project | Dasar |
+|---|---|---|---|---|
+| TPPB | Y | X | X | aturan pabean dan klien |
+| LOCAL | Y | X | X | klien: "local hanya untuk pameran" |
+| ROAD_SHIPMENT | Y | X | X | klien: diantar ke booth pameran |
+| TEMPORARY_IMPORT | Y | R | R | aturan pabean; klien belum memberi contoh |
+| PERMANENT_IMPORT | Y | Y | Y | aturan pabean |
+| ATA_CARNET | Y | R | X | klien: juga konser dan penelitian, praktik VSS belum jelas |
+| EXPORT, TEMPORARY_EXPORT | ❓ | ❓ | ❓ | belum terjawab |
 
-❓ Jawaban "betul" menjawab dua pertanyaan sekaligus, jadi perlu dikonfirmasi bahwa
-**hanya** TPPB yang khas event.
+### Alternatif yang tidak dipilih
 
-Karena hanya satu pengecualian, cukup satu invariant. Tiap konteks tidak perlu punya
-daftar jenisnya sendiri.
+Satu struktur datar `(make-job konteks jenis pihak)` dengan invariant "TPPB, LOCAL, ROAD
+hanya event". Lebih sederhana, tapi kombinasi yang salah baru tertolak saat validasi.
+Di database, kedua bentuk tetap bisa disimpan di satu tabel.
 
 ### Isi Job
 
 | Bagian | Artinya |
 |---|---|
-| **Pihak** | Agent, exhibitor (khusus konteks event), atau belum ditentukan |
+| **Pihak** | Agent (bila agent yang mengatur pengiriman), pemilik barang (Exhibitor di event, Customer di kargo), atau belum ditentukan |
 | **CIPL** | Isi dokumen sumber barang. Pada job event, tiap baris mencatat nama exhibitor **persis seperti tertulis**, lalu boleh ditautkan ke Exhibitor |
 | **Dokumen angkut** | B/L atau AWB |
 | **Dokumen pabean** | Status dan nomor dokumen BC atau Carnet, termasuk jaminan |
@@ -210,12 +228,14 @@ Fungsi lepas yang tidak membaca maupun mengubah Workspace: CBM, PDF, HS/BTKI, LA
 
 ## Yang belum diputuskan
 
-1. **Konfirmasi tabel kecocokan** (§3): apakah hanya TPPB yang khas event?
-2. **Project cargo:** selain jenis job, isinya belum ada informasi dari klien.
-3. **Tahap dalam satu job:** kode sekarang membuat job turunan untuk disposal dan re-ekspor
+1. **Bentuk Job** (§3): setuju dipecah menurut konteks (job event dan job kargo)?
+2. **Customer:** jadi data induk baru, seperti Agent?
+3. **Project:** isinya belum ada informasi dari klien.
+4. **Pertanyaan susulan ke klien:** ekspor, pemakaian di luar pameran, ATA untuk konser/penelitian, kepulangan Road Shipment, contoh project.
+5. **Tahap dalam satu job:** kode sekarang membuat job turunan untuk disposal dan re-ekspor
    (satu job = satu dokumen BC). Apakah ini tetap, atau tahap menjadi bagian di dalam job?
-4. **Exhibitor dari daftar EO:** apakah pintu ketiga ini nyata?
-5. **CIPL:** perlu riwayat versi (amandemen), atau cukup diganti utuh?
-6. **Hak akses:** cukup satu sistem peran?
-7. **IT Inventory, General Cargo/Projects placeholder, email assistant:** dibuang atau disimpan?
-8. **Dokumen lama:** `docs/` dibekukan sebagai arsip setelah `docs-v2/` siap?
+6. **Exhibitor dari daftar EO:** apakah pintu ketiga ini nyata?
+7. **CIPL:** perlu riwayat versi (amandemen), atau cukup diganti utuh?
+8. **Hak akses:** cukup satu sistem peran?
+9. **IT Inventory, General Cargo/Projects placeholder, email assistant:** dibuang atau disimpan?
+10. **Dokumen lama:** `docs/` dibekukan sebagai arsip setelah `docs-v2/` siap?

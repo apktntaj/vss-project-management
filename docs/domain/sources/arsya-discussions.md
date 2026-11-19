@@ -157,3 +157,35 @@ lengkap. Tidak perlu flag/dokumen "penutup" terpisah.
 Near-term BUKAN Tagihan/Outward penuh, melainkan **input job untuk event terdekat**. Model biaya
 Tagihan = desain backlog (ditandai scope di dokumennya); slice implementasi sekarang = status
 saja (≈ `JobInvoice.status` lama: dibuat/kirim/lunas). Outward juga backlog.
+
+## Jenis job: konteks dan kombinasi (2026-11-18)
+
+Jawaban Arsya atas sembilan pertanyaan tentang jenis job (event / genco / project).
+Ingatan mentah; belum dimodelkan. Teks pertanyaan ditempel user dari WhatsApp (hasil OCR).
+
+| # | Pertanyaan (ringkas) | Jawaban Arsya |
+|---|---|---|
+| 1 | Selain TPPB, ada jenis job yang hanya muncul di pameran? | "gak ada" |
+| 2 | ATA Carnet pernah dipakai di luar pameran? | "pernah. contoh motor orang yg mau road trip" |
+| 3 | "Road shipment" itu antar darat (pabean diurus klien) atau impor lewat jalur darat? | "job borongan. dr luar negri direct kirim ke gudang Vissasa. Jd Vissasa hanya terima barang, tidak clearance" |
+| 4 | "Local" untuk genco/project maksudnya apa? | "gak paham?" (pertanyaan tidak dimengerti; perlu dirumuskan ulang) |
+| 5 | Export / temp export beda dengan re-ekspor barang pameran? Untuk pameran, genco, atau project? | "ya, reexport beda dengan export/temp export." (bagian "untuk apa" tidak dijawab) |
+| 6 | Temp export biasanya barangnya kembali semua, atau ada yang tidak? | Temp export balik ke Indonesia dan mendapat pembebasan bea masuk (bila tidak ada penambahan fisik/nilai). Bisa dikirim bareng brosur, "nah ini yg gak balik lg" (yang tidak kembali = brosur). |
+| 7 | Project: satu pengiriman atau banyak? | "biasanya bisa 1 pengiriman, bisa jg banyak. seperti Kanye, ini 1 pengiriman aja" |
+| 8 | Genco/project: yang ditagih siapa? | "beragam, bisa importir, agent, kontraktor" |
+| 9 | Contoh job project? | Kanye West via ATA Carnet. Barbie: TPPB Sementara via BC 2.3, EO sebagai pemilik venue. |
+
+### Bacaan manajer (belum divalidasi Pak Kur)
+- #1: hanya TPPB yang khas pameran; LOCAL dan ROAD_SHIPMENT tidak eksklusif event. Bertentangan
+  dengan jawaban putaran pertama ("local hanya untuk pameran") — perlu dikonfirmasi.
+- #2 dan #9: ATA Carnet muncul di luar pameran (project Kanye; motor road trip).
+- #9: TPPB juga muncul di project (Barbie, venue dimiliki EO) — bertentangan dengan "TPPB hanya event".
+- #3: road shipment = borongan, VSS hanya menerima di gudang, tanpa clearance.
+- #6: temp export membawa barang yang kembali ke Indonesia; brosur ikut terkirim dan tidak kembali.
+- #8: pihak tertagih di genco/project: importir, agent, atau kontraktor.
+
+### Koreksi user: arti Road Shipment (2026-11-19)
+- Road Shipment = job yang barangnya **diambil dari gudang VSS sendiri**; titik berangkatnya gudang
+  VSS, lalu diantar lewat darat ke pameran. Tanpa clearance oleh VSS. Ini menggantikan bacaan #3.
+- Klien: hanya berlaku untuk event. User curiga bisa juga di luar event. **Ditunda** — tidak
+  memengaruhi kode sekarang (job baru ada di konteks event); dibahas saat genco/project dibangun.
