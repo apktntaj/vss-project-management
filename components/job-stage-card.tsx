@@ -8,7 +8,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
 
-import { createStageJob, type Job, type JobSummary } from '@/lib/data-client'
+import { createStageJob, type Job } from '@/lib/data-client'
 import { isDerivedJobStage } from '@/domain/job/types'
 import { derivedStagesOf, jobStageLabel } from '@/domain/job/regime'
 import { stageReconciliation } from '@/domain/job/stages'
@@ -16,6 +16,7 @@ import { jobNumberLabel } from '@/domain/job/numbering'
 import type { DerivedJobStage } from '@/domain/job/types'
 import { StatusBadge } from '@/components/status-badge'
 import { notify } from '@/lib/notify'
+import { inboundSlot, loadedSeries, stageSlot, type JobSeriesState } from '@/lib/job-series'
 
 
 const STAGE_NOUN: Record<DerivedJobStage, string> = {
@@ -32,17 +33,20 @@ export function JobStageCard({
   job: Job
   /** Job masuk (BC 2.3) rangkaian ini; null bila gagal dimuat. */
   sourceJob: Job | null
-  /** Job turunan aktif rangkaian ini (sudah disaring pemanggilnya). */
-  series: JobSummary[]
+  /** Job turunan aktif rangkaian ini (sudah disaring pemanggilnya) beserta keadaan pemuatannya. */
+  series: JobSeriesState
   onCreated: () => void
 }) {
   const [creating, setCreating] = useState<DerivedJobStage | null>(null)
-  const stagesById = new Map(series.map((summary) => [summary.stage, summary]))
-  const warnings = stageReconciliation(
-    sourceJob?.ciplLines ?? [],
-    series.map((summary) => summary.stage).filter(isDerivedJobStage),
-    job.internationalJenis,
-  )
+  // Peringatan selisih hanya dihitung dari rangkaian yang sudah termuat.
+  const loaded = loadedSeries(series)
+  const warnings = loaded
+    ? stageReconciliation(
+        sourceJob?.ciplLines ?? [],
+        loaded.map((summary) => summary.stage).filter(isDerivedJobStage),
+        job.internationalJenis,
+      )
+    : []
 
   async function create(stage: DerivedJobStage) {
     setCreating(stage)
@@ -61,14 +65,15 @@ export function JobStageCard({
   const canCreate = job.stage === 'INBOUND' && job.status !== 'CANCELLED'
 
   // Satu entri per tahap: job masuk, lalu tahap turunan jenis ini (mis. BC 2.5 dan BC 3.0).
+  // `slot` membedakan memuat/gagal dari "memang belum ada" (EMPTY).
   const entries = [
     {
       stage: 'INBOUND' as const,
-      linked: job.stage === 'INBOUND' ? null : sourceJob,
+      slot: inboundSlot(sourceJob, series),
     },
     ...derivedStagesOf(job.internationalJenis).map((stage) => ({
       stage,
-      linked: job.stage === stage ? null : (stagesById.get(stage) ?? null),
+      slot: job.stage === stage ? ({ kind: 'EMPTY' } as const) : stageSlot(series, stage),
     })),
   ]
 
@@ -79,7 +84,7 @@ export function JobStageCard({
           Rangkaian job
         </h2>
         <ol className="flex flex-1 flex-wrap items-center gap-x-2 gap-y-2 text-sm">
-          {entries.map(({ stage, linked }, index) => (
+          {entries.map(({ stage, slot }, index) => (
             <li key={stage} className="flex items-center gap-2">
               {index > 0 && (
                 <ChevronRight size={14} className="text-slate-400" aria-hidden="true" />
@@ -91,15 +96,21 @@ export function JobStageCard({
                 <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-800">
                   Job ini
                 </span>
-              ) : linked ? (
+              ) : slot.kind === 'LOADING' ? (
+                <span className="text-slate-500" role="status">
+                  Memuat…
+                </span>
+              ) : slot.kind === 'FAILED' ? (
+                <span className="text-slate-500">Rangkaian gagal dimuat</span>
+              ) : slot.kind === 'FOUND' ? (
                 <>
                   <Link
-                    href={`/jobs/${linked.id}`}
+                    href={`/jobs/${slot.job.id}`}
                     className="font-medium text-slate-900 underline-offset-2 hover:underline"
                   >
-                    {jobNumberLabel(linked)}
+                    {jobNumberLabel(slot.job)}
                   </Link>
-                  <StatusBadge status={linked.status} />
+                  <StatusBadge status={slot.job.status} />
                 </>
               ) : (
                 <>

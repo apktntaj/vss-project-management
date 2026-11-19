@@ -21,7 +21,6 @@ import {
   listJobSummaries,
   type Exhibitor,
   type Job,
-  type JobSummary,
 } from '@/lib/data-client'
 import { bcDocumentLabels, type BcDocumentKind } from '@/domain/job/types'
 import { jobStageLabel, stageCustomsDocument } from '@/domain/job/regime'
@@ -41,6 +40,7 @@ import {
 import { JobTransportDocumentCard } from '@/components/job-transport-document-card'
 import { JobDocumentsCard } from '@/components/job-documents-card'
 import { JobStageCard } from '@/components/job-stage-card'
+import { seriesStateOnReload, type JobSeriesState } from '@/lib/job-series'
 import { JobCustomsCard } from '@/components/job-customs-card'
 import { JobCustomsPendingCard } from '@/components/job-customs-pending-card'
 import { JobDeadlineBanner } from '@/components/job-deadline-banner'
@@ -139,7 +139,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   // Rangkaian job BC (job masuk + turunannya) untuk kartu rangkaian; dimuat ulang saat job berubah
   // atau setelah job turunan baru dibuat manual dari kartu.
   const [sourceJob, setSourceJob] = useState<Job | null>(null)
-  const [series, setSeries] = useState<JobSummary[]>([])
+  const [series, setSeries] = useState<JobSeriesState>({ kind: 'LOADING' })
   const [seriesRefresh, setSeriesRefresh] = useState(0)
   const [ciplEntryOpen, setCiplEntryOpen] = useState(false)
   // Dialog dokumen sumber yang sedang diedit: INVOICE (tab CIPL) atau TRANSPORT (tab Transport).
@@ -223,12 +223,14 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   useEffect(() => {
     if (!jobId || !jobStage) {
       setSourceJob(null)
-      setSeries([])
+      setSeries({ kind: 'LOADING' })
       return
     }
     let active = true
     const current = job
     const rootId = current.sourceJobId ?? jobId
+    // Muat ulang rangkaian yang sama mempertahankan data lama sampai data baru datang.
+    setSeries((previous) => seriesStateOnReload(previous, rootId))
     Promise.all([
       current.sourceJobId ? getJob(current.sourceJobId) : Promise.resolve(current),
       listJobSummaries({ eventId: current.eventId }),
@@ -236,15 +238,17 @@ export default function JobDetail({ params }: { params: { id: string } }) {
       .then(([source, summaries]) => {
         if (!active) return
         setSourceJob(source)
-        setSeries(
-          summaries.filter(
+        setSeries({
+          kind: 'LOADED',
+          rootId,
+          summaries: summaries.filter(
             (summary) => summary.sourceJobId === rootId && summary.status !== 'CANCELLED',
           ),
-        )
+        })
       })
       .catch((caught) => {
         if (!active) return
-        setSeries([])
+        setSeries({ kind: 'FAILED' })
         toast(
           caught instanceof Error ? caught.message : 'Rangkaian job tidak dapat dimuat.',
           'error',
