@@ -29,3 +29,7 @@ eng.traineddata
 
 # Amp orb: generated portal links per orb
 .amp/portals/*
+
+# Riwayat chat WhatsApp dan catatan privat (nomor telepon, password, hal komersial)
+docs-v2/*.zip
+docs-v2/private/
