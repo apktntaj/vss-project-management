@@ -5,6 +5,7 @@
 import Link from 'next/link'
 
 import type { EventListItem } from '@/domain/event/types'
+import { canManageEvent, type Actor } from '@/features/auth/write-scope'
 
 import { ClickableRow } from '@/features/events/components/clickable-row'
 import { EventAppointmentLetterLink } from '@/features/events/components/event-appointment-letter-link'
@@ -23,10 +24,12 @@ type EventListProps = {
   venues?: { id: string; name: string }[]
   organizers?: { id: string; name: string }[]
   pics?: { id: string; name: string }[]
+  /** Pengguna login (CurrentUser server); menentukan menu kelola per baris. */
+  actor: Actor
 }
 
 /** Daftar event sebagai baris tabel. Kosong → pesan ramah; selain itu satu baris per item. */
-export function EventList({ items, venues, organizers, pics }: EventListProps) {
+export function EventList({ items, venues, organizers, pics, actor }: EventListProps) {
   // "Hari ini" WIB — sama dengan `serverToday()` yang menurunkan display status — sebagai dasar
   // hitungan "n hari lagi" (ISO tanggal-saja).
   const today = wibDateOf(new Date())
@@ -89,6 +92,8 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
             // memenuhi kontras 4.5:1.
             const isMuted = lifecycle !== null || item.displayStatus === 'done'
             const bodyText = isMuted ? 'text-muted-foreground' : 'text-slate-700'
+            const canUpdate = canManageEvent(actor, 'event:update', item.picId)
+            const canDelete = canManageEvent(actor, 'event:delete', item.picId)
             return (
               <ClickableRow
                 key={item.id}
@@ -178,25 +183,29 @@ export function EventList({ items, venues, organizers, pics }: EventListProps) {
                   className="sticky right-0 z-10 bg-white px-2 py-2 text-right align-top shadow-[-6px_0_6px_-6px_rgba(15,23,42,0.18)] group-hover:bg-slate-50"
                   data-row-click-ignore
                 >
-                  <EventCardActions
-                    event={{
-                      id: item.id,
-                      name: item.name,
-                      alias: item.alias,
-                      venueId: item.venueId ?? '',
-                      eventOrganizerId: item.eventOrganizerId ?? '',
-                      picId: item.picId ?? '',
-                      startsOn: item.startsOn ?? '',
-                      endsOn: item.endsOn ?? '',
-                      moveInOn: item.moveInOn ?? '',
-                      moveOutOn: item.moveOutOn ?? '',
-                      appointmentLetter: item.appointmentLetter,
-                    }}
-                    lifecycle={item.lifecycle}
-                    venues={venues}
-                    organizers={organizers}
-                    pics={pics}
-                  />
+                  {canUpdate || canDelete ? (
+                    <EventCardActions
+                      event={{
+                        id: item.id,
+                        name: item.name,
+                        alias: item.alias,
+                        venueId: item.venueId ?? '',
+                        eventOrganizerId: item.eventOrganizerId ?? '',
+                        picId: item.picId ?? '',
+                        startsOn: item.startsOn ?? '',
+                        endsOn: item.endsOn ?? '',
+                        moveInOn: item.moveInOn ?? '',
+                        moveOutOn: item.moveOutOn ?? '',
+                        appointmentLetter: item.appointmentLetter,
+                      }}
+                      lifecycle={item.lifecycle}
+                      venues={venues}
+                      organizers={organizers}
+                      pics={pics}
+                      canUpdate={canUpdate}
+                      canDelete={canDelete}
+                    />
+                  ) : null}
                 </td>
               </ClickableRow>
             )

@@ -1,4 +1,8 @@
-import { internationalJobJenisLabels, type InternationalJobJenis } from '@/domain/job/types'
+import {
+  internationalJobJenisLabels,
+  type InternationalJobJenis,
+  type JobJenis,
+} from '@/domain/job/types'
 import type { Job } from '@/lib/data-client'
 
 /** Grup jenis job pada satu event: sub-jenis international + Local + Job lama (taksonomi pra-2026-10-29). */
@@ -44,4 +48,9 @@ export function groupJobsByJenis(jobs: Job[]): Array<{ key: JobJenisGroup; jobs:
       return groupJobs ? [{ key, jobs: groupJobs }] : []
     })
     .sort((a, b) => b.jobs.length - a.jobs.length)
+}
+
+/** Daftar jenis job yang dipegang, untuk tabel pengguna di Settings; kosong -> "". */
+export function jobJenisListLabel(jenis: readonly JobJenis[]): string {
+  return jenis.map((item) => jobJenisLabel(item)).join(', ')
 }

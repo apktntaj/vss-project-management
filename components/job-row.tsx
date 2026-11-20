@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 
 import { ActionMenu } from '@/components/action-menu'
+import { MEMUAT, type JobPermissions } from '@/lib/write-access'
 import { getOperationalDetails, type Job } from '@/lib/data-client'
 import { transportModeLabels } from '@/domain/job/types'
 import { summarizeKoliCollections } from '@/domain/job/manifest'
@@ -73,10 +74,18 @@ export async function downloadCustomsWorkbook(job: Job, documentType: BcDocument
   URL.revokeObjectURL(url)
 }
 
+// Default aman: tanpa `permissions`, Edit/Batalkan nonaktif dengan alasan "masih dimuat".
+const PERMISSIONS_LOADING: JobPermissions = {
+  updateDenial: MEMUAT,
+  cancelDenial: MEMUAT,
+  createStageDenial: MEMUAT,
+}
+
 export function JobRow({
   job,
   event,
   actions,
+  permissions = PERMISSIONS_LOADING,
 }: {
   job: Job
   /** Bila diisi, tampil kolom Event · Jenis · Jalur (tabel lintas event di /jobs). */
@@ -88,6 +97,8 @@ export function JobRow({
     onKanwilLetter: (job: Job) => void
     onTppbGoodsForm: (job: Job) => void
   }
+  /** Keputusan tombol tulis job ini; alasan penolakan jadi toast saat butir dipilih. */
+  permissions?: JobPermissions
 }) {
   const inbound = getOperationalDetails(job).inbound
   const partyName = job.party?.name || 'Pihak belum ditetapkan'
@@ -181,7 +192,13 @@ export function JobRow({
             label={`Menu aksi untuk ${jobLabel(job)}`}
             width={256}
             items={[
-              { key: 'edit', label: 'Edit', icon: Pencil, onSelect: () => actions.onEdit(job) },
+              {
+                key: 'edit',
+                label: 'Edit',
+                icon: Pencil,
+                deniedReason: permissions.updateDenial ?? undefined,
+                onSelect: () => actions.onEdit(job),
+              },
               ...(job.kind === 'INTERNATIONAL' && !job.sourceJobId && job.status !== 'CANCELLED'
                 ? [
                     {
@@ -206,6 +223,7 @@ export function JobRow({
                       icon: Ban,
                       tone: 'danger' as const,
                       separatorBefore: true,
+                      deniedReason: permissions.cancelDenial ?? undefined,
                       onSelect: () => actions.onCancel(job),
                     },
                   ]

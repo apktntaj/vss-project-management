@@ -171,20 +171,22 @@ export function CiplLineModal({
       const hallValue = hall.trim() || null
       const boothValue = booth.trim() || null
 
-      // 1. Exhibitor: buat baru dari nama di dokumen, atau lengkapi hall/booth yang berubah.
+      // 1. Exhibitor baru dari nama di dokumen (lewat job ini); gagal = CIPL belum disimpan.
       let exhibitorId: string | null = exhibitorChoice || null
       if (exhibitorChoice === NEW_EXHIBITOR) {
-        const [created] = await createEventExhibitors(job.eventId, [
-          {
-            name: line.nameOnDocument,
-            kind: job.kind === 'LOCAL' ? 'LOCAL' : 'INTERNATIONAL',
-            hall: hallValue,
-            booth: boothValue,
-          },
-        ])
+        const [created] = await createEventExhibitors(
+          job.eventId,
+          [
+            {
+              name: line.nameOnDocument,
+              kind: job.kind === 'LOCAL' ? 'LOCAL' : 'INTERNATIONAL',
+              hall: hallValue,
+              booth: boothValue,
+            },
+          ],
+          job.id,
+        )
         exhibitorId = created.id
-      } else if (chosen && (chosen.hall !== hallValue || chosen.booth !== boothValue)) {
-        await updateExhibitor(chosen.id, { hall: hallValue, booth: boothValue })
       }
 
       // 2. Baris CIPL: ganti baris ini, kirim ulang semua baris job (atomik + guard versi).
@@ -194,7 +196,22 @@ export function CiplLineModal({
           : input,
       )
       const saved = await saveJobCipl(job, job.ciplDocument, lines)
-      toast(`Baris CIPL ${line.nameOnDocument} tersimpan.`, 'success')
+
+      // 3. Lengkapi hall/booth exhibitor terpilih; CIPL sudah tersimpan, jadi kegagalan hanya dilaporkan.
+      if (chosen && (chosen.hall !== hallValue || chosen.booth !== boothValue)) {
+        try {
+          await updateExhibitor(chosen.id, { hall: hallValue, booth: boothValue }, job.id)
+          toast(`Baris CIPL ${line.nameOnDocument} tersimpan.`, 'success')
+        } catch (caught) {
+          const reason = caught instanceof Error ? caught.message : 'hall/booth tidak dapat diubah.'
+          toast(
+            `Baris CIPL ${line.nameOnDocument} tersimpan, tetapi hall/booth exhibitor tidak diubah: ${reason}`,
+            'error',
+          )
+        }
+      } else {
+        toast(`Baris CIPL ${line.nameOnDocument} tersimpan.`, 'success')
+      }
       onSaved(saved)
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Baris CIPL tidak dapat disimpan.'

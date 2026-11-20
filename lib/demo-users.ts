@@ -1,6 +1,6 @@
 import 'server-only'
 import type { PublicUser, User } from '@/domain/user/types'
-import { UserSchema } from '@/domain/user/validation'
+import { userCreateSchema, userUpdateSchema } from '@/domain/user/validation'
 
 export const MOCK_USERS: readonly User[] = [
   {
@@ -9,13 +9,15 @@ export const MOCK_USERS: readonly User[] = [
     password: 'nurulhandayani',
     isAdmin: true,
     role: 'CS',
+    handledJobJenis: [],
   },
   {
     nama: 'Andy',
     email: 'operasional@vss.demo',
     password: 'andyandyandy',
     isAdmin: false,
-    role: 'OPERATIONS',
+    role: 'CS',
+    handledJobJenis: [],
   },
   {
     nama: 'Kevin',
@@ -23,6 +25,7 @@ export const MOCK_USERS: readonly User[] = [
     password: 'kevinkevin',
     isAdmin: false,
     role: 'FINANCE',
+    handledJobJenis: [],
   },
 ]
 
@@ -42,17 +45,23 @@ export function authenticateDemoUser(email: string, password: string): PublicUse
   return user ? withoutPassword(user) : null
 }
 
+type DemoUserFailure = { ok: false; error: string; field?: 'handledJobJenis' }
+
+// Bentuk galat yang sama dengan `settingsValidationBody` di app/api/settings/route.ts.
+function validationFailure(issue: { message: string; path: readonly (string | number)[] } | undefined): DemoUserFailure {
+  const error = issue?.message ?? 'Data user tidak valid.'
+  return issue?.path[0] === 'handledJobJenis' ? { ok: false, error, field: 'handledJobJenis' } : { ok: false, error }
+}
+
 export function listDemoUsers(): PublicUser[] {
   return users.map(withoutPassword)
 }
 
 export function addDemoUser(
   input: unknown,
-): { ok: true; user: PublicUser } | { ok: false; error: string } {
-  const parsed = UserSchema.safeParse(input)
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Data user tidak valid.' }
-  }
+): { ok: true; user: PublicUser } | DemoUserFailure {
+  const parsed = userCreateSchema.safeParse(input)
+  if (!parsed.success) return validationFailure(parsed.error.issues[0])
   if (users.some((user) => user.email === parsed.data.email)) {
     return { ok: false, error: 'Email sudah digunakan.' }
   }
@@ -64,13 +73,11 @@ export function addDemoUser(
 export function updateDemoUser(
   email: string,
   input: unknown,
-): { ok: true; user: PublicUser } | { ok: false; error: string } {
+): { ok: true; user: PublicUser } | DemoUserFailure {
   const candidate = users.find((user) => user.email === email)
   if (!candidate) return { ok: false, error: 'User tidak ditemukan.' }
-  const parsed = UserSchema.extend({ password: UserSchema.shape.password.optional() }).safeParse(input)
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Data user tidak valid.' }
-  }
+  const parsed = userUpdateSchema.safeParse(input)
+  if (!parsed.success) return validationFailure(parsed.error.issues[0])
   if (parsed.data.email !== email && users.some((user) => user.email === parsed.data.email)) {
     return { ok: false, error: 'Email sudah digunakan.' }
   }
@@ -78,6 +85,7 @@ export function updateDemoUser(
   candidate.email = parsed.data.email
   candidate.isAdmin = parsed.data.isAdmin
   candidate.role = parsed.data.role
+  candidate.handledJobJenis = parsed.data.handledJobJenis
   if (parsed.data.password) candidate.password = parsed.data.password
   return { ok: true, user: withoutPassword(candidate) }
 }

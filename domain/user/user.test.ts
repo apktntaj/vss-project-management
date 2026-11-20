@@ -8,6 +8,7 @@ const admin: User = {
   password: 'demo-vss-2026',
   isAdmin: true,
   role: 'CS',
+  handledJobJenis: [],
 }
 
 const emptyUsers: Users = []
@@ -24,7 +25,8 @@ describe('user domain logic', () => {
       email: 'operator@vss.demo',
       password: 'operator-secret',
       isAdmin: false,
-      role: 'OPERATIONS',
+      role: 'SPESIALIS',
+      handledJobJenis: ['ROAD_SHIPMENT'],
     })
 
     expect(createdUsers).toHaveLength(2)
@@ -55,6 +57,7 @@ describe('user domain logic', () => {
       email: admin.email,
       isAdmin: true,
       role: 'CS',
+      handledJobJenis: [],
     })
     expect(authenticated).not.toHaveProperty('password')
   })
@@ -69,6 +72,7 @@ describe('user domain logic', () => {
       email: admin.email,
       isAdmin: true,
       role: 'CS',
+      handledJobJenis: [],
     })
   })
 })

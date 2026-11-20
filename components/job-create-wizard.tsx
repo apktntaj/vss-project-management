@@ -8,53 +8,20 @@ import {
   listAgents,
   saveAgent,
   type Agent,
-  type InternationalJobJenis,
   type LocalEvent,
   type Job,
   type TransportMode,
 } from '@/lib/data-client'
-import { transportModeLabels, transportModes } from '@/domain/job/types'
-import { internationalJobJenisLabels } from '@/domain/job/types'
+import {
+  jobJenisValues,
+  transportModeLabels,
+  transportModes,
+  type JobJenis,
+} from '@/domain/job/types'
+import { jobJenisLabel } from '@/lib/job-jenis'
 
 function toast(message: string, tone: 'success' | 'error') {
   window.dispatchEvent(new CustomEvent('vss:toast', { detail: { message, tone } }))
-}
-
-type JobTypeSelection = 'LOCAL' | InternationalJobJenis
-
-const jobTypeOptions: Array<{ value: JobTypeSelection; description: string }> = [
-  {
-    value: 'TPPB_BC_23',
-    description:
-      'Fasilitas Tempat Penyelenggaraan Pameran Berikat; barang masuk venue berikat via BC 2.3.',
-  },
-  {
-    value: 'ATA_CARNET',
-    description:
-      'Paspor barang ATA Carnet; tanpa dokumen BC — seluruh barang wajib kembali (re-ekspor).',
-  },
-  {
-    value: 'TEMPORARY_IMPORT',
-    description:
-      'Impor sementara non-TPPB: PIB (BC 2.0) dengan jaminan; barang wajib keluar kembali.',
-  },
-  {
-    value: 'PERMANENT_IMPORT',
-    description: 'Impor tetap (Genco) via PIB (BC 2.0); barang tetap berada di Indonesia.',
-  },
-  {
-    value: 'ROAD_SHIPMENT',
-    description:
-      'Antar barang dari gudang klien ke pameran lalu kembali; tanpa dokumen kepabeanan.',
-  },
-  {
-    value: 'LOCAL',
-    description: 'Barang pihak lokal tanpa dokumen kepabeanan.',
-  },
-]
-
-function jobTypeLabel(value: JobTypeSelection) {
-  return value === 'LOCAL' ? 'Local' : internationalJobJenisLabels[value]
 }
 
 /**
@@ -64,22 +31,30 @@ function jobTypeLabel(value: JobTypeSelection) {
 export function JobCreateWizard({
   events,
   presetEvent,
+  jenisFor,
   onCreated,
   onCancel,
 }: {
   events: LocalEvent[]
   presetEvent?: LocalEvent | null
+  /** Jenis job yang boleh dibuat pengguna di satu event; tidak kosong untuk setiap event di `events`. */
+  jenisFor: (eventId: string) => readonly JobJenis[]
   onCreated: (job: Job) => void
   onCancel: () => void
 }) {
-  const [selection, setSelection] = useState<JobTypeSelection>('TPPB_BC_23')
+  const initialSelection: JobJenis | null = presetEvent
+    ? (jenisFor(presetEvent.id)[0] ?? null)
+    : null
+  const [selection, setSelection] = useState<JobJenis | null>(initialSelection)
   const [eventQuery, setEventQuery] = useState(presetEvent?.officialName ?? '')
   const [selectedEventId, setSelectedEventId] = useState<string | null>(presetEvent?.id ?? null)
   /** Jalur kiriman — bersama jenis job menentukan awalan No Job (S/A/ATA/…). */
-  const [transportMode, setTransportMode] = useState<TransportMode | ''>('SEA')
+  const [transportMode, setTransportMode] = useState<TransportMode | ''>(
+    initialSelection === 'ROAD_SHIPMENT' ? 'ROAD' : 'SEA',
+  )
   const [agents, setAgents] = useState<Agent[]>([])
   const [loadingAgents, setLoadingAgents] = useState(true)
-  const [tanpaAgent, setTanpaAgent] = useState(false)
+  const [tanpaAgent, setTanpaAgent] = useState(initialSelection === 'LOCAL')
   const [creatingNew, setCreatingNew] = useState(false)
   const [agentQuery, setAgentQuery] = useState('')
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
@@ -107,6 +82,8 @@ export function JobCreateWizard({
     [events, selectedEventId, presetEvent],
   )
 
+  const jenisOptions = selectedEvent ? jenisFor(selectedEvent.id) : []
+
   const eventSuggestions = useMemo(() => {
     const search = eventQuery.trim().toLowerCase()
     if (!search || selectedEventId) return []
@@ -123,7 +100,7 @@ export function JobCreateWizard({
     return agents.filter((agent) => agent.name.toLowerCase().includes(query)).slice(0, 6)
   }, [agentQuery, agents])
 
-  function changeSelection(next: JobTypeSelection) {
+  function changeSelection(next: JobJenis) {
     setSelection(next)
     if (next === 'ROAD_SHIPMENT') setTransportMode('ROAD')
     else if (transportMode === 'ROAD') setTransportMode('SEA')
@@ -133,6 +110,16 @@ export function JobCreateWizard({
     if (tanpaAgentDefault) {
       setSelectedAgentId(null)
       setAgentQuery('')
+    }
+  }
+
+  function selectEvent(event: LocalEvent) {
+    setSelectedEventId(event.id)
+    setEventQuery(event.officialName)
+    const options = jenisFor(event.id)
+    if (!selection || !options.includes(selection)) {
+      const first = options[0]
+      if (first) changeSelection(first)
     }
   }
 
@@ -178,7 +165,7 @@ export function JobCreateWizard({
   const exhibitorOnlySelection = selection === 'LOCAL'
 
   async function createJob(): Promise<Job> {
-    if (!selectedEvent) throw new Error('Pilih event untuk job ini terlebih dahulu.')
+    if (!selectedEvent || !selection) throw new Error('Pilih event untuk job ini terlebih dahulu.')
     const { agentId } = exhibitorOnlySelection ? { agentId: null } : await resolveAgentId()
     return createJobRecord({
       eventId: selectedEvent.id,
@@ -194,7 +181,7 @@ export function JobCreateWizard({
   async function createAndClose(formEvent: FormEvent<HTMLFormElement>) {
     formEvent.preventDefault()
     setError('')
-    if (!selectedEvent) {
+    if (!selectedEvent || !selection) {
       const message = 'Pilih event untuk job ini terlebih dahulu.'
       setError(message)
       toast(message, 'error')
@@ -203,7 +190,7 @@ export function JobCreateWizard({
     setFinishing(true)
     try {
       const job = await createJob()
-      toast(`Job (${jobTypeLabel(selection)}) dibuat.`, 'success')
+      toast(`Job (${jobJenisLabel(selection)}) dibuat.`, 'success')
       // Tetap sibuk sampai halaman tujuan menggantikan wizard ini: tanpa itu, selama navigasi
       // berjalan form tampak siap dan tombol Selesai bisa ditekan lagi (job ganda).
       onCreated(job)
@@ -216,6 +203,7 @@ export function JobCreateWizard({
   }
 
   const busy = finishing
+  const showJenisHelp = jenisOptions.length > 0 && jenisOptions.length < jobJenisValues.length
 
   return (
     <div
@@ -264,8 +252,7 @@ export function JobCreateWizard({
                     onKeyDown={(keyboardEvent) => {
                       if (keyboardEvent.key === 'Enter' && eventSuggestions.length > 0) {
                         keyboardEvent.preventDefault()
-                        setSelectedEventId(eventSuggestions[0].id)
-                        setEventQuery(eventSuggestions[0].officialName)
+                        selectEvent(eventSuggestions[0])
                       }
                     }}
                     className="input py-2 pl-9"
@@ -285,10 +272,7 @@ export function JobCreateWizard({
                     <li key={event.id}>
                       <button
                         type="button"
-                        onClick={() => {
-                          setSelectedEventId(event.id)
-                          setEventQuery(event.officialName)
-                        }}
+                        onClick={() => selectEvent(event)}
                         className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-orange-50"
                       >
                         {event.officialName}
@@ -313,18 +297,30 @@ export function JobCreateWizard({
               <label className="label">
                 Jenis job
                 <select
-                  value={selection}
-                  onChange={(selectEvent) =>
-                    changeSelection(selectEvent.target.value as JobTypeSelection)
-                  }
+                  value={selection ?? ''}
+                  onChange={(selectEvent) => changeSelection(selectEvent.target.value as JobJenis)}
+                  disabled={jenisOptions.length === 0}
+                  aria-describedby={showJenisHelp ? 'job-jenis-help' : undefined}
                   className="input mt-1"
                 >
-                  {jobTypeOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {jobTypeLabel(option.value)}
-                    </option>
-                  ))}
+                  {jenisOptions.length === 0 ? (
+                    <option value="">Pilih event dulu</option>
+                  ) : (
+                    jenisOptions.map((jenis) => (
+                      <option key={jenis} value={jenis}>
+                        {jobJenisLabel(jenis)}
+                      </option>
+                    ))
+                  )}
                 </select>
+                {showJenisHelp ? (
+                  <span
+                    id="job-jenis-help"
+                    className="mt-1 block text-xs font-normal text-slate-500"
+                  >
+                    Pilihan sesuai jenis job yang Anda pegang.
+                  </span>
+                ) : null}
               </label>
 
               <label className="label">

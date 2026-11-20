@@ -3,6 +3,8 @@
 /** Public Supabase-backed data access boundary for all browser UI code. */
 
 import type { Role } from '@/domain/auth/types'
+import type { JobJenis } from '@/domain/job/types'
+import type { MyWriteAccess } from '@/features/auth/write-scope'
 import type {
   Contact,
   Event as EventRecord,
@@ -59,6 +61,22 @@ export type {
   TicketStatus,
 } from '@/domain/ticket/types'
 export type { Agent, EventAgent } from '@/domain/agent/types'
+export type {
+  Actor,
+  EventAccessEntry,
+  EventRelation,
+  JobWriteScope,
+  MyWriteAccess,
+} from '@/features/auth/write-scope'
+export {
+  canCreateJobInEvent,
+  canManageEvent,
+  canWriteJobInEvent,
+  creatableJenisInEvent,
+  isRoleSufficient,
+  relationIn,
+} from '@/features/auth/write-scope'
+export { jobJenisValues, type JobJenis } from '@/domain/job/types'
 export type { Exhibitor, ExhibitorContact, ExhibitorKind } from '@/domain/exhibitor/types'
 export type {
   BcDocumentKind,
@@ -891,12 +909,15 @@ export type EventAccessView = {
 
 const eventAccessPath = (eventId: string) => `/api/events/${encodeURIComponent(eventId)}/access`
 
-/** Penerima akses event + calon penerima. Hanya PIC/admin; selain itu 403. */
+/** Penerima akses event + calon penerima (CS/Spesialis). Hanya PIC/admin event; selain itu 403. */
 export function listEventAccess(eventId: string): Promise<EventAccessView> {
   return eventsRequest<EventAccessView>(eventAccessPath(eventId))
 }
 
-/** Beri `userId` akses kelola event (PIC/admin). */
+/**
+ * Beri `userId` akses event (PIC/admin event). Penerima (hanya CS atau Spesialis) dapat membuat dan
+ * mengubah job miliknya di event ini; ia tidak mengelola event. Target lain ditolak 400.
+ */
 export async function grantEventAccess(eventId: string, userId: string): Promise<void> {
   await eventsRequest<void>(eventAccessPath(eventId), {
     method: 'POST',
@@ -904,7 +925,7 @@ export async function grantEventAccess(eventId: string, userId: string): Promise
   })
 }
 
-/** Cabut akses kelola event dari `userId` (PIC/admin). */
+/** Cabut akses event dari `userId` (PIC/admin event). */
 export async function revokeEventAccess(eventId: string, userId: string): Promise<void> {
   await eventsRequest<void>(eventAccessPath(eventId), {
     method: 'DELETE',
@@ -926,17 +947,39 @@ export type ExhibitorInput = {
   booth?: string | null
 }
 
-/** Daftarkan exhibitor baru pada sebuah event; respons berurutan sama dengan masukan. */
-export function createEventExhibitors(eventId: string, inputs: ExhibitorInput[]): Promise<Exhibitor[]> {
-  return eventsRequest<Exhibitor[]>(`/api/events/${encodeURIComponent(eventId)}/exhibitors`, {
+/** Kaitan pengguna login dengan event (PIC/penerima akses) + jenis job yang ia pegang. */
+export function getMyWriteAccess(): Promise<MyWriteAccess> {
+  return eventsRequest<MyWriteAccess>('/api/account/write-access')
+}
+
+const viaJobQuery = (viaJobId?: string) =>
+  viaJobId ? `?viaJobId=${encodeURIComponent(viaJobId)}` : ''
+
+/**
+ * Daftarkan exhibitor baru pada sebuah event; respons berurutan sama dengan masukan. Dari dalam job,
+ * kirim `viaJobId = job.id` agar penerima akses (non-PIC) diotorisasi lewat job miliknya.
+ */
+export function createEventExhibitors(
+  eventId: string,
+  inputs: ExhibitorInput[],
+  viaJobId?: string,
+): Promise<Exhibitor[]> {
+  return eventsRequest<Exhibitor[]>(`/api/events/${encodeURIComponent(eventId)}/exhibitors${viaJobQuery(viaJobId)}`, {
     method: 'POST',
     body: JSON.stringify(inputs),
   })
 }
 
-/** Ubah sebagian data exhibitor; hanya field yang dikirim yang ditulis. */
-export function updateExhibitor(exhibitorId: string, patch: Partial<ExhibitorInput>): Promise<Exhibitor> {
-  return eventsRequest<Exhibitor>(`/api/exhibitors/${encodeURIComponent(exhibitorId)}`, {
+/**
+ * Ubah sebagian data exhibitor; hanya field yang dikirim yang ditulis. Dari dalam job, kirim
+ * `viaJobId = job.id` agar penerima akses (non-PIC) diotorisasi lewat job miliknya.
+ */
+export function updateExhibitor(
+  exhibitorId: string,
+  patch: Partial<ExhibitorInput>,
+  viaJobId?: string,
+): Promise<Exhibitor> {
+  return eventsRequest<Exhibitor>(`/api/exhibitors/${encodeURIComponent(exhibitorId)}${viaJobQuery(viaJobId)}`, {
     method: 'PATCH',
     body: JSON.stringify(patch),
   })
@@ -958,6 +1001,7 @@ export type SettingsUser = {
   role: Role
   isAdmin: boolean
   isActive?: boolean
+  handledJobJenis: JobJenis[]
 }
 export type SettingsVenue = {
   id: string
@@ -980,6 +1024,16 @@ export type SettingsData = {
   organizers: SettingsOrganizer[]
 }
 
+/** Galat dari /api/settings; `field` terisi bila galat milik kolom jenis job pengguna. */
+export class SettingsValidationError extends Error {
+  readonly field: 'handledJobJenis' | null
+  constructor(message: string, field: 'handledJobJenis' | null) {
+    super(message)
+    this.name = 'SettingsValidationError'
+    this.field = field
+  }
+}
+
 async function settingsRequest<T>(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   body?: unknown,
@@ -990,13 +1044,15 @@ async function settingsRequest<T>(
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   })
-  const data = (await response.json().catch(() => null)) as T | { error?: string } | null
-  if (!response.ok)
-    throw new Error(
+  const data = (await response.json().catch(() => null)) as T | { error?: string; field?: string } | null
+  if (!response.ok) {
+    const message =
       data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
         ? data.error
-        : 'Pengaturan tidak dapat diproses.',
-    )
+        : 'Pengaturan tidak dapat diproses.'
+    const field = data && typeof data === 'object' && 'field' in data && data.field === 'handledJobJenis' ? 'handledJobJenis' : null
+    throw new SettingsValidationError(message, field)
+  }
   return data as T
 }
 
@@ -1273,14 +1329,19 @@ export type CiplAutofillOutcome = {
   created: Exhibitor[]
   /** Baris yang belum tertaut (nama cocok dengan lebih dari satu exhibitor event). */
   unlinked: string[]
+  /** Nama exhibitor yang hall/booth-nya tidak dapat dilengkapi (gagal; hasil lain tetap berlaku). */
+  unfilledExhibitors: string[]
 }
 
 /**
  * Simpan hasil scan CIPL ke job, dalam satu urutan yang jelas:
  *
- *   1. entri yang belum terdaftar → dibuat sebagai exhibitor event (hall/booth dari dokumen),
- *   2. exhibitor tertaut yang hall/booth-nya masih kosong → dilengkapi dari dokumen,
- *   3. dokumen CIPL mentah + baris CIPL (koli & barang per exhibitor) → disimpan pada job.
+ *   1. entri yang belum terdaftar → dibuat sebagai exhibitor event dengan `viaJobId = job.id`
+ *      (hall/booth dari dokumen),
+ *   2. dokumen CIPL mentah + baris CIPL (koli & barang per exhibitor) → disimpan pada job,
+ *   3. exhibitor lama yang hall/booth-nya masih kosong → dilengkapi dari dokumen, masing-masing
+ *      `updateExhibitor(..., job.id)` lewat `Promise.allSettled`; yang gagal dicatat namanya di
+ *      `unfilledExhibitors` dan tidak membatalkan hasil.
  *
  * Baris AMBIGU tetap tersimpan sebagai nama (belum tertaut) supaya datanya tidak hilang, dan
  * dilaporkan lewat `unlinked` agar operator dapat menautkannya manual di detail job.
@@ -1305,6 +1366,7 @@ export async function applyCiplAutofill(input: {
           hall: row.logistics.hall,
           booth: row.logistics.booth,
         })),
+        input.job.id,
       )
     : []
   const idByRow = new Map<CiplAutofillRow, string>()
@@ -1312,18 +1374,6 @@ export async function applyCiplAutofill(input: {
     const exhibitor = created[index]
     if (exhibitor) idByRow.set(row, exhibitor.id)
   })
-
-  const existingById = new Map(input.eventExhibitors.map((exhibitor) => [exhibitor.id, exhibitor]))
-  await Promise.all(
-    input.rows.flatMap((row) => {
-      const exhibitor = row.exhibitorId ? existingById.get(row.exhibitorId) : undefined
-      if (!exhibitor) return []
-      const patch: Partial<ExhibitorInput> = {}
-      if (!exhibitor.hall && row.logistics.hall) patch.hall = row.logistics.hall
-      if (!exhibitor.booth && row.logistics.booth) patch.booth = row.logistics.booth
-      return Object.keys(patch).length ? [updateExhibitor(exhibitor.id, patch)] : []
-    }),
-  )
 
   const lines: JobCiplLineInput[] = input.rows.map((row) => ({
     exhibitorId: row.exhibitorId ?? idByRow.get(row) ?? null,
@@ -1333,9 +1383,27 @@ export async function applyCiplAutofill(input: {
     notes: row.logistics.notes,
   }))
   const job = await saveJobCipl(input.job, input.ciplDocument, [...(input.keepLines ?? []), ...lines])
+
+  const existingById = new Map(input.eventExhibitors.map((exhibitor) => [exhibitor.id, exhibitor]))
+  const completions = input.rows.flatMap((row) => {
+    const exhibitor = row.exhibitorId ? existingById.get(row.exhibitorId) : undefined
+    if (!exhibitor) return []
+    const patch: Partial<ExhibitorInput> = {}
+    if (!exhibitor.hall && row.logistics.hall) patch.hall = row.logistics.hall
+    if (!exhibitor.booth && row.logistics.booth) patch.booth = row.logistics.booth
+    return Object.keys(patch).length ? [{ exhibitor, patch }] : []
+  })
+  const settled = await Promise.allSettled(
+    completions.map(({ exhibitor, patch }) => updateExhibitor(exhibitor.id, patch, job.id)),
+  )
+  const unfilledExhibitors = completions.flatMap(({ exhibitor }, index) =>
+    settled[index]?.status === 'rejected' ? [exhibitor.name] : [],
+  )
+
   return {
     job,
     created,
     unlinked: lines.filter((line) => !line.exhibitorId).map((line) => line.nameOnDocument),
+    unfilledExhibitors,
   }
 }

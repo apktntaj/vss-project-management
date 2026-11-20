@@ -32,6 +32,10 @@ type EventCardActionsProps = EventFormOptions & {
   event: EventFormValues
   /** Lifecycle baris pemilik aksi: ARCHIVED menyembunyikan item "Arsipkan". */
   lifecycle?: EventLifecycle
+  /** Boleh Edit dan Arsipkan. Invariant: canUpdate atau canDelete, dijaga pemanggil. */
+  canUpdate: boolean
+  /** Boleh Hapus. */
+  canDelete: boolean
 }
 
 /**
@@ -39,7 +43,15 @@ type EventCardActionsProps = EventFormOptions & {
  * lalu me-refresh RSC; sukses/gagal diumpanbalikkan lewat toast. Pesan error dibaca dari field
  * `error` respons.
  */
-export function EventCardActions({ event, lifecycle, venues, organizers, pics }: EventCardActionsProps) {
+export function EventCardActions({
+  event,
+  lifecycle,
+  venues,
+  organizers,
+  pics,
+  canUpdate,
+  canDelete,
+}: EventCardActionsProps) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [confirmingArchive, setConfirmingArchive] = useState(false)
@@ -106,13 +118,15 @@ export function EventCardActions({ event, lifecycle, venues, organizers, pics }:
               aria-label={`Aksi untuk ${event.name}`}
               className="w-44 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg outline-none"
             >
-              <Menu.Item
-                onClick={() => setEditing(true)}
-                className="flex cursor-default items-center gap-2.5 px-3 py-2 text-sm text-slate-700 outline-none data-[highlighted]:bg-slate-100"
-              >
-                <Pencil size={15} aria-hidden="true" /> Edit
-              </Menu.Item>
-              {lifecycle !== 'ARCHIVED' ? (
+              {canUpdate ? (
+                <Menu.Item
+                  onClick={() => setEditing(true)}
+                  className="flex cursor-default items-center gap-2.5 px-3 py-2 text-sm text-slate-700 outline-none data-[highlighted]:bg-slate-100"
+                >
+                  <Pencil size={15} aria-hidden="true" /> Edit
+                </Menu.Item>
+              ) : null}
+              {canUpdate && lifecycle !== 'ARCHIVED' ? (
                 <Menu.Item
                   onClick={() => setConfirmingArchive(true)}
                   className="flex cursor-default items-center gap-2.5 px-3 py-2 text-sm text-slate-700 outline-none data-[highlighted]:bg-slate-100"
@@ -120,12 +134,14 @@ export function EventCardActions({ event, lifecycle, venues, organizers, pics }:
                   <Archive size={15} aria-hidden="true" /> Arsipkan
                 </Menu.Item>
               ) : null}
-              <Menu.Item
-                onClick={() => setConfirmingDelete(true)}
-                className="flex cursor-default items-center gap-2.5 px-3 py-2 text-sm text-rose-700 outline-none data-[highlighted]:bg-rose-50"
-              >
-                <Trash2 size={15} aria-hidden="true" /> Hapus
-              </Menu.Item>
+              {canDelete ? (
+                <Menu.Item
+                  onClick={() => setConfirmingDelete(true)}
+                  className="flex cursor-default items-center gap-2.5 px-3 py-2 text-sm text-rose-700 outline-none data-[highlighted]:bg-rose-50"
+                >
+                  <Trash2 size={15} aria-hidden="true" /> Hapus
+                </Menu.Item>
+              ) : null}
             </Menu.Popup>
           </Menu.Positioner>
         </Menu.Portal>

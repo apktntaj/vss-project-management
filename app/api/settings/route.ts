@@ -1,18 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { z } from 'zod'
+import { z, type ZodError } from 'zod'
 
 import { auth } from '@/features/auth'
 import { hashPassword } from '@/lib/auth/password'
-import { UserSchema } from '@/domain/user/validation'
+import { userCreateSchema, userUpdateSchema } from '@/domain/user/validation'
 import { referenceEventOrganizerInputSchema, venueSettingsInputSchema, type VenueSettingsInput } from '@/domain/event/validation'
+import type { Role } from '@/domain/auth/types'
+import type { JobJenis } from '@/domain/job/types'
 import { isSupabaseConfigured, getSupabaseAdmin } from '@/lib/supabase/admin'
 import { addDemoUser, listDemoUsers, updateDemoUser } from '@/lib/demo-users'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const userUpdateSchema = UserSchema.extend({ password: z.string().min(1, 'Password wajib diisi.').optional() })
 const resourceSchema = z.enum(['users', 'venues', 'organizers'])
+
+const USER_SELECT = 'id, full_name, email, role, access_level, is_active, handled_job_jenis'
+
+type UserRow = {
+  id: string
+  full_name: string
+  email: string
+  role: Role
+  access_level: string
+  is_active: boolean
+  handled_job_jenis: JobJenis[]
+}
+
+function userResponse(row: UserRow) {
+  return { id: row.id, nama: row.full_name, email: row.email, role: row.role, isAdmin: row.access_level === 'ADMIN', isActive: row.is_active, handledJobJenis: row.handled_job_jenis }
+}
+
+// Galat validasi pengguna: issue pertama; `field` hanya untuk galat jenis job yang dipegang.
+function settingsValidationBody(error: ZodError): { error: string; field?: 'handledJobJenis' } {
+  const issue = error.issues[0]
+  const message = issue?.message ?? 'Data user tidak valid.'
+  return issue?.path[0] === 'handledJobJenis' ? { error: message, field: 'handledJobJenis' } : { error: message }
+}
 
 const VENUE_SELECT =
   'id, legal_name, alias_name, city, tppb_operator_name, tppb_operator_npwp, tppb_operator_address, customs_regional_office, signatory_1_name, signatory_1_title, signatory_2_name, signatory_2_title'
@@ -97,7 +121,7 @@ export async function GET() {
 
     const client = getSupabaseAdmin()
     const [{ data: users, error: usersError }, { data: workspace, error: workspaceError }] = await Promise.all([
-      client.from('app_users').select('id, full_name, email, role, access_level, is_active').order('full_name'),
+      client.from('app_users').select(USER_SELECT).order('full_name').returns<UserRow[]>(),
       client.from('workspaces').select('id').eq('slug', 'default').single<{ id: string }>(),
     ])
     if (usersError) throw new Error(`Pengguna tidak dapat dimuat: ${usersError.message}`)
@@ -111,7 +135,7 @@ export async function GET() {
     if (venuesError) throw new Error(`Venue tidak dapat dimuat: ${venuesError.message}`)
     if (organizersError) throw new Error(`Event organizer tidak dapat dimuat: ${organizersError.message}`)
     return NextResponse.json({
-      users: (users ?? []).map((user) => ({ id: user.id, nama: user.full_name, email: user.email, role: user.role, isAdmin: user.access_level === 'ADMIN', isActive: user.is_active })),
+      users: (users ?? []).map(userResponse),
       venues: (venues ?? []).map(venueResponse),
       organizers: (organizers ?? []).map((organizer) => ({ id: organizer.id, legalName: organizer.legal_name })),
     })
@@ -126,21 +150,23 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const resource = resourceSchema.parse(body.resource)
     if (resource === 'users') {
-      const input = UserSchema.parse(body.input)
+      const parsed = userCreateSchema.safeParse(body.input)
+      if (!parsed.success) return NextResponse.json(settingsValidationBody(parsed.error), { status: 400 })
+      const input = parsed.data
       if (demoFallbackAllowed()) {
         const result = addDemoUser(input)
-        if (!result.ok) throw new Error(result.error)
+        if (!result.ok) return NextResponse.json({ error: result.error, ...(result.field ? { field: result.field } : {}) }, { status: 400 })
         return NextResponse.json(result.user)
       }
       const { data, error } = await getSupabaseAdmin().from('app_users').insert({
-        email: input.email, full_name: input.nama, role: input.role, job_role: input.role, is_admin: input.isAdmin, access_level: input.isAdmin ? 'ADMIN' : 'MEMBER', password_hash: await hashPassword(input.password),
-      }).select('id, full_name, email, role, access_level, is_active').single()
+        email: input.email, full_name: input.nama, role: input.role, job_role: input.role, is_admin: input.isAdmin, access_level: input.isAdmin ? 'ADMIN' : 'MEMBER', handled_job_jenis: input.handledJobJenis, password_hash: await hashPassword(input.password),
+      }).select(USER_SELECT).single<UserRow>()
       if (error) throw new Error(`Pengguna tidak dapat dibuat: ${error.message}`)
       const { data: workspace, error: workspaceError } = await getSupabaseAdmin().from('workspaces').select('id').eq('slug', 'default').single<{ id: string }>()
       if (workspaceError || !workspace) throw new Error('Workspace tidak dapat dimuat: user dibuat tanpa keanggotaan workspace.')
       const { error: memberError } = await getSupabaseAdmin().from('workspace_members').insert({ workspace_id: workspace.id, user_id: data.id, role: 'MEMBER' })
       if (memberError) throw new Error(`Keanggotaan workspace tidak dapat dibuat: ${memberError.message}`)
-      return NextResponse.json({ id: data.id, nama: data.full_name, email: data.email, role: data.role, isAdmin: data.access_level === 'ADMIN', isActive: data.is_active })
+      return NextResponse.json(userResponse(data))
     }
 
     if (!isSupabaseConfigured()) throw new Error('Supabase wajib dikonfigurasi untuk mengelola venue dan event organizer.')
@@ -173,20 +199,22 @@ export async function PATCH(request: NextRequest) {
     const resource = resourceSchema.parse(body.resource)
     const id = z.string().min(1).parse(body.id)
     if (resource === 'users') {
-      const input = userUpdateSchema.parse(body.input)
+      const parsed = userUpdateSchema.safeParse(body.input)
+      if (!parsed.success) return NextResponse.json(settingsValidationBody(parsed.error), { status: 400 })
+      const input = parsed.data
       if (demoFallbackAllowed()) {
         const result = updateDemoUser(id, input)
-        if (!result.ok) throw new Error(result.error)
+        if (!result.ok) return NextResponse.json({ error: result.error, ...(result.field ? { field: result.field } : {}) }, { status: 400 })
         return NextResponse.json(result.user)
       }
       if (input.role !== 'CS') {
         const { count } = await getSupabaseAdmin().from('events').select('id', { count: 'exact', head: true }).eq('pic_id', id)
         if (count && count > 0) throw new Error(`User masih PIC dari ${count} event — PIC event harus berperan CS. Ganti PIC event tersebut terlebih dahulu.`)
       }
-      const update = { email: input.email, full_name: input.nama, role: input.role, job_role: input.role, is_admin: input.isAdmin, access_level: input.isAdmin ? 'ADMIN' : 'MEMBER', ...(input.password ? { password_hash: await hashPassword(input.password) } : {}) }
-      const { data, error } = await getSupabaseAdmin().from('app_users').update(update).eq('id', id).select('id, full_name, email, role, access_level, is_active').single()
+      const update = { email: input.email, full_name: input.nama, role: input.role, job_role: input.role, is_admin: input.isAdmin, access_level: input.isAdmin ? 'ADMIN' : 'MEMBER', handled_job_jenis: input.handledJobJenis, ...(input.password ? { password_hash: await hashPassword(input.password) } : {}) }
+      const { data, error } = await getSupabaseAdmin().from('app_users').update(update).eq('id', id).select(USER_SELECT).single<UserRow>()
       if (error) throw new Error(`Pengguna tidak dapat diperbarui: ${error.message}`)
-      return NextResponse.json({ id: data.id, nama: data.full_name, email: data.email, role: data.role, isAdmin: data.access_level === 'ADMIN', isActive: data.is_active })
+      return NextResponse.json(userResponse(data))
     }
     if (!isSupabaseConfigured()) throw new Error('Supabase wajib dikonfigurasi untuk mengelola venue dan event organizer.')
     if (resource === 'venues') {

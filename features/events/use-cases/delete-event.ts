@@ -14,8 +14,8 @@ import type { CurrentUser } from '@/domain/auth/types'
 /**
  * Hapus event secara permanen. Urutan WAJIB:
  * 1. Muat event via `findEventById`; tidak ada → 404 `Event tidak ditemukan.` (Req 14.1).
- * 2. Otorisasi `event:delete` dengan guard per-objek `eventManagerGuard` (PIC, penerima akses,
- *    atau admin). Peran dulu, lalu guard; gagal guard → 403 (Req 15.2/15.3/15.4).
+ * 2. Otorisasi `event:delete` dengan guard per-objek `eventManagerGuard` (PIC atau
+ *    admin). Peran dulu, lalu guard; gagal guard → 403 (Req 15.2/15.3/15.4).
  * 3. Cek data turunan: `hasDerivedData` → true → 409 yang mengarahkan ke batal/arsip (Req 14.3).
  * 4. Selain itu hapus baris; route mengembalikan 204 (Req 14.2).
  */

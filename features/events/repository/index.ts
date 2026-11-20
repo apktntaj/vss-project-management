@@ -34,10 +34,12 @@ export {
 export {
   type EventGrantee,
   deleteEventAccess,
+  findActiveMember,
   hasEventAccess,
   insertEventAccess,
-  isActiveWorkspaceMember,
   listEventGrantees,
+  listEventIdsByPic,
+  listGrantedEventIds,
 } from './event-access'
 export { listLegacyEventRows, queryEventInsights, queryEventList } from './event-queries'
 export { serverToday } from './shared'

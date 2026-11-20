@@ -4,7 +4,7 @@ import 'server-only'
 // slice-slice use-case (Req 7, 19). Ia menegakkan dua hal yang terpisah: (1) pemetaan peran →
 // Capability sebagai sumber-kebenaran tunggal lewat `can`, dan (2) urutan evaluasi yang ketat di
 // `authorize` — peran DULU, baru guard per-objek. Pemisahan ini penting: guard per-objek milik
-// use-case (mis. PIC / penerima akses / admin) tidak boleh ikut memutuskan apakah peran berhak sama
+// use-case (mis. PIC / admin) tidak boleh ikut memutuskan apakah peran berhak sama
 // sekali, dan tidak boleh dievaluasi kalau peran sudah gagal (mencegah kebocoran kerja/efek).
 // `import 'server-only'` di atas menjaga modul ini tak pernah masuk bundle browser (Req 3.2, 20.2).
 
@@ -62,7 +62,7 @@ export async function authorize(
   if (objectGuard) {
     const allowed = await objectGuard()
     if (!allowed) {
-      throw new ApiError(403, 'Hanya PIC event, penerima akses, atau admin yang dapat melakukan tindakan ini.')
+      throw new ApiError(403, 'Hanya PIC event atau admin yang dapat melakukan tindakan ini.')
     }
   }
 }

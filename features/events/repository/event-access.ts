@@ -1,10 +1,12 @@
 import 'server-only'
 
-// Mengapa: pemilik query tabel `event_access` — hak kelola event per-pengguna (co-PIC) yang
-// diberikan PIC/admin. Murni I/O; keputusan siapa boleh memberi/mencabut milik use-case
-// `manage-event-access`. Setiap query disaring `workspace_id` dari `withWorkspace()`.
+// Mengapa: pemilik query tabel `event_access` — akses event per-pengguna (CS atau Spesialis) untuk
+// menulis job miliknya di event itu, diberikan PIC/admin. Penerima akses tidak mengelola event.
+// Murni I/O; keputusan siapa boleh memberi/mencabut milik use-case `manage-event-access`. Setiap query disaring `workspace_id` dari `withWorkspace()`.
 
 import { withWorkspace } from '@/lib/server/db'
+import type { Role } from '@/domain/auth/types'
+import type { GrantTarget } from '@/features/auth/write-scope'
 import { firstRelation } from './shared'
 
 export type EventGrantee = { userId: string; fullName: string; grantedAt: string }
@@ -94,19 +96,59 @@ export async function deleteEventAccess(eventId: string, userId: string): Promis
   }
 }
 
-/** Apakah `userId` anggota workspace AKTIF? (target pemberian akses harus lolos ini.) */
-export async function isActiveWorkspaceMember(userId: string): Promise<boolean> {
+type ActiveMemberRow = { role: Role; is_admin: boolean }
+
+/**
+ * Peran + flag admin `userId` bila ia anggota workspace AKTIF; null bila tidak. Keputusan boleh/tidaknya
+ * ia diberi akses event milik `grantTargetError` (murni).
+ */
+export async function findActiveMember(userId: string): Promise<GrantTarget | null> {
   const { client, workspaceId } = await withWorkspace()
 
-  const { count, error } = await client
+  const { data, error } = await client
     .from('app_users')
-    .select('id, workspace_members!inner(workspace_id)', { count: 'exact', head: true })
+    .select('role, is_admin, workspace_members!inner(workspace_id)')
     .eq('id', userId)
     .eq('is_active', true)
     .eq('workspace_members.workspace_id', workspaceId)
+    .maybeSingle<ActiveMemberRow>()
 
   if (error) {
     throw new Error(`Gagal memeriksa anggota workspace: ${error.message}`)
   }
-  return (count ?? 0) > 0
+  return data ? { role: data.role, isAdmin: data.is_admin } : null
+}
+
+/** Id event yang dipegang `userId` sebagai PIC di workspace aktif. */
+export async function listEventIdsByPic(userId: string): Promise<string[]> {
+  const { client, workspaceId } = await withWorkspace()
+
+  const { data, error } = await client
+    .from('events')
+    .select('id')
+    .eq('workspace_id', workspaceId)
+    .eq('pic_id', userId)
+    .returns<{ id: string }[]>()
+
+  if (error) {
+    throw new Error(`Gagal memuat akses: ${error.message}`)
+  }
+  return (data ?? []).map((row) => row.id)
+}
+
+/** Id event yang aksesnya diberikan kepada `userId` di workspace aktif. */
+export async function listGrantedEventIds(userId: string): Promise<string[]> {
+  const { client, workspaceId } = await withWorkspace()
+
+  const { data, error } = await client
+    .from('event_access')
+    .select('event_id')
+    .eq('workspace_id', workspaceId)
+    .eq('user_id', userId)
+    .returns<{ event_id: string }[]>()
+
+  if (error) {
+    throw new Error(`Gagal memuat akses: ${error.message}`)
+  }
+  return (data ?? []).map((row) => row.event_id)
 }

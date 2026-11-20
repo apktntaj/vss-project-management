@@ -13,5 +13,5 @@ export {
 } from '@/features/jobs/use-cases/update-job'
 export { cancelJob } from '@/features/jobs/use-cases/cancel-job'
 export { createStageJob, ensureStageJobs } from '@/features/jobs/use-cases/stage-jobs'
-export { assertJobAcceptsAttachments } from '@/features/jobs/use-cases/job-guards'
+export { authorizeJobAttachmentWrite } from '@/features/jobs/use-cases/job-guards'
 export { loadKanwilDocumentContext } from '@/features/jobs/use-cases/kanwil-documents'

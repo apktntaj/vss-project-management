@@ -8,7 +8,10 @@ import 'server-only'
 import { withWorkspace } from '@/lib/server/db'
 import { verifyPassword } from '@/lib/auth/password'
 import { validateCredential } from '@/domain/auth/validation'
+import { isGrantableTarget } from '@/features/auth/write-scope'
+import { ROLES } from '@/domain/auth/types'
 import type { Credential, CurrentUser, Role, User, AuthenticatedPrincipal } from '@/domain/auth/types'
+import type { JobJenis } from '@/domain/job/types'
 
 // Bentuk baris mentah dari `app_users` (snake_case apa adanya dari Postgres). Dipakai internal
 // untuk memetakan ke tipe domain `User` yang camelCase.
@@ -80,7 +83,22 @@ export async function listCandidatePics(): Promise<{ id: string; fullName: strin
   return queryMemberOptions('CS')
 }
 
-async function queryMemberOptions(role: Role | null): Promise<{ id: string; fullName: string }[]> {
+// Peran yang boleh menerima akses event, diturunkan dari tabel peran (`job:create`), bukan didaftar ulang.
+const GRANTABLE_ROLES: Role[] = ROLES.filter((role) => isGrantableTarget(role, false))
+
+/**
+ * Calon penerima akses event: anggota workspace aktif yang bukan admin dan berperan dengan
+ * `job:create` (CS atau Spesialis). Daftar ini menyaring pilihan UI; server tetap menegakkan
+ * `grantTargetError` saat akses diberikan.
+ */
+export async function listGrantCandidates(): Promise<{ id: string; fullName: string }[]> {
+  return queryMemberOptions(null, true)
+}
+
+async function queryMemberOptions(
+  role: Role | null,
+  grantableOnly = false,
+): Promise<{ id: string; fullName: string }[]> {
   const { client, workspaceId } = await withWorkspace()
 
   let query = client
@@ -89,6 +107,7 @@ async function queryMemberOptions(role: Role | null): Promise<{ id: string; full
     .eq('workspace_members.workspace_id', workspaceId)
     .eq('is_active', true)
   if (role) query = query.eq('role', role)
+  if (grantableOnly) query = query.eq('is_admin', false).in('role', GRANTABLE_ROLES)
 
   const { data, error } = await query.order('full_name').returns<MemberOptionRow[]>()
 
@@ -127,4 +146,20 @@ export async function authenticateCredential(credential: Credential): Promise<Au
     workspaceId: user.workspaceId,
     isAdmin: user.isAdmin,
   }
+}
+
+/**
+ * Jenis job yang dipegang pengguna `userId` (kolom `handled_job_jenis`); kosong bila pengguna tidak
+ * ditemukan di workspace. Gagal memuat -> Error 'Gagal memuat akses: ...' (503 lewat toErrorResponse).
+ */
+export async function findHandledJobJenis(userId: string): Promise<JobJenis[]> {
+  const { client, workspaceId } = await withWorkspace()
+  const { data, error } = await client
+    .from('app_users')
+    .select('handled_job_jenis, workspace_members!inner(workspace_id)')
+    .eq('id', userId)
+    .eq('workspace_members.workspace_id', workspaceId)
+    .maybeSingle<{ handled_job_jenis: JobJenis[] | null }>()
+  if (error) throw new Error(`Gagal memuat akses: ${error.message}`)
+  return data?.handled_job_jenis ?? []
 }

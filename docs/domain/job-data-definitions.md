@@ -184,6 +184,23 @@ Aturan rezim dijaga berlapis: UI hanya menawarkan kombinasi yang sah, use-case m
 menolak item disposal), dan constraint database menjadi lapis terakhir (`jobs_ata_no_disposal`,
 `jobs_permanent_single_stage`).
 
+### `JobJenis` (B6, 2026-11-20)
+
+**Definisi**
+
+```text
+JobJenis adalah salah satu dari TPPB_BC_23, ATA_CARNET, TEMPORARY_IMPORT, PERMANENT_IMPORT,
+ROAD_SHIPMENT, atau LOCAL.
+```
+
+**Interpretasi** — jenis job yang bisa dibuat: salah satu `JenisInternational` atau Local.
+Dipakai untuk menentukan jenis job yang dipegang seorang Spesialis (`Pengguna.handledJobJenis`,
+dokumen event) dan jenis yang boleh ia buat. TS (`domain/job/types.ts`):
+`jobJenisValues = [...internationalJobJenisValues, 'LOCAL']`,
+`type JobJenis = (typeof jobJenisValues)[number]`.
+
+**Contoh** — `ROAD_SHIPMENT` (spesialis road); `LOCAL` (spesialis forklift).
+
 ### `JenisDokumenBC`
 
 **Definisi**
@@ -291,6 +308,12 @@ dipakai sebagai relasi data). Manifest dan kepulangan hanya menempel pada jalur
 international (definisi di dokumen manifest). PIC opsional sampai ditetapkan;
 pemilik event adalah PIC default koordinasi.
 
+**Pemilik job — `createdById` (B6, 2026-11-20, makna berubah)**: PEMILIK job. Job masuk/Local/Road:
+pengguna yang membuatnya. Job turunan (stage DISPOSAL/RE_EXPORT): pemilik job masuknya.
+Invariant: untuk job turunan, `createdById` = `createdById` job sumbernya; diisi server saat insert
+dan tidak pernah diubah lewat jalur tulis mana pun. Pemilik menentukan siapa (penerima akses
+event) yang boleh mengubah job itu — lihat "Otorisasi tulis job" di dokumen event.
+
 **Contoh (semua varian dan boundary):**
 
 1. JobLocal — event JIE-2026, agent kosong, pic kosong, status DRAFT.
@@ -333,6 +356,8 @@ tolak — perbaiki mapping, bukan tambahi flag.
   milik klien bila agent kosong; total alokasi tidak melebihi quantity sumber (melanjutkan aturan
   B-2 requirements).
 - **I-4:** JobId unik di seluruh sistem; NomorJob tidak dijamin unik (referensi eksternal).
+- **I-6 (B6):** `createdById` adalah pemilik job; job turunan mewarisi pemilik job masuknya dan
+  nilainya tidak pernah berubah. Penerima akses event hanya menulis job miliknya.
 - **I-5:** job tidak pernah dihapus. Keluar dari alur kerja hanya lewat pembatalan (alasan wajib);
   job batal tidak menerima tulis apa pun (dijaga use-case dan trigger DB).
 

@@ -28,6 +28,10 @@ export const internationalJobJenisValues = [
 ] as const
 export type InternationalJobJenis = (typeof internationalJobJenisValues)[number]
 
+/** Jenis job yang bisa dibuat: sub-jenis International, atau Local. */
+export const jobJenisValues = [...internationalJobJenisValues, 'LOCAL'] as const
+export type JobJenis = (typeof jobJenisValues)[number]
+
 export const jobStatuses = ['DRAFT', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'CANCELLED'] as const
 export type JobStatus = (typeof jobStatuses)[number]
 export const jobStatusLabels: Record<JobStatus, string> = {

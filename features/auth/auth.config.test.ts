@@ -173,7 +173,7 @@ describe('Bug Condition Exploration', () => {
     // ARRANGE: Principal lengkap dengan semua klaim yang dibutuhkan
     const fullUser: JwtUser = {
       id: 'user-123',
-      role: 'STAFF',
+      role: 'SPESIALIS',
       workspaceId: 'workspace-default',
       isAdmin: false,
     }
@@ -183,7 +183,7 @@ describe('Bug Condition Exploration', () => {
     const jwtResult = newAuthJwtCallback(token, fullUser)
 
     // ASSERT: Token membawa semua klaim
-    expect(jwtResult.role).toBe('STAFF')
+    expect(jwtResult.role).toBe('SPESIALIS')
     expect(jwtResult.workspaceId).toBe('workspace-default')
     expect(jwtResult.isAdmin).toBe(false)
 
@@ -196,7 +196,7 @@ describe('Bug Condition Exploration', () => {
 
     // ASSERT: Session lengkap dengan semua klaim
     expect(sessionResult.user.id).toBe('user-123')
-    expect(sessionResult.user.role).toBe('STAFF')
+    expect(sessionResult.user.role).toBe('SPESIALIS')
     expect(sessionResult.user.workspaceId).toBe('workspace-default')
     expect(sessionResult.user.isAdmin).toBe(false)
 
@@ -205,7 +205,7 @@ describe('Bug Condition Exploration', () => {
     expect(currentUser).not.toBeNull()
     expect(currentUser).toEqual({
       id: 'user-123',
-      role: 'STAFF',
+      role: 'SPESIALIS',
       workspaceId: 'workspace-default',
     })
   })
@@ -262,7 +262,7 @@ describe('Bug Condition Exploration', () => {
   test('Semua Role harus lolos narrowing dengan principal lengkap', () => {
     // Property-based loop: untuk setiap role, pastikan principal lengkap
     // menghasilkan sesi yang lolos narrowing.
-    const ROLES: Role[] = ['CS', 'STAFF', 'OPERATIONS', 'DOCUMENT_ASSISTANT', 'FINANCE']
+    const ROLES: Role[] = ['CS', 'SPESIALIS', 'FINANCE']
 
     for (const role of ROLES) {
       const user: JwtUser = {
@@ -300,7 +300,7 @@ describe('Bug Condition Exploration', () => {
     for (const { isAdmin, expectedIsAdmin } of testCases) {
       const user: JwtUser = {
         id: 'user-123',
-        role: 'STAFF',
+        role: 'SPESIALIS',
         workspaceId: 'workspace-default',
         isAdmin,
       }
@@ -383,7 +383,7 @@ describe('Preservation Property Tests', () => {
       // ARRANGE: Token dengan id dan role tetapi tanpa workspaceId
       const token: JwtToken = {
         sub: 'user-123',
-        role: 'STAFF',
+        role: 'SPESIALIS',
         isAdmin: false,
         // workspaceId tidak ada
       }
@@ -402,7 +402,7 @@ describe('Preservation Property Tests', () => {
     test('Token tanpa sub ditolak oleh narrowing', () => {
       // ARRANGE: Token tanpa subject
       const token: JwtToken = {
-        role: 'STAFF',
+        role: 'SPESIALIS',
         workspaceId: 'workspace-default',
         isAdmin: false,
         // sub tidak ada
@@ -439,44 +439,34 @@ describe('Preservation Property Tests', () => {
   // Req 3.5: can(role, capability) konsisten dengan ROLE_CAPABILITIES
   // ---------------------------------------------------------------------------
   describe('Req 3.5: Peran tak berhak → 403 (can consistency)', () => {
-    test('CS dapat mengelola event dan akses event, tetapi bukan tagihan/job write', () => {
+    test('CS mengelola event dan menulis job, tetapi tidak membuat event/referensi maupun tagihan', () => {
       expect(can('CS', 'event:read')).toBe(true)
-      expect(can('CS', 'event:create')).toBe(true)
+      expect(can('CS', 'event:update')).toBe(true)
       expect(can('CS', 'event:access:manage')).toBe(true)
+      expect(can('CS', 'job:update')).toBe(true)
+      expect(can('CS', 'event:create')).toBe(false)
+      expect(can('CS', 'reference:create')).toBe(false)
       expect(can('CS', 'job:invoice:write')).toBe(false)
-      expect(can('CS', 'job:update')).toBe(false)
+    })
+
+    test('SPESIALIS menulis job dan exhibitor, tetapi tidak mengelola event maupun tagihan', () => {
+      expect(can('SPESIALIS', 'job:create')).toBe(true)
+      expect(can('SPESIALIS', 'exhibitor:write')).toBe(true)
+      expect(can('SPESIALIS', 'event:update')).toBe(false)
+      expect(can('SPESIALIS', 'event:access:manage')).toBe(false)
+      expect(can('SPESIALIS', 'job:invoice:write')).toBe(false)
     })
 
     test('FINANCE satu-satunya peran dengan kapabilitas tagihan', () => {
       expect(can('FINANCE', 'job:invoice:write')).toBe(true)
-      expect(can('OPERATIONS', 'job:invoice:write')).toBe(false)
-      expect(can('STAFF', 'job:invoice:write')).toBe(false)
+      expect(can('FINANCE', 'job:update')).toBe(false)
+      expect(can('FINANCE', 'event:read')).toBe(true)
     })
 
-    test('OPERATIONS tidak dapat membuat event maupun mengelola akses event', () => {
-      expect(can('OPERATIONS', 'event:read')).toBe(true)
-      expect(can('OPERATIONS', 'event:create')).toBe(false)
-      expect(can('OPERATIONS', 'event:access:manage')).toBe(false)
-      expect(can('OPERATIONS', 'job:update')).toBe(true)
-    })
-
-    test('DOCUMENT_ASSISTANT hanya memiliki event:read', () => {
-      expect(can('DOCUMENT_ASSISTANT', 'event:read')).toBe(true)
-      expect(can('DOCUMENT_ASSISTANT', 'event:create')).toBe(false)
-      expect(can('DOCUMENT_ASSISTANT', 'event:update')).toBe(false)
-      expect(can('DOCUMENT_ASSISTANT', 'event:cancel')).toBe(false)
-      expect(can('DOCUMENT_ASSISTANT', 'event:delete')).toBe(false)
-      expect(can('DOCUMENT_ASSISTANT', 'reference:create')).toBe(false)
-    })
-
-    test('STAFF memiliki event + job tetapi bukan tagihan dan bukan pengelola akses', () => {
-      expect(can('STAFF', 'event:read')).toBe(true)
-      expect(can('STAFF', 'event:create')).toBe(true)
-      expect(can('STAFF', 'event:update')).toBe(true)
-      expect(can('STAFF', 'event:cancel')).toBe(true)
-      expect(can('STAFF', 'event:delete')).toBe(true)
-      expect(can('STAFF', 'reference:create')).toBe(true)
-      expect(can('STAFF', 'event:access:manage')).toBe(false)
+    test('peran yang dihapus (token lama) tidak dipetakan ke capability apa pun', () => {
+      const legacy = 'STAFF' as unknown as Role
+      expect(can(legacy, 'job:read')).toBe(false)
+      expect(can('OPERATIONS' as unknown as Role, 'event:read')).toBe(false)
     })
 
     // Property-based loop: semua role × capability - tabel kapabilitas yang diharapkan
@@ -484,34 +474,41 @@ describe('Preservation Property Tests', () => {
       const expectedCapabilities: Record<Role, Set<Capability>> = {
         CS: new Set([
           'event:read',
-          'event:create',
           'event:update',
           'event:cancel',
           'event:delete',
           'event:access:manage',
-          'reference:create',
+          'job:read',
+          'job:create',
+          'job:update',
+          'job:cancel',
+          'exhibitor:write',
         ]),
-        STAFF: new Set([
+        SPESIALIS: new Set([
           'event:read',
-          'event:create',
-          'event:update',
-          'event:cancel',
-          'event:delete',
-          'reference:create',
+          'job:read',
+          'job:create',
+          'job:update',
+          'job:cancel',
+          'exhibitor:write',
         ]),
-        OPERATIONS: new Set(['event:read']),
-        DOCUMENT_ASSISTANT: new Set(['event:read']),
-        FINANCE: new Set(['event:read']),
+        FINANCE: new Set(['event:read', 'job:read', 'job:invoice:write']),
       }
 
       const capabilities: Array<Capability> = [
-        'event:read',
         'event:create',
         'event:update',
         'event:cancel',
         'event:delete',
-        'event:access:manage',
+        'event:read',
         'reference:create',
+        'job:read',
+        'job:create',
+        'job:update',
+        'job:cancel',
+        'exhibitor:write',
+        'job:invoice:write',
+        'event:access:manage',
       ]
 
       for (const role of ROLES) {
@@ -551,7 +548,7 @@ describe('Preservation Property Tests', () => {
     test('isAdmin: false dipertahankan melalui jwt dan session callback', () => {
       const user: JwtUser = {
         id: 'user-staff',
-        role: 'STAFF',
+        role: 'SPESIALIS',
         workspaceId: 'workspace-default',
         isAdmin: false,
       }
@@ -598,7 +595,7 @@ describe('Preservation Property Tests', () => {
     test('Token tanpa isAdmin menghasilkan session.user.isAdmin = false', () => {
       const token: JwtToken = {
         sub: 'user-123',
-        role: 'STAFF',
+        role: 'SPESIALIS',
         workspaceId: 'workspace-default',
         // isAdmin tidak ada
       }

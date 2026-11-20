@@ -48,7 +48,7 @@ berikutnya), Job (dokumen sendiri), mekanisme session/JWT (teknis).
 ```text
 Atomic / Enumeration
   TanggalHari (doc manifest) · Email · UserId · WorkspaceId · NamaLegal
-  Peran · StatusAkun
+  Peran · StatusAkun · (otorisasi tulis job: Actor, EventRelation, JobWriteScope)
 → Structure dasar
   Pengguna → Venue → EventOrganizer
 → Itemization
@@ -99,21 +99,25 @@ login — ini pemetaan data, bukan desain model.)
 
 ### `Peran`
 
-**Definisi**
+**Definisi** (B6, disetujui 2026-11-20; menggantikan STAFF/SUPERVISOR/CUSTOMER_SERVICE/DOCUMENT_ASSISTANT)
 
 ```text
-Peran adalah salah satu dari STAFF, SUPERVISOR, CUSTOMER_SERVICE, atau DOCUMENT_ASSISTANT.
+Peran adalah salah satu dari:
+  CS         — customer service; PIC event
+  SPESIALIS  — memegang jenis job tertentu (mis. Road Shipment) di event yang ia diberi akses
+  FINANCE    — baca semua + tagihan
 ```
 
-**Interpretasi** — peran fungsional pengguna yang ditegakkan server (slice auth: "bukan sekadar
-flag is_admin"). STAFF operasional penuh; SUPERVISOR ditambah manajemen user; CUSTOMER_SERVICE
-lihat dan input terbatas; DOCUMENT_ASSISTANT fokus dokumen.
+**Interpretasi** — peran kerja pengguna yang ditegakkan server (`domain/auth/types.ts`,
+tabel kemampuan di `features/auth/capabilities.ts`). Admin adalah flag terpisah (`isAdmin`) di
+atas peran, bukan peran keempat. Label tampilan (`ROLE_LABELS`): `CS` = "CS (PIC event)",
+`SPESIALIS` = "Spesialis", `FINANCE` = "Finance". Baca tetap terbuka untuk semua peran; yang
+dibatasi adalah tulis job per event (lihat "Otorisasi tulis job").
 
-**Contoh** — keempat nilai.
+**Contoh** — ketiga nilai.
 
-**Open questions:** (a) makna operasional DOCUMENT_ASSISTANT belum memiliki UI pembatasan
-(G-8); (b) tumpang tindih `isAdmin` dengan SUPERVISOR — dua sistem otorisasi hidup berdampingan
-(`Role` dan flag `isAdmin`); model target sebaiknya memilih satu.
+**Open question:** tumpang tindih `isAdmin` dengan peran — dua sistem berdampingan; model
+target sebaiknya memilih satu.
 
 ### `StatusAkun`
 
@@ -142,15 +146,23 @@ Pengguna terdiri dari:
   peran       : Peran
   status      : StatusAkun
   workspace   : WorkspaceId
+  handledJobJenis : daftar JobJenis   (B6; kosong kecuali SPESIALIS)
 ```
 
 **Interpretasi** — satu akun operasional. `passwordHash` sengaja **tidak** menjadi komponen:
 hash adalah milik subsistem autentikasi (kontrak scrypt self-describing sudah didefinisikan dan
 teruji di `domain/auth/types.ts`), sedangkan model ini adalah pengguna sebagai *data domain*
-yang dirujuk event, job, dan ticket. `isAdmin` tidak dimodelkan — lihat open question Peran.
+yang dirujuk event, job, dan ticket. `isAdmin` tidak dimodelkan — lihat open question Peran. `handledJobJenis` (`domain/user/types.ts`,
+kolom `app_users`) adalah jenis job yang dipegang seorang spesialis.
 
-**Contoh** — admin VSS (SUPERVISOR, AKTIF); CS baru (CUSTOMER_SERVICE, AKTIF).
-Invalid: Pengguna tanpa peran; Pengguna dengan dua workspace.
+**Invariant (B6)** — `peran = SPESIALIS` ⇒ `handledJobJenis` tidak kosong; `peran ≠ SPESIALIS` ⇒
+`handledJobJenis` kosong; tanpa duplikat. Ditegakkan Zod (`userCreateSchema`/`userUpdateSchema`)
+dan fungsi murni `normalizeHandledJenis`/`handledJenisError`.
+
+**Contoh** — admin VSS (CS + isAdmin, AKTIF, handledJobJenis kosong); CS baru (CS, AKTIF);
+spesialis road (SPESIALIS, AKTIF, handledJobJenis = [ROAD_SHIPMENT]).
+Invalid: Pengguna tanpa peran; Pengguna dengan dua workspace; SPESIALIS tanpa jenis job;
+CS dengan handledJobJenis terisi.
 
 **Template pemrosesan**
 
@@ -159,6 +171,55 @@ prosesPengguna(u):
   gunakan u.peran untuk cabang otorisasi
   u.status NONAKTIF → tolak login & tolak penunjukan PIC
 ```
+
+### Otorisasi tulis job (B6, 2026-11-20)
+
+Tipe teknis lapisan otorisasi (`features/auth/write-scope.ts`, tanpa `server-only`; bukan entitas).
+
+**Definisi**
+
+```text
+Actor adalah (id : UserId, role : Peran, isAdmin : Boolean)
+  // Pick<CurrentUser, 'id' | 'role' | 'isAdmin'>; `CurrentUser` server dan `session.user`
+  // klien sama-sama memenuhi bentuk ini.
+
+JobWriteCapability adalah salah satu dari job:create, job:update, job:cancel.
+
+EventRelation adalah salah satu dari:
+  PIC      — pengguna adalah PIC event
+  GRANTEE  — pengguna diberi akses event (baris event_access), bukan PIC
+  NONE
+  invariant: PIC menang atas GRANTEE
+
+JobWriteScope adalah salah satu dari:
+  ALL   — semua job di event itu
+  OWN   — hanya job yang createdById-nya pengguna itu
+  NONE
+
+EventAccessEntry terdiri dari (eventId : EventId, relation : EventRelation)
+  invariant: relation tidak pernah NONE; satu entri per eventId
+
+MyWriteAccess terdiri dari:
+  events          : daftar EventAccessEntry
+  handledJobJenis : daftar JobJenis (kosong kecuali spesialis)
+  // bekal UI untuk pengguna yang login (GET /api/account/write-access)
+
+ExhibitorUpdateVerdict adalah salah satu dari:
+  ALLOWED
+  JOB_NOT_WRITABLE   — job perantara bukan milik pengguna
+  NOT_LINKED         — exhibitor tidak tercantum di job perantara
+```
+
+**Interpretasi** — keputusan "boleh menulis job ini?" bergantung pada peran, relasi pengguna
+dengan event (PIC / penerima akses / tidak ada), dan pemilik job (`Job.createdById`). Admin
+dan PIC event: `ALL`; penerima akses (CS atau Spesialis): `OWN`, dan Spesialis hanya untuk
+`handledJobJenis`-nya; selain itu `NONE`. Penerima akses hanya boleh membuat job dan mengubah
+job yang ia buat sendiri. Exhibitor tidak punya pemilik: ia diubah lewat job perantara
+(`viaJobId`) yang boleh ditulis pengguna dan memuat exhibitor itu. Tidak ada keadaan
+"exhibitor bersama" ('SHARED dihapus, opsi b): hall/booth tetap di master exhibitor event, jadi
+ubahan lewat satu job ikut terlihat di job lain yang memakai exhibitor itu (efek diterima
+sampai fase 2). Hanya PIC atau admin yang mengelola event (akses, agent); membuat event,
+venue, dan EO khusus admin.
 
 ### `NamaLegal`
 
@@ -396,6 +457,9 @@ buat/edit event; tabel event dan detail event hanya menampilkan surat (klik untu
   B-3).
 - **I-6:** seluruh definisi di atas terikat satu WorkspaceId; lintas workspace tidak
   direpresentasikan.
+- **I-8 (B6, 2026-11-20):** penerima akses event hanya membuat job dan mengubah job miliknya
+  (`createdById`); PIC dan admin menulis semua job di event itu; pengelolaan event (akses, agent)
+  hanya PIC atau admin. Detail di "Otorisasi tulis job".
 - **I-7 (proposal 2026-10-29):** bila `masukVenue` dan `keluarVenue` keduanya terisi,
   `masukVenue ≤ keluarVenue`. Urutannya terhadap `mulai`/`selesai` hanya tipikal (move-in
   umumnya ≤ `mulai`, move-out umumnya ≥ `selesai`), bukan invariant — ada pemasangan saat
@@ -472,8 +536,8 @@ tanpa baris workspace_members tidak bisa login — pemetaan data, bukan model.
 1. **SiklusHidupEvent** — **RESOLVED 2026-10-29**: siklus tersimpan = AKTIF | DIARSIPKAN
    (administratif, manual); "tuntas" menjadi `StatusTuntasEvent` turunan dari job, bukan keadaan
    tersimpan; `CANCELLED` lama dibiarkan historis baca-saja. Detail di §3.
-2. **Otorisasi satu model:** `Peran` saja, atau tetap ada `isAdmin` terpisah? Hubungan
-   SUPERVISOR vs admin?
+2. **Otorisasi satu model:** `Peran` saja, atau tetap ada `isAdmin` terpisah? (B6 2026-11-20:
+   peran kini CS/SPESIALIS/FINANCE dan `isAdmin` tetap flag terpisah; SUPERVISOR dihapus.)
 3. **Pemangkasan Venue/EO permanen?** Venue tanpa alamat lengkap/kontak/loadingAccessNotes dan EO
    hanya namaLegal — cukup untuk operasional, atau akan kembali? Jika kembali, struktur Kontak
    sebaiknya didefinisikan sekali dan dipakai bersama Exhibitor/Agent (slice berikutnya).

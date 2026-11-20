@@ -7,12 +7,16 @@ import {
   createSettingsRecord,
   deleteSettingsRecord,
   getSettingsData,
+  SettingsValidationError,
   updateSettingsRecord,
   type SettingsData,
   type SettingsOrganizer,
   type SettingsUser,
   type SettingsVenue,
 } from '@/lib/data-client'
+import { jobJenisValues, type JobJenis } from '@/domain/job/types'
+import { handledJenisError } from '@/domain/user/validation'
+import { jobJenisLabel, jobJenisListLabel } from '@/lib/job-jenis'
 import { CeisaConnectionSettings } from '@/components/ceisa/connection-settings'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
@@ -70,6 +74,30 @@ export function SettingsManager({ currentUserId }: { currentUserId: string }) {
   const [deleting, setDeleting] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [roleDraft, setRoleDraft] = useState<Role>('CS')
+  const [jenisDraft, setJenisDraft] = useState<JobJenis[]>([])
+  const [jenisError, setJenisError] = useState<string | null>(null)
+
+  function openEditor(next: NonNullable<Editor>) {
+    if (next.resource === 'users') {
+      const user = next.id ? data?.users.find((item) => item.id === next.id) : undefined
+      setRoleDraft(user?.role ?? 'CS')
+      setJenisDraft(user?.handledJobJenis ?? [])
+      setJenisError(null)
+    }
+    setEditor(next)
+  }
+
+  function changeRole(role: Role) {
+    setRoleDraft(role)
+    setJenisError(null)
+  }
+
+  function toggleJenis(jenis: JobJenis) {
+    const next = jobJenisValues.filter((item) => (item === jenis ? !jenisDraft.includes(item) : jenisDraft.includes(item)))
+    setJenisDraft(next)
+    if (next.length > 0) setJenisError(null)
+  }
 
   useEffect(() => {
     getSettingsData()
@@ -84,15 +112,26 @@ export function SettingsManager({ currentUserId }: { currentUserId: string }) {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!editor) return
-    const form = new FormData(event.currentTarget)
+    const formElement = event.currentTarget
+    const form = new FormData(formElement)
     const isUser = editor.resource === 'users'
+    const handled: JobJenis[] = roleDraft === 'SPESIALIS' ? jenisDraft : []
+    if (isUser) {
+      const jenisMessage = handledJenisError(roleDraft, handled)
+      if (jenisMessage) {
+        setJenisError(jenisMessage)
+        formElement.querySelector<HTMLInputElement>('input[name="handledJobJenis"]')?.focus()
+        return
+      }
+    }
     const input = isUser
       ? {
           nama: text(form, 'nama'),
           email: text(form, 'email'),
           password: text(form, 'password') || undefined,
           isAdmin: form.get('isAdmin') === 'on',
-          role: text(form, 'role') as Role,
+          role: roleDraft,
+          handledJobJenis: handled,
         }
       : editor.resource === 'venues'
         ? {
@@ -127,8 +166,13 @@ export function SettingsManager({ currentUserId }: { currentUserId: string }) {
       notify(`${editor.resource === 'users' ? 'User' : editor.resource === 'venues' ? 'Venue' : 'Event organizer'} berhasil ${editor.id ? 'diperbarui' : 'ditambahkan'}.`, 'success')
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Pengaturan tidak dapat disimpan.'
-      setError(message)
-      notify(message, 'error')
+      // Galat field tampil di dekat field saja (AGENTS.md: jangan digandakan sebagai toast).
+      if (caught instanceof SettingsValidationError && caught.field === 'handledJobJenis') {
+        setJenisError(message)
+      } else {
+        setError(message)
+        notify(message, 'error')
+      }
     } finally {
       setSaving(false)
     }
@@ -159,8 +203,8 @@ export function SettingsManager({ currentUserId }: { currentUserId: string }) {
   return (
     <div className="space-y-8">
       <section className="card overflow-hidden">
-        <div className="flex items-center justify-between gap-4 border-b border-black/10 px-5 py-4"><div><h2 className="text-xl font-bold">Manajemen user</h2><p className="mt-1 text-sm text-slate-500">Tambah dan perbarui akses akun.</p></div><button className="btn-primary" onClick={() => setEditor({ resource: 'users' })}>Tambah user</button></div>
-        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Nama</th><th className="px-5 py-3">Email</th><th className="px-5 py-3">Peran</th><th className="px-5 py-3">Akses</th><th className="px-5 py-3" /></tr></thead><tbody className="divide-y divide-black/5">{data.users.map((user) => <tr key={user.id}><td className="px-5 py-4 font-medium">{user.nama}</td><td className="px-5 py-4 text-slate-600">{user.email}</td><td className="px-5 py-4 text-slate-600">{ROLE_LABELS[user.role]}</td><td className="px-5 py-4">{user.isAdmin ? 'Admin' : 'User'}</td><td className="px-5 py-4 text-right"><div className="flex justify-end gap-1"><button aria-label={`Edit ${user.nama}`} title="Edit" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" onClick={() => setEditor({ resource: 'users', id: user.id })}><Pencil size={16} /></button>{user.id !== currentUserId && <button aria-label={`Hapus ${user.nama}`} title="Hapus" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" onClick={() => setPendingDelete({ resource: 'users', id: user.id, name: user.nama, detail: user.email })}><Trash2 size={16} /></button>}</div></td></tr>)}</tbody></table></div>
+        <div className="flex items-center justify-between gap-4 border-b border-black/10 px-5 py-4"><div><h2 className="text-xl font-bold">Manajemen user</h2><p className="mt-1 text-sm text-slate-500">Tambah dan perbarui akses akun.</p></div><button className="btn-primary" onClick={() => openEditor({ resource: 'users' })}>Tambah user</button></div>
+        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Nama</th><th className="px-5 py-3">Email</th><th className="px-5 py-3">Peran</th><th className="px-5 py-3">Akses</th><th className="px-5 py-3" /></tr></thead><tbody className="divide-y divide-black/5">{data.users.map((user) => <tr key={user.id}><td className="px-5 py-4 font-medium">{user.nama}</td><td className="px-5 py-4 text-slate-600">{user.email}</td><td className="px-5 py-4"><span className="text-slate-600">{ROLE_LABELS[user.role]}</span>{user.handledJobJenis.length > 0 && <span className="block text-xs text-slate-500">{jobJenisListLabel(user.handledJobJenis)}</span>}</td><td className="px-5 py-4">{user.isAdmin ? 'Admin' : 'User'}</td><td className="px-5 py-4 text-right"><div className="flex justify-end gap-1"><button aria-label={`Edit ${user.nama}`} title="Edit" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" onClick={() => openEditor({ resource: 'users', id: user.id })}><Pencil size={16} /></button>{user.id !== currentUserId && <button aria-label={`Hapus ${user.nama}`} title="Hapus" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" onClick={() => setPendingDelete({ resource: 'users', id: user.id, name: user.nama, detail: user.email })}><Trash2 size={16} /></button>}</div></td></tr>)}</tbody></table></div>
       </section>
       <section className="card overflow-hidden">
         <div className="flex items-center justify-between gap-4 border-b border-black/10 px-5 py-4"><div><h2 className="text-xl font-bold">Venue</h2><p className="mt-1 text-sm text-slate-500">Kelola venue yang dipilih saat membuat event.</p></div><button className="btn-primary" onClick={() => setEditor({ resource: 'venues' })}>Tambah venue</button></div>
@@ -171,7 +215,7 @@ export function SettingsManager({ currentUserId }: { currentUserId: string }) {
         <div className="divide-y divide-black/5">{data.organizers.length ? data.organizers.map((organizer) => <div key={organizer.id} className="flex items-center justify-between gap-4 px-5 py-4"><div><p className="font-medium">{organizer.legalName}</p></div><div className="flex items-center justify-end gap-1"><button aria-label={`Edit ${organizer.legalName}`} title="Edit" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" onClick={() => setEditor({ resource: 'organizers', id: organizer.id })}><Pencil size={16} /></button><button aria-label={`Hapus ${organizer.legalName}`} title="Hapus" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" onClick={() => setPendingDelete({ resource: 'organizers', id: organizer.id, name: organizer.legalName })}><Trash2 size={16} /></button></div></div>) : <p className="px-5 py-6 text-sm text-slate-500">Belum ada event organizer.</p>}</div>
       </section>
       <CeisaConnectionSettings />
-      {editor && <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"><form onSubmit={submit} className="card max-h-[90vh] w-full max-w-xl space-y-4 overflow-y-auto p-6"><div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-bold">{editor.id ? 'Edit' : 'Tambah'} {editor.resource === 'users' ? 'user' : editor.resource === 'venues' ? 'venue' : 'event organizer'}</h2><p className="mt-1 text-sm text-slate-500">Field bertanda wajib harus diisi.</p></div><button type="button" className="btn-secondary" onClick={() => { setEditor(null); setError('') }}>Tutup</button></div>{editor.resource === 'users' ? <><label className="label">Nama<input name="nama" required defaultValue={selectedUser?.nama} className="input" /></label><label className="label">Email<input name="email" type="email" required defaultValue={selectedUser?.email} className="input" /></label><label className="label">Password<input name="password" type="password" required={!editor.id} className="input" /></label><label className="label">Peran<select name="role" required defaultValue={selectedUser?.role ?? 'OPERATIONS'} className="input">{ROLES.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}</select></label><label className="flex items-center gap-3 text-sm font-medium"><input name="isAdmin" type="checkbox" defaultChecked={selectedUser?.isAdmin} />Akses admin</label></> : editor.resource === 'venues' ? <><label className="label">Nama venue<input name="legalName" required defaultValue={selectedVenue?.legalName} className="input" /></label><label className="label">Alias <span className="font-normal text-slate-400">(opsional)</span><input name="aliasName" defaultValue={selectedVenue?.aliasName ?? ''} className="input" /></label><label className="label">Kota<input name="city" defaultValue={selectedVenue?.city ?? ''} className="input" /></label><VenueTppbFields venue={selectedVenue} /></> : <><label className="label">Nama organizer<input name="legalName" required defaultValue={selectedOrganizer?.legalName} className="input" /></label></>}{error && <p className="text-sm font-medium text-rose-700">{error}</p>}<div className="flex justify-end gap-3"><button type="button" className="btn-secondary" onClick={() => { setEditor(null); setError('') }}>Batal</button><button disabled={saving} className="btn-primary">{saving ? 'Menyimpan…' : 'Simpan'}</button></div></form></div>}
+      {editor && <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"><form onSubmit={submit} className="card max-h-[90vh] w-full max-w-xl space-y-4 overflow-y-auto p-6"><div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-bold">{editor.id ? 'Edit' : 'Tambah'} {editor.resource === 'users' ? 'user' : editor.resource === 'venues' ? 'venue' : 'event organizer'}</h2><p className="mt-1 text-sm text-slate-500">Field bertanda wajib harus diisi.</p></div><button type="button" className="btn-secondary" onClick={() => { setEditor(null); setError('') }}>Tutup</button></div>{editor.resource === 'users' ? <><label className="label">Nama<input name="nama" required defaultValue={selectedUser?.nama} className="input" /></label><label className="label">Email<input name="email" type="email" required defaultValue={selectedUser?.email} className="input" /></label><label className="label">Password<input name="password" type="password" required={!editor.id} className="input" /></label><div><label className="label">Peran<select name="role" required value={roleDraft} onChange={(event) => changeRole(event.target.value as Role)} aria-describedby="role-help" className="input">{ROLES.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}</select></label><p id="role-help" className="mt-1 text-xs text-slate-500">CS dapat menjadi PIC event. Spesialis membuat dan mengurus job sesuai jenis yang dipegang, di event yang ia diberi akses. Finance mengurus tagihan.</p></div>{roleDraft === 'SPESIALIS' && <fieldset className="rounded-xl border border-black/10 p-4" aria-describedby={jenisError ? 'handled-jenis-error' : undefined}><legend className="px-1 text-sm font-semibold">Jenis job yang dipegang <span className="font-normal text-slate-500">(wajib, minimal satu)</span></legend><div className="mt-2 grid gap-1 sm:grid-cols-2">{jobJenisValues.map((jenis) => <label key={jenis} className="flex min-h-11 items-center gap-3 rounded-lg px-2 text-sm hover:bg-slate-50"><input type="checkbox" name="handledJobJenis" value={jenis} className="h-4 w-4 accent-orange-600" checked={jenisDraft.includes(jenis)} onChange={() => toggleJenis(jenis)} />{jobJenisLabel(jenis)}</label>)}</div>{jenisError && <p id="handled-jenis-error" role="alert" className="mt-2 text-sm text-rose-700">{jenisError}</p>}</fieldset>}<label className="flex items-center gap-3 text-sm font-medium"><input name="isAdmin" type="checkbox" defaultChecked={selectedUser?.isAdmin} />Akses admin</label></> : editor.resource === 'venues' ? <><label className="label">Nama venue<input name="legalName" required defaultValue={selectedVenue?.legalName} className="input" /></label><label className="label">Alias <span className="font-normal text-slate-400">(opsional)</span><input name="aliasName" defaultValue={selectedVenue?.aliasName ?? ''} className="input" /></label><label className="label">Kota<input name="city" defaultValue={selectedVenue?.city ?? ''} className="input" /></label><VenueTppbFields venue={selectedVenue} /></> : <><label className="label">Nama organizer<input name="legalName" required defaultValue={selectedOrganizer?.legalName} className="input" /></label></>}{error && <p className="text-sm font-medium text-rose-700">{error}</p>}<div className="flex justify-end gap-3"><button type="button" className="btn-secondary" onClick={() => { setEditor(null); setError('') }}>Batal</button><button disabled={saving} className="btn-primary">{saving ? 'Menyimpan…' : 'Simpan'}</button></div></form></div>}
       <Dialog open={pendingDelete !== null} onOpenChange={(next) => { if (!next) setPendingDelete(null) }}>
         <DialogContent className="max-w-md">
           <DialogHeader>

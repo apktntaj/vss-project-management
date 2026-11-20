@@ -15,7 +15,9 @@ import { stageReconciliation } from '@/domain/job/stages'
 import { jobNumberLabel } from '@/domain/job/numbering'
 import type { DerivedJobStage } from '@/domain/job/types'
 import { StatusBadge } from '@/components/status-badge'
+import { GuardedButton } from '@/components/guarded-button'
 import { notify } from '@/lib/notify'
+import type { Denial } from '@/lib/write-access'
 import { inboundSlot, loadedSeries, stageSlot, type JobSeriesState } from '@/lib/job-series'
 
 
@@ -29,6 +31,7 @@ export function JobStageCard({
   sourceJob,
   series,
   onCreated,
+  createDenial,
 }: {
   job: Job
   /** Job masuk (BC 2.3) rangkaian ini; null bila gagal dimuat. */
@@ -36,6 +39,8 @@ export function JobStageCard({
   /** Job turunan aktif rangkaian ini (sudah disaring pemanggilnya) beserta keadaan pemuatannya. */
   series: JobSeriesState
   onCreated: () => void
+  /** null = boleh membuat job turunan; string = alasan penolakan. */
+  createDenial: Denial
 }) {
   const [creating, setCreating] = useState<DerivedJobStage | null>(null)
   // Peringatan selisih hanya dihitung dari rangkaian yang sudah termuat.
@@ -116,8 +121,8 @@ export function JobStageCard({
                 <>
                   <span className="text-slate-500">Belum ada</span>
                   {canCreate && stage !== 'INBOUND' && (
-                    <button
-                      type="button"
+                    <GuardedButton
+                      denial={createDenial}
                       onClick={() => create(stage as DerivedJobStage)}
                       disabled={creating !== null}
                       className="btn-secondary !px-3 !py-1 text-xs"
@@ -125,7 +130,7 @@ export function JobStageCard({
                       {creating === stage
                         ? 'Membuat…'
                         : `Buat job ${jobStageLabel(job.internationalJenis, stage)}`}
-                    </button>
+                    </GuardedButton>
                   )}
                 </>
               )}

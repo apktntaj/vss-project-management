@@ -54,7 +54,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { date, downloadCustomsWorkbook, label } from '@/components/job-row'
 import { jobContext } from '@/lib/job-context'
 import { jobJenisKey, jobJenisLabel } from '@/lib/job-jenis'
+import { GuardedButton, denyWrite } from '@/components/guarded-button'
 import { notify } from '@/lib/notify'
+import { useWriteAccess } from '@/lib/use-write-access'
+import { useCanEditBilling } from '@/lib/use-billing-access'
+import { jobPermissions, tabActionDenial } from '@/lib/write-access'
 import { jobLabel, jobNumberLabel } from '@/domain/job/numbering'
 import { hasTabData, tabActionLabel } from '@/domain/job/tab-data'
 import type { JobDetailTab, JobReadinessTarget } from '@/lib/job-readiness'
@@ -104,6 +108,8 @@ function EmptyTabState({ tab }: { tab: JobDetailTab }) {
 
 export default function JobDetail({ params }: { params: { id: string } }) {
   const router = useRouter()
+  const wa = useWriteAccess()
+  const billing = useCanEditBilling()
   const [job, setJob] = useState<Job | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -173,7 +179,11 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   // Pabean (Local/Road) mengalihkan langkah "Dokumen pabean" ke Transport.
   function navigateReadiness(target: JobReadinessTarget) {
     if (target === 'header') {
-      if (job?.status !== 'CANCELLED') setHeaderOpen(true)
+      if (!job || job.status === 'CANCELLED') return
+      // Langkah "No Job" = mencoba mengubah header.
+      const { updateDenial } = jobPermissions(wa, job)
+      if (typeof updateDenial === 'string') denyWrite(updateDenial)
+      else setHeaderOpen(true)
     } else selectTab(target === 'pabean' && !hasPabeanTab ? 'transport' : target)
   }
 
@@ -320,6 +330,9 @@ export default function JobDetail({ params }: { params: { id: string } }) {
       : tab === 'pabean'
         ? ''
         : tabActionLabel(tab, job)
+  const perms = jobPermissions(wa, job)
+  const updateDenial = perms.updateDenial
+  const tabDenial = tabActionDenial(tab, perms, billing)
   const jobMenuItems: ActionMenuItem[] = [
     ...(workbookKind
       ? [
@@ -346,6 +359,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           icon: Ban,
           tone: 'danger',
           separatorBefore: Boolean(workbookKind),
+          ...(perms.cancelDenial !== null ? { deniedReason: perms.cancelDenial } : {}),
           onSelect: () => setCancelOpen(true),
         },
   ]
@@ -391,13 +405,13 @@ export default function JobDetail({ params }: { params: { id: string } }) {
         </div>
         <div className="flex items-center gap-2">
           {!cancelled && (
-            <button
-              type="button"
+            <GuardedButton
+              denial={updateDenial}
               onClick={() => setHeaderOpen(true)}
               className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
             >
               <Pencil size={14} aria-hidden="true" /> Ubah header
-            </button>
+            </GuardedButton>
           )}
           <ActionMenu label="Menu aksi job" items={jobMenuItems} width={224} bordered />
         </div>
@@ -428,7 +442,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
       )}
       <div className="grid items-start gap-4 md:grid-cols-2">
         <JobReadinessBar job={job} activeTab={tab} onNavigate={navigateReadiness} />
-        <JobNotesPanel job={job} onSaved={setJob} />
+        <JobNotesPanel job={job} onSaved={setJob} denial={updateDenial} />
       </div>
       {job.stage && (
         <JobStageCard
@@ -436,6 +450,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
           sourceJob={sourceJob}
           series={series}
           onCreated={() => setSeriesRefresh((value) => value + 1)}
+          createDenial={perms.createStageDenial}
         />
       )}
       <Tabs value={tab} onValueChange={(value) => selectTab(value as JobDetailTab)}>
@@ -452,13 +467,13 @@ export default function JobDetail({ params }: { params: { id: string } }) {
             ))}
           </TabsList>
           {showTabAction && (
-            <button
-              type="button"
+            <GuardedButton
+              denial={tabDenial}
               onClick={openTabEditor}
               className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
             >
               <Pencil size={14} aria-hidden="true" /> {tabActionText}
-            </button>
+            </GuardedButton>
           )}
         </div>
         <TabsContent value="muatan" className="space-y-6">
@@ -545,7 +560,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
         </TabsContent>
         {hasPabeanTab && stageDocument && job.stage && (
           <TabsContent value="pabean" className="space-y-6">
-            <JobCustomsCard job={job} source={sourceJob} onSaved={setJob} />
+            <JobCustomsCard job={job} source={sourceJob} onSaved={setJob} denial={updateDenial} />
             <JobDocumentsCard job={job} kinds={CUSTOMS_DOCUMENT_KINDS} title="Lampiran pabean" />
             <JobCustomsPendingCard
               kind={stageDocument}
@@ -596,6 +611,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
               job={job}
               exhibitors={isEvent ? exhibitors : null}
               onSaved={setJob}
+              partyDenial={updateDenial}
             />
           ) : (
             <EmptyTabState tab="billing" />
@@ -629,6 +645,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
         open={billingOpen}
         onClose={() => setBillingOpen(false)}
         onSaved={setJob}
+        canEditParty={updateDenial === null}
       />
       <JobHeaderDialog
         job={job}

@@ -5,7 +5,9 @@
 // dan bisa dioperasikan dengan keyboard (panah, Home/End, Escape mengembalikan fokus ke tombol).
 
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
-import { MoreVertical, type LucideIcon } from 'lucide-react'
+import { Lock, MoreVertical, type LucideIcon } from 'lucide-react'
+
+import { denyWrite } from '@/components/guarded-button'
 
 export type ActionMenuItem = {
   key: string
@@ -15,6 +17,8 @@ export type ActionMenuItem = {
   /** `danger` untuk aksi merusak (Batalkan); tampil merah. */
   tone?: 'danger'
   disabled?: boolean
+  /** Alasan penolakan: butir tampil abu-abu bergembok; dipilih -> menu tertutup, alasan jadi toast, `onSelect` tidak dipanggil. */
+  deniedReason?: string
   /** Garis pemisah di atas item ini. */
   separatorBefore?: boolean
 }
@@ -143,18 +147,34 @@ export function ActionMenu({
                   role="menuitem"
                   type="button"
                   disabled={item.disabled}
+                  aria-disabled={item.deniedReason ? 'true' : undefined}
                   onClick={() => {
+                    if (item.deniedReason) {
+                      // Fokus kembali ke tombol ⋮, lalu alasan sebagai toast; aksi tidak dijalankan.
+                      close(true)
+                      denyWrite(item.deniedReason)
+                      return
+                    }
                     close(false)
                     item.onSelect()
                   }}
                   className={`flex h-10 w-full items-center gap-2.5 px-3 text-left text-sm focus-visible:outline-none disabled:cursor-not-allowed disabled:text-slate-500 ${
-                    item.tone === 'danger'
-                      ? 'text-rose-700 hover:bg-rose-50 focus-visible:bg-rose-50'
-                      : 'text-slate-700 hover:bg-slate-50 focus-visible:bg-slate-100'
+                    item.deniedReason
+                      ? 'cursor-not-allowed text-slate-500 hover:bg-slate-50 focus-visible:bg-slate-100'
+                      : item.tone === 'danger'
+                        ? 'text-rose-700 hover:bg-rose-50 focus-visible:bg-rose-50'
+                        : 'text-slate-700 hover:bg-slate-50 focus-visible:bg-slate-100'
                   }`}
                 >
                   <item.icon size={15} aria-hidden="true" className="shrink-0" />
                   <span className="truncate">{item.label}</span>
+                  {item.deniedReason && (
+                    <Lock
+                      size={13}
+                      aria-hidden="true"
+                      className="ml-auto shrink-0 text-slate-400"
+                    />
+                  )}
                 </button>
               </div>
             ))}

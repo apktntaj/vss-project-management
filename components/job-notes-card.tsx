@@ -4,7 +4,9 @@ import { useState, type KeyboardEvent } from 'react'
 import { AlertTriangle, Pencil, Plus } from 'lucide-react'
 
 import { saveJobOperationalDetails, type Job } from '@/lib/data-client'
+import { GuardedButton } from '@/components/guarded-button'
 import { notify } from '@/lib/notify'
+import type { Denial } from '@/lib/write-access'
 
 type TextField = 'notes' | 'specialInstructions'
 
@@ -55,10 +57,12 @@ function JobTextField({
   job,
   field,
   onSaved,
+  denial,
 }: {
   job: Job
   field: TextField
   onSaved: (job: Job) => void
+  denial: Denial
 }) {
   const copy = COPY[field]
   const value = job[field]
@@ -141,13 +145,13 @@ function JobTextField({
         <span className="font-semibold text-foreground">{copy.title}:</span> {copy.empty}
       </p>
     ) : (
-      <button
-        type="button"
+      <GuardedButton
+        denial={denial}
         onClick={startEditing}
         className="inline-flex min-h-8 w-fit items-center gap-1 rounded-md text-sm text-slate-600 hover:text-slate-900"
       >
         <Plus size={14} aria-hidden="true" /> {copy.add}
-      </button>
+      </GuardedButton>
     )
   }
 
@@ -165,14 +169,14 @@ function JobTextField({
           {copy.title}
         </p>
         {!readOnly ? (
-          <button
-            type="button"
+          <GuardedButton
+            denial={denial}
             onClick={startEditing}
             aria-label={`Ubah ${copy.title.toLowerCase()}`}
             className="inline-flex size-8 items-center justify-center rounded-md text-slate-600 hover:bg-black/5 hover:text-slate-900"
           >
             <Pencil size={14} aria-hidden="true" />
-          </button>
+          </GuardedButton>
         ) : null}
       </div>
       <p
@@ -200,14 +204,22 @@ function JobTextField({
  * Satu kartu catatan job: special instructions (permintaan klien, menonjol bila terisi) lalu
  * catatan operasional. Saat keduanya kosong kartu tetap ringkas (dua ajakan "Tambah …").
  */
-export function JobNotesPanel({ job, onSaved }: { job: Job; onSaved: (job: Job) => void }) {
+export function JobNotesPanel({
+  job,
+  onSaved,
+  denial,
+}: {
+  job: Job
+  onSaved: (job: Job) => void
+  denial: Denial
+}) {
   return (
     <section className="card space-y-3 p-5" aria-labelledby="job-notes-heading">
       <h2 id="job-notes-heading" className="text-sm font-semibold">
         Catatan job
       </h2>
-      <JobTextField job={job} field="specialInstructions" onSaved={onSaved} />
-      <JobTextField job={job} field="notes" onSaved={onSaved} />
+      <JobTextField job={job} field="specialInstructions" onSaved={onSaved} denial={denial} />
+      <JobTextField job={job} field="notes" onSaved={onSaved} denial={denial} />
     </section>
   )
 }

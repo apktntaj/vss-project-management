@@ -13,7 +13,9 @@ import {
   type Job,
 } from '@/lib/data-client'
 import { useCanEditBilling } from '@/lib/use-billing-access'
+import { GuardedButton } from '@/components/guarded-button'
 import { notify } from '@/lib/notify'
+import type { Denial } from '@/lib/write-access'
 import {
   Dialog,
   DialogContent,
@@ -249,10 +251,13 @@ export function JobPartyInvoiceCard({
   job,
   exhibitors,
   onSaved,
+  partyDenial,
 }: {
   job: Job
   exhibitors: Exhibitor[] | null
   onSaved: (job: Job) => void
+  /** null = boleh mengubah Pihak; string = alasan penolakan. "Ubah" Tagihan tetap useCanEditBilling. */
+  partyDenial: Denial
 }) {
   const canEditBilling = useCanEditBilling()
   const [editing, setEditing] = useState<Editing>(null)
@@ -260,15 +265,15 @@ export function JobPartyInvoiceCard({
     setEditing(null)
     onSaved(next)
   }
-  const editButton = (target: Exclude<Editing, null>, label: string) =>
+  const editButton = (target: Exclude<Editing, null>, label: string, denial: Denial) =>
     editing === target || job.status === 'CANCELLED' ? null : (
-      <button
-        type="button"
+      <GuardedButton
+        denial={denial}
         className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-slate-900"
         onClick={() => setEditing(target)}
       >
         <Pencil size={12} aria-hidden="true" /> {label}
-      </button>
+      </GuardedButton>
     )
 
   return (
@@ -279,7 +284,7 @@ export function JobPartyInvoiceCard({
             <h2 className="flex items-center gap-2 font-semibold">
               <UserRound size={18} className="text-slate-600" aria-hidden="true" /> Pihak
             </h2>
-            {editButton('party', 'Ubah')}
+            {editButton('party', 'Ubah', partyDenial)}
           </div>
           {editing === 'party' ? (
             <PartyEditor job={job} exhibitors={exhibitors} onSaved={saved} onCancel={() => setEditing(null)} />
@@ -298,7 +303,7 @@ export function JobPartyInvoiceCard({
             <h2 className="flex items-center gap-2 font-semibold">
               <Receipt size={18} className="text-slate-600" aria-hidden="true" /> Tagihan
             </h2>
-            {canEditBilling && editButton('invoice', 'Ubah')}
+            {canEditBilling && editButton('invoice', 'Ubah', null)}
           </div>
           {editing === 'invoice' ? (
             <InvoiceEditor job={job} onSaved={saved} onCancel={() => setEditing(null)} />
@@ -326,12 +331,15 @@ export function JobBillingDialog({
   open,
   onClose,
   onSaved,
+  canEditParty,
 }: {
   job: Job
   exhibitors: Exhibitor[] | null
   open: boolean
   onClose: () => void
   onSaved: (job: Job) => void
+  /** Bagian Pihak hanya tampil bila boleh mengubah job; Tagihan tetap useCanEditBilling. */
+  canEditParty: boolean
 }) {
   const canEditBilling = useCanEditBilling()
   return (
@@ -341,14 +349,16 @@ export function JobBillingDialog({
           <DialogTitle className="text-lg font-bold">Ubah billing</DialogTitle>
           <DialogDescription>Pihak yang ditagih dan tagihan job.</DialogDescription>
         </DialogHeader>
-        <section>
-          <h3 className="flex items-center gap-2 font-semibold">
-            <UserRound size={18} className="text-slate-600" aria-hidden="true" /> Pihak
-          </h3>
-          <PartyEditor job={job} exhibitors={exhibitors} onSaved={onSaved} onCancel={onClose} />
-        </section>
+        {canEditParty && (
+          <section>
+            <h3 className="flex items-center gap-2 font-semibold">
+              <UserRound size={18} className="text-slate-600" aria-hidden="true" /> Pihak
+            </h3>
+            <PartyEditor job={job} exhibitors={exhibitors} onSaved={onSaved} onCancel={onClose} />
+          </section>
+        )}
         {canEditBilling && (
-          <section className="border-t pt-4">
+          <section className={canEditParty ? 'border-t pt-4' : undefined}>
             <h3 className="flex items-center gap-2 font-semibold">
               <Receipt size={18} className="text-slate-600" aria-hidden="true" /> Tagihan
             </h3>

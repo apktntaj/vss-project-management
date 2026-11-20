@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
-// Mengapa: route TIPIS kelola hak akses event (co-PIC). Otorisasi (PIC/admin saja) ditegakkan di
+// Mengapa: route TIPIS kelola akses event (CS/Spesialis penerima akses). Otorisasi (PIC/admin saja) ditegakkan di
 // use-case `manage-event-access`; route hanya autentikasi → parse → delegasi.
 
 import { requireCurrentUser } from '@/features/auth'

@@ -35,6 +35,9 @@ import { PageSkeleton } from '@/components/loading-skeletons'
 import { downloadCustomsWorkbook, label } from '@/components/job-row'
 import { JobTable } from '@/components/job-table'
 import { toast } from '@/components/toast'
+import { denyWrite } from '@/components/guarded-button'
+import { useWriteAccess } from '@/lib/use-write-access'
+import { creatableJenis, jobCreateDenialReason } from '@/lib/write-access'
 
 const selectClass =
   'input m-0 h-10 w-full py-0 text-sm shadow-none focus-visible:outline-none lg:w-44 lg:flex-none'
@@ -58,6 +61,7 @@ const initialFilters: JobTableFilters = { ...emptyJobTableFilters, activeOnly: f
  */
 export default function JobsPage() {
   const router = useRouter()
+  const wa = useWriteAccess()
   const [jobs, setJobs] = useState<Job[]>([])
   const [events, setEvents] = useState<LocalEvent[]>([])
   const [filters, setFilters] = useState<JobTableFilters>(initialFilters)
@@ -109,6 +113,26 @@ export default function JobsPage() {
   const setFilter = <K extends keyof JobTableFilters>(key: K, value: JobTableFilters[K]) =>
     setFilters((current) => ({ ...current, [key]: value }))
   const hasFilters = JSON.stringify(filters) !== JSON.stringify(initialFilters)
+
+  const creatableEvents = events.filter((event) => creatableJenis(wa, event.id).length > 0)
+  const newJobDenial = jobCreateDenialReason(
+    wa,
+    events.map((event) => event.id),
+  )
+  const jobBaruButton = (
+    <Button
+      type="button"
+      aria-disabled={newJobDenial !== null ? 'true' : undefined}
+      onClick={() => {
+        if (newJobDenial !== null) denyWrite(newJobDenial)
+        else setShowNewJob(true)
+      }}
+      className="h-10 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 lg:ml-auto"
+    >
+      <Plus data-icon="inline-start" />
+      Job baru
+    </Button>
+  )
 
   if (loading) return <PageSkeleton cards={1} rows={8} />
   if (loadError)
@@ -223,10 +247,7 @@ export default function JobsPage() {
               Reset filter
             </button>
           ) : null}
-          <Button type="button" onClick={() => setShowNewJob(true)} className="h-10 lg:ml-auto">
-            <Plus data-icon="inline-start" />
-            Job baru
-          </Button>
+          {jobBaruButton}
         </div>
       </section>
 
@@ -260,10 +281,7 @@ export default function JobsPage() {
                 Reset filter
               </button>
             ) : (
-              <Button type="button" onClick={() => setShowNewJob(true)}>
-                <Plus data-icon="inline-start" />
-                Job baru
-              </Button>
+              jobBaruButton
             )}
           </div>
         </section>
@@ -280,7 +298,9 @@ export default function JobsPage() {
       )}
       {wizardOpen && (
         <JobCreateWizard
-          events={events}
+          events={creatableEvents}
+          presetEvent={null}
+          jenisFor={(eventId) => creatableJenis(wa, eventId)}
           onCreated={(job) => router.push(`/jobs/${job.id}`)}
           onCancel={() => setWizardOpen(false)}
         />

@@ -9,7 +9,9 @@
 import { useState } from 'react'
 import Link from 'next/link'
 
+import { GuardedButton } from '@/components/guarded-button'
 import { notify } from '@/lib/notify'
+import type { Denial } from '@/lib/write-access'
 import { jobNumberLabel } from '@/domain/job/numbering'
 import {
   getOperationalDetails,
@@ -33,17 +35,28 @@ export function JobCustomsCard({
   job,
   source,
   onSaved,
+  denial,
 }: {
   job: Job
   source?: Job | null
   onSaved: (job: Job) => void
+  /** null = boleh mengubah; string = alasan penolakan (form tampil sebagai data baca). */
+  denial: Denial
 }) {
   // Hanya job bertahap yang punya dokumen pabean (halaman sudah menjaga, ini pengetatan tipe).
   if (job.stage == null) return null
   const kind = stageCustomsDocument(job.internationalJenis, job.stage)
   if (kind == null) return null
   return (
-    <CustomsForm key={job.id} job={job} source={source} stage={job.stage} kind={kind} onSaved={onSaved} />
+    <CustomsForm
+      key={job.id}
+      job={job}
+      source={source}
+      stage={job.stage}
+      kind={kind}
+      onSaved={onSaved}
+      denial={denial}
+    />
   )
 }
 
@@ -53,12 +66,14 @@ function CustomsForm({
   stage,
   kind,
   onSaved,
+  denial,
 }: {
   job: Job
   source?: Job | null
   stage: JobStage
   kind: CustomsDocumentKind
   onSaved: (job: Job) => void
+  denial: Denial
 }) {
   const base = getOperationalDetails(job)
   const document = base.customs[kind]
@@ -84,7 +99,8 @@ function CustomsForm({
   const [guaranteeDeadline, setGuaranteeDeadline] = useState(guarantee?.reExportDeadline ?? '')
   const [warehouseName, setWarehouseName] = useState(document?.warehouseName ?? '')
   const [saving, setSaving] = useState(false)
-  const disabled = job.status === 'CANCELLED'
+  const cancelled = job.status === 'CANCELLED'
+  const disabled = cancelled || typeof denial === 'string'
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -303,11 +319,11 @@ function CustomsForm({
             </div>
           )}
         </fieldset>
-        {!disabled && (
+        {!cancelled && (
           <div>
-            <button type="submit" className="btn-primary" disabled={saving}>
+            <GuardedButton type="submit" denial={denial} className="btn-primary" disabled={saving}>
               {saving ? 'Menyimpan…' : 'Simpan'}
-            </button>
+            </GuardedButton>
           </div>
         )}
       </form>

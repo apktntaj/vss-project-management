@@ -180,7 +180,7 @@ export async function saveJobCipl(
   if (!job) throw new ApiError(404, 'Job tidak ditemukan.')
   if (!saved) throw new ApiError(409, STALE_VERSION_MESSAGE)
   // Barang berubah → pastikan job tahap yang diperlukan ada (tanpa membuat ulang yang batal).
-  if (job.stage === 'INBOUND') await ensureStageJobs(currentUser, job)
+  if (job.stage === 'INBOUND') await ensureStageJobs(job)
   return job
 }
 
@@ -191,6 +191,7 @@ export async function saveJobInward(
   version: number,
   inward: InwardManifest,
 ): Promise<Job> {
+  await authorizeJobWrite(currentUser, 'job:update', jobId)
   const job = await loadJobForWrite(jobId, version)
   if (job.kind === 'LOCAL') throw new ApiError(400, 'Job Local tidak memiliki dokumen kepabeanan.')
   if (job.sourceJobId) throw new ApiError(400, 'Inward manifest hanya ada di job masuk (BC 2.3).')

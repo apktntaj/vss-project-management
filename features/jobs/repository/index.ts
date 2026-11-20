@@ -15,6 +15,7 @@ export {
   findAgentName,
   findJobById,
   insertJob,
+  isExhibitorLinkedToJob,
   listDerivedJobs,
   saveJobCiplGuarded,
   updateJobGuarded,

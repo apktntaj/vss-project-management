@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { auth } from '@/auth'
-import { assertJobAcceptsAttachments } from '@/features/jobs'
+import { requireCurrentUser } from '@/features/auth'
+import { authorizeJobAttachmentWrite } from '@/features/jobs'
 import { ApiError, toErrorResponse } from '@/lib/server/errors'
 import {
   attachmentOwners,
@@ -17,8 +18,8 @@ export const dynamic = 'force-dynamic'
 const owners = new Set<string>(attachmentOwners)
 
 export async function POST(request: NextRequest) {
-  if (!(await auth())?.user) return NextResponse.json({ error: 'Autentikasi diperlukan.' }, { status: 401 })
   try {
+    const currentUser = await requireCurrentUser()
     const form = await request.formData()
     const id = form.get('id')
     const ownerType = form.get('ownerType')
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
     if (typeof id !== 'string' || typeof ownerId !== 'string' || ownerType !== 'JOB' || !(file instanceof File)) {
       return NextResponse.json({ error: 'Lampiran tidak valid.' }, { status: 400 })
     }
-    await assertJobAcceptsAttachments(ownerId)
+    await authorizeJobAttachmentWrite(currentUser, ownerId)
     return NextResponse.json(await uploadAttachment({ id, ownerId, ownerType, kind: typeof kind === 'string' ? kind : null, file }))
   } catch (error) {
     if (error instanceof ApiError) return toErrorResponse(error)

@@ -2,6 +2,7 @@ import { AlertTriangle } from 'lucide-react'
 import { redirect } from 'next/navigation'
 
 import { requireCurrentUser } from '@/features/auth'
+import { isRoleSufficient } from '@/features/auth/write-scope'
 import {
   listEventOrganizerReferences,
   listEventsForDashboard,
@@ -77,6 +78,8 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
     throw error
   }
   const query = toQuery(searchParams)
+  // Hanya admin yang boleh membuat event (berdasarkan peran).
+  const canCreateEvent = isRoleSufficient(currentUser, 'event:create')
 
   // Daftar dan opsi master data tidak saling bergantung, jadi dimuat paralel. Indikator error
   // (Req 16.8): bila query daftar gagal, use-case MELEMPAR; kita tangkap dan render keadaan error
@@ -95,7 +98,9 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
         <EventFilters pics={pics} resultCount={page?.items.length}>
           <div className="flex items-center gap-3">
             <EventExportButton />
-            <EventCreateButton venues={venues} organizers={organizers} pics={pics} />
+            {canCreateEvent ? (
+              <EventCreateButton venues={venues} organizers={organizers} pics={pics} />
+            ) : null}
           </div>
         </EventFilters>
 
@@ -106,7 +111,13 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
             <p className="mt-1 text-sm text-slate-400">Muat ulang halaman untuk mencoba lagi.</p>
           </div>
         ) : (
-          <EventList items={page.items} venues={venues} organizers={organizers} pics={pics} />
+          <EventList
+            items={page.items}
+            venues={venues}
+            organizers={organizers}
+            pics={pics}
+            actor={currentUser}
+          />
         )}
       </section>
     </div>

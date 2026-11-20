@@ -180,7 +180,7 @@ export async function updateEvent(id: string, input: EventInput): Promise<EventR
  * menyentuh field data lain, jadi satu setter sempit lebih aman daripada `updateEvent` penuh.
  * Mengembalikan baris terbaru, atau null bila event tidak ada (race: terhapus di antara load dan
  * transisi) — bukan error; use-case menerjemahkannya ke 404. Keputusan BOLEH/tidaknya transisi
- * (guard PIC/penerima akses/admin, pencatatan cancellation) tetap milik use-case; repository hanya menulis.
+ * (guard PIC/admin, pencatatan cancellation) tetap milik use-case; repository hanya menulis.
  */
 export async function setEventStatus(
   id: string,
@@ -265,7 +265,7 @@ export async function findEventSummary(id: string): Promise<EventSummary | null>
 
 /**
  * Hapus event dalam workspace. Mengembalikan true bila sebuah baris terhapus, false bila tidak ada
- * yang cocok (event sudah tidak ada). Keputusan boleh/tidaknya hapus (guard PIC/penerima akses/admin,
+ * yang cocok (event sudah tidak ada). Keputusan boleh/tidaknya hapus (guard PIC/admin,
  * pengecekan data turunan) adalah urusan use-case — repository hanya mengeksekusi.
  */
 export async function deleteEvent(id: string): Promise<boolean> {

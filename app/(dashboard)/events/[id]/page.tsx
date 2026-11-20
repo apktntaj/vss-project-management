@@ -30,6 +30,15 @@ import { sortJobsForTable } from '@/lib/job-list'
 import { withStageGoods } from '@/domain/job/stages'
 import { buildExhibitorGroups, type ExhibitorGroupBy } from '@/lib/exhibitor-view'
 import { PageSkeleton } from '@/components/loading-skeletons'
+import { EventAccessCard } from '@/components/event-access-card'
+import { GuardedButton } from '@/components/guarded-button'
+import { useWriteAccess } from '@/lib/use-write-access'
+import {
+  canManageEventAccess,
+  creatableJenis,
+  jobCreateDenialReason,
+  jobPermissions,
+} from '@/lib/write-access'
 import { toast } from '@/components/toast'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ContextTicketList } from '@/components/context-ticket-list'
@@ -87,6 +96,7 @@ export default function EventDetailPage() {
   const [openJenis, setOpenJenis] = useState<Record<string, boolean>>({})
   const [cancellingJob, setCancellingJob] = useState<Job | null>(null)
   const [letterJob, setLetterJob] = useState<Job | null>(null)
+  const wa = useWriteAccess()
 
   const jobsById = useMemo(() => new Map(jobs.map((job) => [job.id, job])), [jobs])
 
@@ -204,6 +214,9 @@ export default function EventDetailPage() {
   const today = wibDateOf(new Date())
   const displayStatus = deriveDisplayStatus(event.startsOn, event.endsOn, today)
   const cancelled = lifecycleBadge(event.status === 'CANCELLED' ? 'CANCELLED' : 'ACTIVE')
+  const jenisBaru = creatableJenis(wa, event.id)
+  const newJobDenial = jobCreateDenialReason(wa, [event.id])
+  const canManageAccess = canManageEventAccess(wa, event.picId)
 
   return (
     <div className="-mt-3 space-y-4 lg:-mt-5">
@@ -326,13 +339,13 @@ export default function EventDetailPage() {
             </Tabs>
           </div>
           {event.status !== 'CANCELLED' && (
-            <button
-              type="button"
+            <GuardedButton
+              denial={newJobDenial}
               onClick={() => setShowNewJob(true)}
               className="btn-primary shrink-0"
             >
               <Plus size={16} aria-hidden="true" /> New Job
-            </button>
+            </GuardedButton>
           )}
         </div>
         {view !== 'jenis' ? (
@@ -400,6 +413,7 @@ export default function EventDetailPage() {
                                 onKanwilLetter: setLetterJob,
                                 onTppbGoodsForm: generateTppbGoodsForm,
                               }}
+                              permissions={jobPermissions(wa, job)}
                             />
                           ))}
                         </tbody>
@@ -416,6 +430,7 @@ export default function EventDetailPage() {
           </p>
         )}
       </section>
+      {canManageAccess && <EventAccessCard eventId={event.id} />}
       {/* <ContextTicketList contextKind="EVENT" contextId={event.id} /> */}
       {cancellingJob && (
         <CancelJobDialog
@@ -436,10 +451,11 @@ export default function EventDetailPage() {
           onSubmit={generateKanwilLetter}
         />
       )}
-      {showNewJob && (
+      {showNewJob && newJobDenial === null && (
         <JobCreateWizard
           events={[event]}
           presetEvent={event}
+          jenisFor={() => jenisBaru}
           onCreated={(job) => router.push(`/jobs/${job.id}`)}
           onCancel={() => setShowNewJob(false)}
         />

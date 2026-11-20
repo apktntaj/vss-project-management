@@ -22,8 +22,8 @@ import type { EventInput } from '@/domain/event/types'
 /**
  * Perbarui event. Urutan WAJIB:
  * 1. Muat event via `findEventById`; tidak ada → 404 `Event tidak ditemukan.` (Req 11.2).
- * 2. Otorisasi `event:update` (Req 11.1) + guard per-objek `eventManagerGuard` (PIC, penerima
- *    akses, atau admin); peran/guard gagal → 403.
+ * 2. Otorisasi `event:update` (Req 11.1) + guard per-objek `eventManagerGuard` (PIC atau
+ *    admin); peran/guard gagal → 403.
  * 3. Cek referensi lagi (venue/EO/PIC harus tetap ada pada edit) lewat repository +
  *    validator domain murni; invalid → 400 pesan Indonesia (Req 11.3).
  * 4. Tulis via `updateEvent` repository (menyetel `updated_at`, Req 11.4). Bila repository
@@ -43,7 +43,7 @@ export async function updateEvent(
 
   await authorize(currentUser, 'event:update', eventManagerGuard(currentUser, existing))
 
-  // PIC hanya boleh diganti oleh PIC saat ini atau admin; penerima akses tidak.
+  // PIC hanya boleh diganti oleh PIC saat ini atau admin; penerima akses event tidak.
   if (
     input.picId !== existing.picId &&
     !currentUser.isAdmin &&

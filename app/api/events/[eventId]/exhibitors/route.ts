@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 // Exhibitor per event: daftar dan pendaftaran (bisa batch, mis. dari scan CIPL). Route tipis:
 // sesi (401) → Zod → use-case → `toErrorResponse`.
@@ -10,6 +11,8 @@ import { toErrorResponse } from '@/lib/server/errors'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+const viaJobIdSchema = z.string().uuid().optional()
 
 type RouteContext = { params: { eventId: string } }
 
@@ -23,12 +26,18 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
   }
 }
 
-/** Body: array exhibitor baru; respons berurutan sama dengan masukan. */
+/**
+ * Body: array exhibitor baru; respons berurutan sama dengan masukan. Query `viaJobId`: job milik
+ * pengguna sebagai jalur otorisasi bagi non-PIC.
+ */
 export async function POST(request: NextRequest, { params }: RouteContext) {
   try {
     const currentUser = await requireCurrentUser()
+    const viaJobId = viaJobIdSchema.parse(
+      request.nextUrl.searchParams.get('viaJobId') ?? undefined,
+    )
     const inputs = exhibitorCreateBatchSchema.parse(await request.json())
-    const exhibitors = await createExhibitors(currentUser, params.eventId, inputs)
+    const exhibitors = await createExhibitors(currentUser, params.eventId, inputs, viaJobId ?? null)
     return NextResponse.json(exhibitors, { status: 201, headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     return toErrorResponse(error)

@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { useSession } from 'next-auth/react'
 import { KeyRound, Trash2 } from 'lucide-react'
 
 import {
@@ -16,39 +15,32 @@ function toast(message: string, tone: 'success' | 'error') {
 }
 
 /**
- * Kartu "Akses event": PIC event (dan admin) memberi/mencabut hak kelola event ke pengguna lain.
- * Penerima akses dapat mengubah/membatalkan/menghapus/mengarsipkan event seperti PIC. Disembunyikan
- * untuk pengguna lain; server tetap menegakkan aturan yang sama (403).
+ * Kartu "Akses event": PIC event (dan admin) memberi/mencabut akses ke pengguna CS/Spesialis.
+ * Pemanggil hanya merender kartu ini bila `canManageEventAccess`; server tetap menegakkan aturan
+ * yang sama (403).
  */
-export function EventAccessCard({ event }: { event: { id: string; picId: string | null } }) {
-  const { data: session } = useSession()
-  const canManage = Boolean(
-    session?.user && (session.user.isAdmin || (event.picId && session.user.id === event.picId)),
-  )
-
+export function EventAccessCard({ eventId }: { eventId: string }) {
   const [view, setView] = useState<EventAccessView | null>(null)
   const [selected, setSelected] = useState('')
   const [busy, setBusy] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
-      setView(await listEventAccess(event.id))
+      setView(await listEventAccess(eventId))
     } catch (error) {
       toast(error instanceof Error ? error.message : 'Akses event tidak dapat dimuat.', 'error')
     }
-  }, [event.id])
+  }, [eventId])
 
   useEffect(() => {
-    if (canManage) void refresh()
-  }, [canManage, refresh])
-
-  if (!canManage) return null
+    void refresh()
+  }, [refresh])
 
   async function grant() {
     if (!selected) return
     setBusy(true)
     try {
-      await grantEventAccess(event.id, selected)
+      await grantEventAccess(eventId, selected)
       toast('Akses event diberikan.', 'success')
       setSelected('')
       await refresh()
@@ -62,7 +54,7 @@ export function EventAccessCard({ event }: { event: { id: string; picId: string 
   async function revoke(userId: string) {
     setBusy(true)
     try {
-      await revokeEventAccess(event.id, userId)
+      await revokeEventAccess(eventId, userId)
       toast('Akses event dicabut.', 'success')
       await refresh()
     } catch (error) {
@@ -73,17 +65,26 @@ export function EventAccessCard({ event }: { event: { id: string; picId: string 
   }
 
   return (
-    <section className="card p-6 sm:p-8">
+    <section className="card p-6 sm:p-8" aria-labelledby="event-access-heading">
       <div className="flex items-center gap-2">
-        <KeyRound size={18} className="text-slate-600" />
-        <h2 className="text-lg font-semibold">Akses event</h2>
+        <KeyRound size={18} className="text-slate-600" aria-hidden="true" />
+        <h2 id="event-access-heading" className="text-lg font-semibold">
+          Akses event
+        </h2>
       </div>
-      <p className="mt-1 text-sm text-slate-500">
-        Pengguna yang diberi akses dapat mengubah, membatalkan, mengarsipkan, atau menghapus event ini.
+      <p className="mt-1 text-sm text-slate-600">
+        Pengguna yang diberi akses dapat membuat job di event ini dan mengurus job miliknya sendiri.
+        Data event tetap hanya dapat diubah PIC event dan admin.
       </p>
 
       <ul className="mt-4 divide-y divide-slate-100 text-sm">
-        {view?.grantees.length ? (
+        {view === null ? (
+          <li className="py-2 text-slate-500" role="status">
+            Memuat akses…
+          </li>
+        ) : view.grantees.length === 0 ? (
+          <li className="py-2 text-slate-500">Belum ada pengguna yang diberi akses.</li>
+        ) : (
           view.grantees.map((grantee) => (
             <li key={grantee.userId} className="flex items-center justify-between py-2">
               <span className="font-medium text-slate-800">{grantee.fullName}</span>
@@ -92,23 +93,25 @@ export function EventAccessCard({ event }: { event: { id: string; picId: string 
                 disabled={busy}
                 onClick={() => void revoke(grantee.userId)}
                 className="btn-secondary"
-                title="Cabut akses"
+                aria-label={`Cabut akses ${grantee.fullName}`}
               >
-                <Trash2 size={14} /> Cabut
+                <Trash2 size={14} aria-hidden="true" /> Cabut
               </button>
             </li>
           ))
-        ) : (
-          <li className="py-2 text-slate-500">Belum ada pengguna yang diberi akses.</li>
         )}
       </ul>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
+        <label htmlFor="event-access-candidate" className="sr-only">
+          Pilih pengguna
+        </label>
         <select
+          id="event-access-candidate"
           value={selected}
           onChange={(e) => setSelected(e.target.value)}
           className="input min-w-[14rem]"
-          aria-label="Pilih pengguna"
+          aria-describedby="event-access-help"
         >
           <option value="">Pilih pengguna…</option>
           {view?.candidates.map((member) => (
@@ -117,10 +120,18 @@ export function EventAccessCard({ event }: { event: { id: string; picId: string 
             </option>
           ))}
         </select>
-        <button type="button" disabled={busy || !selected} onClick={() => void grant()} className="btn-primary">
+        <button
+          type="button"
+          disabled={busy || selected === ''}
+          onClick={() => void grant()}
+          className="btn-primary"
+        >
           Beri akses
         </button>
       </div>
+      <p id="event-access-help" className="mt-2 text-xs text-slate-500">
+        Hanya pengguna CS dan Spesialis yang dapat dipilih.
+      </p>
     </section>
   )
 }

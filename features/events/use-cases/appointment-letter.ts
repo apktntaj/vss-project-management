@@ -1,7 +1,7 @@
 import 'server-only'
 
 // Mengapa: use-case tulis surat penunjukan EO. Mengunggah/menghapus surat adalah bentuk edit event,
-// jadi diotorisasi `event:update` + guard pengelola (PIC, penerima akses, admin). Satu surat aktif
+// jadi diotorisasi `event:update` + guard pengelola (PIC, admin). Satu surat aktif
 // per event: unggahan baru disimpan dulu, baru surat lama dihapus, sehingga kegagalan unggah tidak
 // pernah menghilangkan surat yang sudah ada.
 

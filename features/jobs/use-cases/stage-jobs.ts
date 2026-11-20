@@ -15,7 +15,7 @@ import {
   assertNotCancelled,
   translateConstraint,
 } from '@/features/jobs/use-cases/errors'
-import { authorizeJobWriteInEvent } from '@/features/jobs/use-cases/job-guards'
+import { authorizeLoadedJobWrite } from '@/features/jobs/use-cases/job-guards'
 import { emptyOperationalDetails } from '@/domain/job/operational'
 import { expectedDerivedStages } from '@/domain/job/stages'
 import { derivedStagesOf, jobStageLabel } from '@/domain/job/regime'
@@ -25,11 +25,7 @@ import type { DerivedJobStage, Job } from '@/domain/job/types'
 
 // Kolom yang job turunan warisi dari job masuknya saat dibuat; selebihnya (pihak tagihan, moda)
 // bebas diubah operator karena tiap job tetap satu tagihan sendiri.
-async function insertStageJob(
-  currentUser: CurrentUser,
-  inbound: Job,
-  stage: DerivedJobStage,
-): Promise<Job> {
+async function insertStageJob(inbound: Job, stage: DerivedJobStage): Promise<Job> {
   try {
     return await insertJob({
       event_id: inbound.eventId,
@@ -38,7 +34,7 @@ async function insertStageJob(
       transport_mode: inbound.transportMode,
       agent_id: inbound.agentId,
       exhibitor_id: inbound.exhibitorId,
-      created_by_id: currentUser.id,
+      created_by_id: inbound.createdById,
       stage,
       source_job_id: inbound.id,
       operational: emptyOperationalDetails(stage, inbound.internationalJenis),
@@ -53,14 +49,14 @@ async function insertStageJob(
  * job. Tidak membuat ulang tahap yang pernah ada (termasuk yang batal); pelanggaran unique
  * `jobs_source_stage_active_key` ditelan karena berarti dibuat orang lain hampir bersamaan.
  */
-export async function ensureStageJobs(currentUser: CurrentUser, inbound: Job): Promise<void> {
+export async function ensureStageJobs(inbound: Job): Promise<void> {
   const expected = expectedDerivedStages(inbound.ciplLines, inbound.internationalJenis)
   if (!expected.length) return
   const existing = new Set((await listDerivedJobs(inbound.id)).map((job) => job.stage))
   for (const stage of expected) {
     if (existing.has(stage)) continue
     try {
-      await insertStageJob(currentUser, inbound, stage)
+      await insertStageJob(inbound, stage)
     } catch (error) {
       if (
         error instanceof JobConstraintError &&
@@ -81,7 +77,7 @@ export async function createStageJob(
 ): Promise<Job> {
   const source = await findJobById(sourceJobId)
   if (!source) throw new ApiError(404, 'Job tidak ditemukan.')
-  await authorizeJobWriteInEvent(currentUser, 'job:create', source.eventId)
+  await authorizeLoadedJobWrite(currentUser, 'job:create', source)
   assertNotCancelled(source)
   if (source.stage !== 'INBOUND') {
     throw new ApiError(400, 'Job turunan hanya dibuat dari job masuk rangkaian ini.')
@@ -100,7 +96,7 @@ export async function createStageJob(
     throw new ApiError(409, `Job ${jobStageLabel(source.internationalJenis, stage)} untuk kiriman ini sudah ada.`)
   }
   try {
-    return await insertStageJob(currentUser, source, stage)
+    return await insertStageJob(source, stage)
   } catch (error) {
     if (
       error instanceof JobConstraintError &&

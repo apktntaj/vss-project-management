@@ -36,7 +36,7 @@ export type NewJobRow = {
   transport_mode: Job['transportMode']
   agent_id: string | null
   exhibitor_id: string | null
-  created_by_id: string
+  created_by_id: string | null
   stage: Job['stage']
   source_job_id: string | null
   operational: JobOperationalDetails
@@ -171,6 +171,34 @@ export async function exhibitorBelongsToEvent(exhibitorId: string, eventId: stri
     .eq('event_id', eventId)
   if (error) raise('Gagal memeriksa exhibitor', error)
   return (count ?? 0) > 0
+}
+
+/**
+ * Apakah job `jobId` merujuk exhibitor `exhibitorId`, sebagai pihak job atau di salah satu baris
+ * CIPL-nya? Dua query paralel (PK `jobs`; unique `job_cipl_lines_exhibitor_key`), masing-masing limit 1.
+ */
+export async function isExhibitorLinkedToJob(exhibitorId: string, jobId: string): Promise<boolean> {
+  if (!isUuid(exhibitorId) || !isUuid(jobId)) return false
+  const { client, workspaceId } = await withWorkspace()
+  const [asParty, inCipl] = await Promise.all([
+    client
+      .from('jobs')
+      .select('id')
+      .eq('workspace_id', workspaceId)
+      .eq('id', jobId)
+      .eq('exhibitor_id', exhibitorId)
+      .limit(1),
+    client
+      .from('job_cipl_lines')
+      .select('id')
+      .eq('workspace_id', workspaceId)
+      .eq('job_id', jobId)
+      .eq('exhibitor_id', exhibitorId)
+      .limit(1),
+  ])
+  if (asParty.error) raise('Gagal memeriksa kaitan exhibitor dengan job', asParty.error)
+  if (inCipl.error) raise('Gagal memeriksa kaitan exhibitor dengan job', inCipl.error)
+  return (asParty.data?.length ?? 0) > 0 || (inCipl.data?.length ?? 0) > 0
 }
 
 /** Daftarkan agent sebagai peserta event (idempoten) — agent pembawa job wajib terdaftar di event. */

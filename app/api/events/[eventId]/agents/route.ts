@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
+import { requireCurrentUser } from '@/features/auth'
+import { authorizeEventManager } from '@/features/events/use-cases/event-guards'
+import { ApiError, toErrorResponse } from '@/lib/server/errors'
 import { eventApiFailure, getEventApiContext } from '@/lib/supabase/event-api'
 
 export const runtime = 'nodejs'
@@ -70,15 +73,10 @@ const addAgentSchema = z.object({ agentId: z.string().min(1) })
 
 export async function POST(request: NextRequest, { params }: RouteContext) {
   try {
+    const currentUser = await requireCurrentUser()
+    await authorizeEventManager(currentUser, 'event:update', params.eventId)
     const { agentId } = addAgentSchema.parse(await request.json())
     const { client, workspaceId, userId } = await getEventApiContext()
-    const { data: event, error: eventError } = await client
-      .from('events')
-      .select('id')
-      .eq('workspace_id', workspaceId)
-      .eq('id', params.eventId)
-      .single<{ id: string }>()
-    if (eventError || !event) throw new Error('Event tidak ditemukan.')
 
     const { data: agent, error: agentError } = await client
       .from('agents')
@@ -121,6 +119,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       headers: { 'Cache-Control': 'no-store' },
     })
   } catch (error) {
+    if (error instanceof ApiError) return toErrorResponse(error)
     return eventApiFailure(error)
   }
 }

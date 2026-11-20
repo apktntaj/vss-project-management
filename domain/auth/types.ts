@@ -1,18 +1,14 @@
-export type Role = 'CS' | 'STAFF' | 'OPERATIONS' | 'DOCUMENT_ASSISTANT' | 'FINANCE'
+export type Role = 'CS' | 'SPESIALIS' | 'FINANCE'
 export const ROLES = [
   'CS',
-  'STAFF',
-  'OPERATIONS',
-  'DOCUMENT_ASSISTANT',
+  'SPESIALIS',
   'FINANCE',
 ] as const satisfies readonly Role[]
 
 /** Label tampilan peran (Indonesia) untuk UI manajemen user. */
 export const ROLE_LABELS: Record<Role, string> = {
   CS: 'CS (PIC event)',
-  STAFF: 'Staff',
-  OPERATIONS: 'Operations',
-  DOCUMENT_ASSISTANT: 'Document assistant',
+  SPESIALIS: 'Spesialis',
   FINANCE: 'Finance',
 }
 

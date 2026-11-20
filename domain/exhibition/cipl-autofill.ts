@@ -219,3 +219,15 @@ export function summarizeAutofill(rows: ReadonlyArray<CiplAutofillRow>) {
     ambigu: rows.filter((row) => row.resolution === 'AMBIGU').length,
   }
 }
+
+/**
+ * Toast peringatan untuk exhibitor yang hall/booth-nya tidak dapat dilengkapi saat CIPL disimpan
+ * (jaring pengaman: gagal jaringan, validasi, atau akses dicabut di tengah proses). Maksimal tiga
+ * nama disebut; null bila tidak ada.
+ */
+export function unfilledExhibitorsMessage(names: readonly string[]): string | null {
+  if (names.length === 0) return null
+  const shown = names.slice(0, 3).join(', ')
+  const rest = names.length > 3 ? `, dan ${names.length - 3} lainnya` : ''
+  return `Hall/booth ${names.length} exhibitor belum dilengkapi: ${shown}${rest}. CIPL sudah tersimpan; lengkapi hall/booth lewat Edit CIPL.`
+}

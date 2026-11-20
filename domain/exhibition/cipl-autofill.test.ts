@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 
 import { exhibitorLogisticsSchema, summarizeKoli, type ExhibitorLogistics } from '@/domain/job/manifest'
-import { resolveCiplAutofill, summarizeAutofill, type CiplScanEntry } from './cipl-autofill'
+import {
+  resolveCiplAutofill,
+  summarizeAutofill,
+  unfilledExhibitorsMessage,
+  type CiplScanEntry,
+} from './cipl-autofill'
 import type { BarisBarang } from './cipl-document'
 
 /**
@@ -160,3 +165,20 @@ assert.equal(terulang.rows[0].logistics.koli.totalCount, 2)
 exhibitorLogisticsSchema.parse(terulang.rows[0].logistics)
 
 console.log('cipl autofill edge cases passed')
+
+// Exhibitor yang hall/booth-nya tidak dapat dilengkapi: maksimal tiga nama disebut.
+assert.equal(unfilledExhibitorsMessage([]), null)
+assert.equal(
+  unfilledExhibitorsMessage(['PT ACME']),
+  'Hall/booth 1 exhibitor belum dilengkapi: PT ACME. CIPL sudah tersimpan; lengkapi hall/booth lewat Edit CIPL.',
+)
+assert.equal(
+  unfilledExhibitorsMessage(['PT A', 'PT B', 'PT C']),
+  'Hall/booth 3 exhibitor belum dilengkapi: PT A, PT B, PT C. CIPL sudah tersimpan; lengkapi hall/booth lewat Edit CIPL.',
+)
+assert.equal(
+  unfilledExhibitorsMessage(['PT A', 'PT B', 'PT C', 'PT D', 'PT E']),
+  'Hall/booth 5 exhibitor belum dilengkapi: PT A, PT B, PT C, dan 2 lainnya. CIPL sudah tersimpan; lengkapi hall/booth lewat Edit CIPL.',
+)
+
+console.log('cipl autofill unfilled message passed')

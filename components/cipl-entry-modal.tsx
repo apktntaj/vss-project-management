@@ -19,7 +19,7 @@ import {
   type BarisBarang,
   type CiplDocumentHeader,
 } from '@/domain/exhibition/cipl-document'
-import { resolveCiplAutofill, summarizeAutofill } from '@/domain/exhibition/cipl-autofill'
+import { resolveCiplAutofill, summarizeAutofill, unfilledExhibitorsMessage } from '@/domain/exhibition/cipl-autofill'
 import { isSameExhibitorName } from '@/domain/event/exhibitor-matching'
 import type { CiplScanResult } from '@/lib/server/manifest-extraction'
 import {
@@ -348,6 +348,8 @@ export function CiplEntryModal({
           `${autofill.unlinked.length} baris belum tertaut ke exhibitor event — tautkan dari detail job.`,
           'error',
         )
+      const unfilledMessage = unfilledExhibitorsMessage(autofill?.unfilledExhibitors ?? [])
+      if (unfilledMessage) toast(unfilledMessage, 'error')
       for (const warning of plan.warnings) toast(warning, 'error')
     } catch (caught) {
       toast(caught instanceof Error ? caught.message : 'Baris CIPL tidak dapat disimpan.', 'error')

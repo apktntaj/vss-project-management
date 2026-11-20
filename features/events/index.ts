@@ -22,6 +22,8 @@ export {
   type EventAccessView,
 } from '@/features/events/use-cases/manage-event-access'
 
+export { getMyWriteAccess } from '@/features/events/use-cases/my-write-access'
+
 // Use-case baca (dipakai Server Component dashboard + EventCard).
 export { listEventsForDashboard } from '@/features/events/use-cases/list-events-for-dashboard'
 export { getEventSummary } from '@/features/events/use-cases/get-event-summary'
